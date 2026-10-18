@@ -233,39 +233,9 @@ See [docs/awesomelist-integration.md](docs/awesomelist-integration.md).
 ## Update
 
 ```sh
-L80 update                 # everything: the binary, the pinned tools, the installed skills
-L80 update --json          # the same, as one report an agent can act on
-L80 update --check         # report what is out of date; change nothing
-L80 update --no-prefetch   # skip downloading pinned tools now (each downloads on first use)
+L80 update            # download the latest release, verify its checksum, replace the binary in place
+L80 update --check    # only report whether a newer release exists
 ```
-
-One command brings the whole setup current, so an agent never has to work
-out which piece is stale:
-
-1. **The binary.** Downloads the latest release, verifies its checksum and
-   replaces itself in place, then hands over to the new binary, so the steps
-   below use the new release's pins and skills.
-2. **The pinned tools.** Builds each tool's pinned commit through uvx now
-   rather than on first use. A copy on PATH that `uv tool install` put there
-   and that is older than the pin is upgraded to it.
-3. **The skills.** Every L80 skill installed as a copy is refreshed from the
-   binary. A `--dev` symlink is left alone, and a skill that is not installed
-   stays uninstalled.
-4. **Everything else is reported, not guessed at.** An override variable
-   (`L80_BETTERBENCH` and friends) pointing at a tool older than the pin cannot
-   be fixed from inside L80. The report names the profile line that sets it,
-   e.g. `~/.bashrc:129`, and says what to do.
-
-`--json` emits one object: the binary (`current`, `latest`,
-`update_available`, `installed`, `path`), `tools[]` (`status` is current,
-upgraded, stale, missing or failed, plus a `fix` when needed), `skills[]`
-(current, updated, outdated, linked, not_installed), `actions[]` and
-`up_to_date`. Exit 0 means nothing is left; exit 12 means `actions` lists what
-needs a person. `--check` always exits 0 and puts "Run `L80 update`" first in
-`actions` when the update would change something.
-
-L80 0.4.0 and older only replace the binary, so updating from them takes two
-runs of `L80 update`: the first installs this release, the second syncs.
 
 Prebuilt releases exist for macOS and Linux on amd64 and arm64. Elsewhere,
 pull and `make install`. Re-running the install script
@@ -309,7 +279,7 @@ L80 dashboard [tui|serve]                      GPU and inference telemetry
 L80 tools list|check|prefetch|path|run         Show, check, fetch and run the pinned Python tools
 L80 tui                                        Full-screen console for all of the above
 L80 doctor                                     Check connectivity, config and tools
-L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
+L80 update [--check] [--json]                  Install the latest release in place
 L80 version
 ```
 
@@ -332,7 +302,6 @@ line naming the next action.
 | 9 | payload too large |
 | 10 | unknown template |
 | 11 | a tool L80 runs is not available here (`E_TOOL_UNAVAILABLE`) |
-| 12 | `L80 update` finished, but its `actions` list something only a person can change |
 
 `--template <id>` names the layout on the command line instead of (or as well
 as) the file's `$template` field. Given both, they must agree — a disagreement
