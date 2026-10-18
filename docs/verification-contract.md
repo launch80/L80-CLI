@@ -259,6 +259,61 @@ already writes them:
 5. **PP t/s** is no longer a single-stream column (0.5.0); keep reading
    `pp_tps` for older files.
 
+## Server work for L80 1.0 (checklist)
+
+Everything the launch80 API server, database and website need before L80 1.0
+is announced. The sections above give the detail for each item.
+
+**Database**
+- [ ] `publisher_keys.is_verifier boolean not null default false`; set it to
+      true on the keys you trust.
+- [ ] `artifacts.trust_tier` accepts `unverified | pending | verified | rejected`;
+      add `artifacts.verified_at`.
+- [ ] Store each artifact's body verbatim, so `GET …/payload` returns the bytes
+      that were published and `content_hash` can be recomputed.
+- [ ] New `verification_requests` table (see Data model), with a
+      `reproduction jsonb` column for the verifier's figures.
+
+**New endpoints**
+- [ ] `GET /api/v1/keys/me` → `{key_id, label, is_verifier}`
+- [ ] `POST /api/v1/artifacts/{guid}/verification` (owner key only) and
+      `GET /api/v1/artifacts/{guid}/verification`
+- [ ] `GET /api/v1/verifications?scope=queue|mine&status=`. The queue holds
+      requests from *other* keys, visible to any valid key.
+- [ ] `GET /api/v1/verifications/{id}`
+- [ ] `GET /api/v1/artifacts/{guid}/payload`
+- [ ] `POST /api/v1/verifications/{id}/decision {decision, note, reproduction?}`:
+      verifier keys only (`E_NOT_VERIFIER`), never on your own request
+      (`E_OWN_REQUEST`), a note is required to reject, and `reproduction` is
+      optional because a verifier may approve on review alone.
+- [ ] Error codes as in the table above.
+
+**Existing endpoints**
+- [ ] `GET /api/v1/artifacts` (history) returns `trust_tier`, `title` and the
+      `verification` summary.
+- [ ] `GET /api/v1/health` adds `verification: true` and
+      `betterbench_max_supported: "0.6.1"`.
+- [ ] Unknown `/api/…` routes return a JSON `404` envelope, not a `307`
+      redirect to the website.
+
+**Checks and safety**
+- [ ] Recompute the client pre-checks from the stored body (Server checks);
+      never trust `client_checks` alone.
+- [ ] Queue privacy: show key *labels* to other users, never `key_id`s or
+      token material.
+- [ ] Audit log of every request and decision; rate-limit requests and
+      decisions per key.
+
+**Rendering (`bench.betterbench.v1` pages)**
+- [ ] Tier badges, including "reproduced" when the approval carried a
+      reproduction.
+- [ ] Cache-hit chip, phases present only, the run's own concurrency levels,
+      `pp_tps` for older files (Rendering changes above).
+
+**Website**
+- [ ] `https://launch80.com/install.sh` downloads releases from
+      `launch80/L80-CLI` (the repo was renamed from L80-Skills).
+
 ## Client behaviour (implemented)
 
 ```sh
