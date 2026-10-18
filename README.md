@@ -1,10 +1,14 @@
 # L80 CLI
 
+![L80 CLI, Version 1: a major upgrade for the Launch80 Engineering Community](docs/media/01-intro.gif)
+
 A local CLI (`L80`) plus a skill bundle that lets any LLM agent publish
 structured results to launch80 and get back a shareable URL, and that puts the
 Launch80 toolset behind one command: BetterBench, rented-GPU benchmarking on
 Vast.ai, the Poisoned Weights Detector and a telemetry dashboard. Only
 publishing needs a token; every tool is free.
+
+![Six capabilities in one binary: betterbench, vast, pwdet, dashboard, tui, verify](docs/media/02-capabilities.gif)
 
 ## The shape of it
 
@@ -24,6 +28,14 @@ pipeline are untouched.
 
 ## Install
 
+![Install with one line: curl -fsSL https://launch80.com/install.sh | sh](docs/media/08-install.gif)
+
+```sh
+curl -fsSL https://launch80.com/install.sh | sh   # prebuilt release -> ~/.local/bin/L80
+```
+
+Or build from source:
+
 ```sh
 make build     # -> ./bin/L80
 make install   # -> ~/.local/bin/L80
@@ -38,6 +50,8 @@ L80 skills link --target claude-code --dev \
 ```
 
 ## The console: `L80 tui`
+
+![The L80 console stepping through Home, Benchmark, Vast, pwdet, Dashboard, History and Tools](docs/media/04-console.gif)
 
 ```sh
 L80 tui
@@ -56,6 +70,8 @@ terminal it refuses rather than guessing; `L80` with no arguments still prints
 the command list. `NO_COLOR` turns colour off.
 
 ## Publishing a BetterBench run
+
+![L80 betterbench runs the pinned BetterBench, publishes the page and requests verification](docs/media/03-benchmark.gif)
 
 `L80 betterbench` runs [BetterBench](https://github.com/GGZ14/BetterBench)
 against an OpenAI-compatible endpoint and publishes the `results.json` it
@@ -88,6 +104,8 @@ refuses a file that still carries them. Flags after `--` are passed to
 `betterbench run` untouched.
 
 ## Tools
+
+![Every tool is open on GitHub, pinned to a commit and packaged into L80](docs/media/05-open-source.gif)
 
 L80 fronts a set of Python tools, all free to use with no token. Each is
 pinned to a commit in `internal/pytool/manifest.json`, which is embedded in
@@ -192,12 +210,62 @@ configured key from any machine. Each successful publish is also appended to
 there is no token or no network, and the only record of which file each page
 came from.
 
+## Coming soon: setup intelligence
+
+![Coming soon: detect, match, plan, measure, give back](docs/media/07-horizon.gif)
+
+L80 will read this machine's hardware (read-only), match it against the
+[Launch80 AwesomeList](https://github.com/launch80/AwesomeList) catalog pinned
+to a commit, and shortlist the community projects that fit, ranked by maturity,
+verification, fit and setup friction, never by tokens per second. It hands the
+plan to you or your agent and never installs anything itself. After setup,
+`L80 betterbench` measures the result, and a verified run can be exported back
+to the catalog. The proposed commands may change:
+
+```sh
+L80 recommend [--goal openai_api] [--priority stability] [--json]
+L80 skills link --target claude-code --name l80-setup
+L80 verify export <page> --awesomelist
+```
+
+See [docs/awesomelist-integration.md](docs/awesomelist-integration.md).
+
 ## Update
 
 ```sh
-L80 update            # download the latest release, verify its checksum, replace the binary in place
-L80 update --check    # only report whether a newer release exists
+L80 update                 # everything: the binary, the pinned tools, the installed skills
+L80 update --json          # the same, as one report an agent can act on
+L80 update --check         # report what is out of date; change nothing
+L80 update --no-prefetch   # skip downloading pinned tools now (each downloads on first use)
 ```
+
+One command brings the whole setup current, so an agent never has to work
+out which piece is stale:
+
+1. **The binary.** Downloads the latest release, verifies its checksum and
+   replaces itself in place, then hands over to the new binary, so the steps
+   below use the new release's pins and skills.
+2. **The pinned tools.** Builds each tool's pinned commit through uvx now
+   rather than on first use. A copy on PATH that `uv tool install` put there
+   and that is older than the pin is upgraded to it.
+3. **The skills.** Every L80 skill installed as a copy is refreshed from the
+   binary. A `--dev` symlink is left alone, and a skill that is not installed
+   stays uninstalled.
+4. **Everything else is reported, not guessed at.** An override variable
+   (`L80_BETTERBENCH` and friends) pointing at a tool older than the pin cannot
+   be fixed from inside L80. The report names the profile line that sets it,
+   e.g. `~/.bashrc:129`, and says what to do.
+
+`--json` emits one object: the binary (`current`, `latest`,
+`update_available`, `installed`, `path`), `tools[]` (`status` is current,
+upgraded, stale, missing or failed, plus a `fix` when needed), `skills[]`
+(current, updated, outdated, linked, not_installed), `actions[]` and
+`up_to_date`. Exit 0 means nothing is left; exit 12 means `actions` lists what
+needs a person. `--check` always exits 0 and puts "Run `L80 update`" first in
+`actions` when the update would change something.
+
+L80 0.4.0 and older only replace the binary, so updating from them takes two
+runs of `L80 update`: the first installs this release, the second syncs.
 
 Prebuilt releases exist for macOS and Linux on amd64 and arm64. Elsewhere,
 pull and `make install`. Re-running the install script
@@ -241,7 +309,7 @@ L80 dashboard [tui|serve]                      GPU and inference telemetry
 L80 tools list|check|prefetch|path|run         Show, check, fetch and run the pinned Python tools
 L80 tui                                        Full-screen console for all of the above
 L80 doctor                                     Check connectivity, config and tools
-L80 update [--check] [--json]                  Install the latest release in place
+L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
 L80 version
 ```
 
@@ -264,6 +332,7 @@ line naming the next action.
 | 9 | payload too large |
 | 10 | unknown template |
 | 11 | a tool L80 runs is not available here (`E_TOOL_UNAVAILABLE`) |
+| 12 | `L80 update` finished, but its `actions` list something only a person can change |
 
 `--template <id>` names the layout on the command line instead of (or as well
 as) the file's `$template` field. Given both, they must agree — a disagreement
@@ -273,6 +342,8 @@ An error code the CLI does not recognise still prints its message and remedy
 verbatim and exits non-zero, so the server can add codes without a CLI release.
 
 ## Development
+
+![0 external dependencies; 16 commands, 4 tools, 4 platforms, 3 templates, 12 exit codes](docs/media/06-numbers.gif)
 
 ```sh
 make test             # go test ./...
