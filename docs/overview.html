@@ -1,0 +1,578 @@
+<title>L80 CLI</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="L80: one command for benchmarking, renting GPUs, checking weights and publishing to launch80.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a launch-console manual. Hero with a live terminal, a stats strip,
+   a numbered quickstart (a real sequence), then docs with a sticky index on wide screens. */
+:root {
+  --bg: #f2f4f6;
+  --surface: #ffffff;
+  --ink: #15212c;
+  --muted: #586877;
+  --rule: #d6dde4;
+  --accent: #b9500e;
+  --accent-soft: #fbe9dc;
+  --free: #1f6b4a;
+  --free-soft: #ddf1e6;
+  --gate: #8a4b00;
+  --gate-soft: #fdf0d6;
+  --term-bg: #101921;
+  --term-fg: #d7e1ea;
+  --term-dim: #7e8f9e;
+  --term-ok: #7fd3a3;
+  --term-hi: #ffad6b;
+  --focus: #2b62d9;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1318; --surface: #141c24; --ink: #e3e9ef; --muted: #93a3b1; --rule: #25313c;
+    --accent: #ff9a52; --accent-soft: #3a2415; --free: #82d9aa; --free-soft: #15301f;
+    --gate: #f5c26b; --gate-soft: #362a12; --term-bg: #080d12; --focus: #7aa5ff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1318; --surface: #141c24; --ink: #e3e9ef; --muted: #93a3b1; --rule: #25313c;
+  --accent: #ff9a52; --accent-soft: #3a2415; --free: #82d9aa; --free-soft: #15301f;
+  --gate: #f5c26b; --gate-soft: #362a12; --term-bg: #080d12; --focus: #7aa5ff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation: none !important; transition: none !important; } }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--f-body); }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+code, kbd { font-family: var(--f-mono); font-size: .88em; }
+:not(pre) > code { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: .05em .35em; overflow-wrap: anywhere; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.12; margin: 0; }
+h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 800; font-stretch: 112%; letter-spacing: -.01em; }
+h3 { font-size: 1.15rem; font-weight: 700; font-stretch: 105%; }
+p { margin: 0; max-width: 68ch; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.eyebrow { font: 600 .74rem/1 var(--f-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+
+/* Hero */
+.hero { padding-block: 56px 40px; border-bottom: 1px solid var(--rule); }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 48px; align-items: start; }
+.hero h1 { font-size: clamp(2.3rem, 5.6vw, 4.1rem); font-weight: 800; font-stretch: 118%; letter-spacing: -.02em; margin-block: 14px 18px; }
+.hero h1 .mark { color: var(--accent); }
+.lede { font-size: 1.12rem; color: var(--muted); }
+.wwh { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin-top: 36px; border-top: 2px solid var(--ink); }
+.wwh div { padding: 16px 18px 0 0; display: grid; gap: 6px; align-content: start; }
+.wwh div + div { padding-left: 18px; border-left: 1px solid var(--rule); }
+.wwh h3 { font-size: .8rem; font-family: var(--f-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--accent); }
+.wwh p { font-size: .95rem; }
+.term { background: var(--term-bg); color: var(--term-fg); border-radius: 10px; font: 400 .82rem/1.65 var(--f-mono); overflow: hidden; box-shadow: 0 18px 40px -24px rgba(10, 20, 30, .55); min-width: 0; }
+.term-bar { display: flex; gap: 6px; align-items: center; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.07); color: var(--term-dim); font-size: .72rem; }
+.term-bar i { width: 9px; height: 9px; border-radius: 50%; background: #3a4752; display: inline-block; }
+.term-bar span { margin-left: 8px; }
+.term pre { margin: 0; padding: 16px 18px 18px; overflow-x: auto; white-space: pre; }
+.t-p { color: var(--term-hi); } .t-d { color: var(--term-dim); } .t-ok { color: var(--term-ok); }
+.cursor { display: inline-block; width: .55em; height: 1.05em; vertical-align: -2px; background: var(--term-hi); animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Stats */
+.stats { border-bottom: 1px solid var(--rule); background: var(--surface); }
+.stats ul { list-style: none; margin: 0; padding-block: 26px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px; }
+.stats li { display: grid; gap: 4px; align-content: start; }
+.stats b { font: 800 clamp(1.7rem, 3.2vw, 2.4rem)/1 var(--f-display); font-stretch: 120%; font-variant-numeric: tabular-nums; }
+.stats span { font-size: .84rem; color: var(--muted); line-height: 1.35; }
+
+/* Sections */
+section.band { padding-block: 56px; }
+section.band + section.band { border-top: 1px solid var(--rule); }
+.sec-head { display: grid; gap: 10px; margin-bottom: 28px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 2.4rem minmax(0, 1fr); gap: 4px 12px; align-content: start; }
+.steps li::before { content: counter(s); grid-row: span 3; font: 800 1.5rem/1 var(--f-display); font-stretch: 120%; color: var(--accent); padding-top: 2px; }
+.steps h3 { font-size: 1.02rem; }
+.steps p { font-size: .94rem; color: var(--muted); }
+.cmd { position: relative; display: flex; align-items: stretch; background: var(--term-bg); color: var(--term-fg); border-radius: 8px; min-width: 0; margin-top: 6px; }
+.cmd pre { margin: 0; padding: 11px 14px; font: 400 .82rem/1.55 var(--f-mono); overflow-x: auto; flex: 1; min-width: 0; white-space: pre; }
+.cmd pre::before { content: "$ "; color: var(--term-hi); }
+.cmd pre.multi::before { content: none; }
+.copy { flex: none; border: 0; border-left: 1px solid rgba(255,255,255,.08); background: transparent; color: var(--term-dim); font: 600 .7rem/1 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; padding: 0 12px; cursor: pointer; border-radius: 0 8px 8px 0; }
+.copy:hover { color: var(--term-fg); background: rgba(255,255,255,.05); }
+
+/* Docs */
+.docs { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; align-items: start; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); display: grid; gap: 2px; font-size: .9rem; }
+.toc .eyebrow { margin-bottom: 8px; }
+.toc a { color: var(--muted); text-decoration: none; padding: 5px 10px; border-left: 2px solid var(--rule); }
+.toc a:hover { color: var(--ink); }
+.toc a.on { color: var(--ink); border-left-color: var(--accent); font-weight: 600; }
+.doc { display: grid; gap: 52px; min-width: 0; }
+.doc article { display: grid; gap: 14px; min-width: 0; scroll-margin-top: 24px; }
+.doc article > h3 { font-size: 1.45rem; font-weight: 800; font-stretch: 110%; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.chip { font: 600 .68rem/1 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; padding: 5px 8px; border-radius: 999px; }
+.chip.free { color: var(--free); background: var(--free-soft); }
+.chip.gate { color: var(--gate); background: var(--gate-soft); }
+.chip.pend { color: var(--muted); background: var(--surface); border: 1px dashed var(--rule); }
+.doc ul.plain { margin: 0; padding-left: 1.1rem; display: grid; gap: 6px; max-width: 68ch; }
+.tbl { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; padding: 9px 14px; vertical-align: top; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+th { font: 600 .72rem/1.3 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); white-space: nowrap; }
+td code { white-space: nowrap; }
+td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 6px 6px 0; font-size: .94rem; max-width: 72ch; }
+.gatebox { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.gatebox > div { border: 1px solid var(--rule); background: var(--surface); border-radius: 8px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; }
+.gatebox ul { margin: 0; padding-left: 1.1rem; font-size: .93rem; display: grid; gap: 4px; }
+footer { border-top: 1px solid var(--rule); padding-block: 28px 40px; color: var(--muted); font-size: .85rem; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+@media (max-width: 960px) {
+  .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .stats ul { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .docs { grid-template-columns: minmax(0, 1fr); }
+  .toc { display: none; }
+}
+@media (max-width: 640px) {
+  .hero { padding-block: 36px 32px; }
+  .wwh { grid-template-columns: minmax(0, 1fr); }
+  .wwh div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
+  .wwh div { padding-bottom: 14px; }
+  .stats ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .steps, .gatebox { grid-template-columns: minmax(0, 1fr); }
+  section.band { padding-block: 40px; }
+}
+</style>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">Launch80 · L80 CLI · version 1.0.0</div>
+      <h1>Benchmark, rent, check and publish <span class="mark">from one command.</span></h1>
+      <p class="lede">L80 is a single binary that runs the Launch80 toolset on your machine and turns a benchmark into a shareable launch80 page. Publishing needs a token. Everything else is free.</p>
+      <div class="wwh">
+        <div><h3>What</h3><p>A command-line tool and full-screen console for BetterBench, rented Vast.ai GPUs, the Poisoned Weights Detector and a GPU telemetry dashboard.</p></div>
+        <div><h3>Why</h3><p>Every number on a launch80 page comes from the same pinned harness, private details never leave your machine, and reviewers can mark a run verified.</p></div>
+        <div><h3>How</h3><p>A Go binary with no third-party code. It pins each Python tool to a git commit and fetches it with <code>uvx</code> the first time you use it.</p></div>
+      </div>
+    </div>
+    <div class="term" aria-label="Example terminal session">
+      <div class="term-bar"><i></i><i></i><i></i><span>L80 betterbench</span></div>
+<pre><span class="t-p">$</span> L80 betterbench --endpoint http://gpu-box:8080/v1 \
+    --model Qwen3-8B --note engine="vLLM 0.9.3" \
+    --note hardware="1x RTX 4090"
+<span class="t-d">  running: uvx --from betterbench @ git+…BetterBench@f72bb90 betterbench run …</span>
+<span class="t-d">  BetterBench 0.6.1 · 20 passes per category, 2 warmup</span>
+<span class="t-d">  decode · prefill · concurrency [1, 2, 4, 8]</span>
+<span class="t-d">  results.json kept: ./betterbench-Qwen3-8B-1017.json</span>
+<span class="t-d">  removed env.endpoint, env.host</span>
+<span class="t-ok">✓ published: https://launch80.com/a/&lt;id&gt;</span>
+
+<span class="t-p">$</span> L80 verify request https://launch80.com/a/&lt;id&gt; \
+    --note "vLLM 0.9.3, --max-model-len 32768"
+<span class="t-ok">✓ checks passed · verification requested</span>
+<span class="t-p">$</span> <span class="cursor"></span></pre>
+    </div>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="wrap">
+    <ul>
+      <li><b>0</b><span>third-party Go modules in the binary</span></li>
+      <li><b>16</b><span>top-level commands</span></li>
+      <li><b>4</b><span>Python tools behind one CLI</span></li>
+      <li><b>3</b><span>launch80 page templates</span></li>
+      <li><b>4</b><span>release builds: macOS and Linux, amd64 and arm64</span></li>
+      <li><b>12</b><span>exit codes, each with a remedy line</span></li>
+    </ul>
+  </div>
+</div>
+
+<main>
+<section class="band" id="quickstart">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Quickstart · about five minutes</div>
+      <h2>From install to a published page</h2>
+    </div>
+    <ol class="steps">
+      <li>
+        <h3>Install L80</h3>
+        <p>Puts the binary in <code>~/.local/bin</code>. Run it again any time to update.</p>
+        <div class="cmd"><pre>curl -fsSL https://launch80.com/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
+      </li>
+      <li>
+        <h3>Install uv</h3>
+        <p>The only prerequisite. L80 uses it to fetch the pinned Python tools.</p>
+        <div class="cmd"><pre>curl -LsSf https://astral.sh/uv/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
+      </li>
+      <li>
+        <h3>Check your setup</h3>
+        <p>Shows the server it will talk to, whether a token is set, and how each tool resolves.</p>
+        <div class="cmd"><pre>L80 doctor</pre><button class="copy" type="button">Copy</button></div>
+      </li>
+      <li>
+        <h3>Run a dry benchmark</h3>
+        <p>A 5-pass smoke run against any OpenAI-compatible endpoint. Nothing is published.</p>
+        <div class="cmd"><pre>L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --quick --dry-run</pre><button class="copy" type="button">Copy</button></div>
+      </li>
+      <li>
+        <h3>Publish a full run</h3>
+        <p>Set your publish token, then run without <code>--quick</code> and <code>--dry-run</code>. L80 prints the share URL.</p>
+        <div class="cmd"><pre>export L80_TOKEN=L80_&lt;keyid&gt;_&lt;secret&gt;
+L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engine="vLLM 0.9.3"</pre><button class="copy" type="button">Copy</button></div>
+      </li>
+      <li>
+        <h3>Explore the console</h3>
+        <p>Every capability in one full-screen view. Or give your agent the skills.</p>
+        <div class="cmd"><pre>L80 tui</pre><button class="copy" type="button">Copy</button></div>
+        <div class="cmd"><pre>L80 skills link --target claude-code</pre><button class="copy" type="button">Copy</button></div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="band" id="docs">
+  <div class="wrap docs">
+    <nav class="toc" aria-label="Documentation">
+      <div class="eyebrow">Documentation</div>
+      <a href="#free">Free and gated</a>
+      <a href="#install">Install and update</a>
+      <a href="#config">Configuration</a>
+      <a href="#betterbench">Benchmark</a>
+      <a href="#publish">Publish and templates</a>
+      <a href="#verify">Verified by Launch80</a>
+      <a href="#vast">Rent a GPU</a>
+      <a href="#pwdet">Check weights</a>
+      <a href="#dashboard">Dashboard</a>
+      <a href="#tui">Console</a>
+      <a href="#tools">Pinned tools</a>
+      <a href="#skills">Agent skills</a>
+      <a href="#history">History</a>
+      <a href="#commands">Command reference</a>
+      <a href="#exit">Exit codes</a>
+      <a href="#security">Security model</a>
+    </nav>
+
+    <div class="doc">
+      <article id="free">
+        <h3>Free and gated</h3>
+        <p>You need a launch80 token only to publish. Running benchmarks, renting GPUs, scanning weights and watching the dashboard are free.</p>
+        <div class="gatebox">
+          <div><span class="chip free">Free, no token</span><ul>
+            <li>Running BetterBench, including <code>--dry-run</code> pages</li>
+            <li><code>L80 vast</code>: rent, serve, benchmark, tear down</li>
+            <li><code>L80 pwdet</code> scans and reports</li>
+            <li><code>L80 dashboard</code>, <code>L80 tui</code>, <code>L80 tools</code></li>
+            <li><code>L80 verify check</code>, <code>doctor</code>, <code>update</code></li>
+          </ul></div>
+          <div><span class="chip gate">Needs a token</span><ul>
+            <li>Publishing a BetterBench run</li>
+            <li><code>L80 publish</code></li>
+            <li><code>L80 pwdet scan --publish</code></li>
+            <li><code>L80 verify request</code>, <code>status</code></li>
+            <li><code>L80 review</code> (reviewer keys only)</li>
+          </ul></div>
+        </div>
+        <p>Vast.ai bills you directly for rented GPUs. L80 itself charges nothing.</p>
+      </article>
+
+      <article id="install">
+        <h3>Install and update</h3>
+        <div class="cmd"><pre>curl -fsSL https://launch80.com/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
+        <div class="cmd"><pre class="multi">L80 update            # download the latest release, verify its checksum, replace the binary
+L80 update --check    # only report whether a newer release exists
+L80 version</pre><button class="copy" type="button">Copy</button></div>
+        <p>Release builds exist for macOS and Linux on amd64 and arm64. Anywhere else, clone <a href="https://github.com/launch80/L80-CLI">launch80/L80-CLI</a> and run <code>make install</code>. Each release also pins new tool versions, so <code>L80 update</code> is how you get a newer BetterBench, bbvastl80, pwdet or dashboard.</p>
+      </article>
+
+      <article id="config">
+        <h3>Configuration</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>L80_TOKEN</code></td><td>Publish token, shaped <code>L80_&lt;keyid&gt;_&lt;secret&gt;</code>. Falls back to <code>~/.config/L80/credentials.json</code> (mode 0600).</td></tr>
+            <tr><td><code>L80_API_BASE</code></td><td>Server URL. Default <code>https://launch80.com</code>. Every network command also takes <code>--api-base</code>.</td></tr>
+            <tr><td><code>L80_BETTERBENCH_API_KEY</code></td><td>Bearer key for the endpoint you are benchmarking. Passed by environment and never recorded.</td></tr>
+            <tr><td><code>L80_BETTERBENCH</code>, <code>L80_VAST</code>, <code>L80_PWDET</code>, <code>L80_DASHBOARD</code></td><td>Run this command instead of the pinned tool, for example your own checkout. Used without a version check.</td></tr>
+            <tr><td><code>L80_PWDET_EXTRAS</code></td><td>pwdet extras to install. Default <code>gguf,pickle</code>; empty means none.</td></tr>
+            <tr><td><code>VAST_API_KEY</code></td><td>Vast.ai key for <code>L80 vast</code>. Or put it in <code>~/.config/bbvastl80/credentials</code>.</td></tr>
+            <tr><td><code>BBVASTL80_RUNS_DIR</code></td><td>Where Vast runs are recorded. Default <code>~/.local/state/L80/vast/runs</code>.</td></tr>
+            <tr><td><code>NO_COLOR</code></td><td>Turns colour off in the console and output.</td></tr>
+          </tbody>
+        </table></div>
+        <p><code>L80 auth status</code> shows the resolved server and a masked fragment of the token. L80 never prints a token in full. Never paste one into a chat with an agent.</p>
+      </article>
+
+      <article id="betterbench">
+        <h3>Benchmark an endpoint <span class="chip free">Free to run</span><span class="chip gate">Token to publish</span></h3>
+        <p><code>L80 betterbench</code> runs <a href="https://github.com/GGZ14/BetterBench">BetterBench</a> against any OpenAI-compatible endpoint and publishes its <code>results.json</code> as written. The launch80 page computes every table and figure from the raw samples, so it matches BetterBench's own HTML report.</p>
+        <div class="cmd"><pre class="multi">L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --note engine="vLLM 0.9.3"
+L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --quick        # 5-pass smoke run
+L80 betterbench --results results.json                                        # publish an existing file
+L80 betterbench --results results.json --dry-run --payload-out payload.json   # inspect first</pre><button class="copy" type="button">Copy</button></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>--endpoint</code>, <code>--model</code></td><td>The base URL to benchmark and the model name to request.</td></tr>
+            <tr><td><code>--quick</code></td><td>Short smoke run. The page says so, and it cannot be verified.</td></tr>
+            <tr><td><code>--passes N</code>, <code>--warmup N</code></td><td>Measured and warmup passes per category. Defaults are BetterBench's: 20 measured.</td></tr>
+            <tr><td><code>--note KEY=VALUE</code></td><td>Recorded in the run and shown as a chip. Repeat it. Use <code>engine=</code> and <code>hardware=</code>.</td></tr>
+            <tr><td><code>--decode</code>, <code>--prefill</code>, <code>--concurrency</code></td><td>Run only these phases. <code>--no-prefill</code> and <code>--no-concurrency</code> skip one.</td></tr>
+            <tr><td><code>--api-key</code></td><td>Key for an endpoint behind a gateway. Must come before any <code>--</code>.</td></tr>
+            <tr><td><code>--out</code></td><td>Where <code>results.json</code> is kept. Default is the working directory.</td></tr>
+            <tr><td><code>--title</code>, <code>--summary</code>, <code>--section "Heading=Body"</code></td><td>Prose shown on the page.</td></tr>
+            <tr><td><code>--dry-run</code>, <code>--payload-out</code></td><td>Prepare the page without publishing, and write the exact payload to a file.</td></tr>
+            <tr><td><code>--template bench.report.v1</code></td><td>Publish the summary layout instead of the full one.</td></tr>
+            <tr><td><code>-- …</code></td><td>Everything after <code>--</code> goes to <code>betterbench run</code> unchanged.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Before publishing, L80 warns you if the file came from an older or newer BetterBench, or if the server answered requests from its prefix cache on a run that asked for a cold one. Two fields never leave your machine: <code>env.endpoint</code> and <code>env.host</code>.</p>
+      </article>
+
+      <article id="publish">
+        <h3>Publish and templates <span class="chip gate">Needs a token</span></h3>
+        <p><code>L80 publish</code> uploads a JSON payload. The server validates it against a schema and renders the page from its own template. You never upload HTML.</p>
+        <div class="cmd"><pre class="multi">L80 templates list
+L80 publish report.json --template generic.report.v1
+L80 publish report.json --template bench.report.v1 --dry-run</pre><button class="copy" type="button">Copy</button></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Template</th><th>Use it for</th></tr></thead>
+          <tbody>
+            <tr><td><code>bench.betterbench.v1</code></td><td>A BetterBench <code>results.json</code>, as written. Produced by <code>L80 betterbench</code>. Up to 4 MB.</td></tr>
+            <tr><td><code>bench.report.v1</code></td><td>Any other benchmark with per-category percentiles: tables, p50/p99, sample-gate flags. Up to 64 KB.</td></tr>
+            <tr><td><code>generic.report.v1</code></td><td>Everything else: title, summary, up to 12 metrics and 10 prose sections. Up to 64 KB.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Pages are public and immutable. To change one, publish again and share the new URL. Unverified pages carry a "Self-reported" badge.</p>
+      </article>
+
+      <article id="verify">
+        <h3>Verified by Launch80</h3>
+        <p>A Launch80 reviewer can mark a published BetterBench page <strong>verified</strong>. That means it is a complete cold-cache run, described well enough for someone else to reproduce. <code>verify check</code> runs the same checks locally first.</p>
+        <div class="cmd"><pre class="multi">L80 verify check results.json          # exit 0 if the run qualifies
+L80 verify request &lt;page url&gt; --note "engine flags, how to reproduce"
+L80 verify status &lt;page url&gt;
+L80 history --tier verified</pre><button class="copy" type="button">Copy</button></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Check</th><th>Passes when</th></tr></thead>
+          <tbody>
+            <tr><td>Full run</td><td>At least 20 measured passes per category and one warmup, so not <code>--quick</code>.</td></tr>
+            <tr><td>Phases</td><td>Single-stream, prefill and concurrency results are all present.</td></tr>
+            <tr><td>Cold cache</td><td>No request was served from the server's prefix cache.</td></tr>
+            <tr><td>Requests</td><td>Every request completed and none was truncated.</td></tr>
+            <tr><td>Version</td><td>BetterBench 0.6.1 or later.</td></tr>
+            <tr><td>Notes</td><td>The engine and hardware are recorded with <code>--note</code>.</td></tr>
+            <tr><td>Provenance</td><td>This machine published the page, from a file that has not changed since.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. Reviewers decide with <code>L80 review list</code>, <code>approve</code> and <code>reject --reason</code>.</p>
+        <div class="note">Verification is rolling out on launch80. Until the server accepts requests, <code>verify request</code> says it is not supported (exit 8), and <code>verify check</code> still works.</div>
+      </article>
+
+      <article id="vast">
+        <h3>Rent a GPU and benchmark it <span class="chip free">Free</span><span class="chip pend">Tool pin pending</span></h3>
+        <p><code>L80 vast</code> runs <a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a>. It rents a Vast.ai GPU, serves a model on it with vLLM or llama.cpp, runs BetterBench from your machine, publishes, and destroys the box. Every bbvastl80 command works through it.</p>
+        <div class="cmd"><pre class="multi">L80 vast doctor                              # Vast key, SSH key, and the L80 and BetterBench it will call
+L80 vast search --spec run.yaml              # matching offers and prices; does not bill
+L80 vast run --spec run.yaml --max-hours 2   # rent, serve, benchmark, publish, tear down
+L80 vast status --json                       # every run, and which may still be billing
+L80 vast destroy --run &lt;id&gt;                  # asks before destroying</pre><button class="copy" type="button">Copy</button></div>
+        <ul class="plain">
+          <li><code>--max-hours N</code> is a watchdog. When time runs out, L80 stops the run and destroys its instance.</li>
+          <li>After any run that fails or is interrupted, L80 names each instance that may still be billing and the command that stops it.</li>
+          <li>The first Ctrl-C stops the run cleanly. A second one cancels it.</li>
+          <li>L80 never answers a confirmation prompt for you.</li>
+        </ul>
+      </article>
+
+      <article id="pwdet">
+        <h3>Check weights for tampering <span class="chip free">Free to scan</span><span class="chip gate">Token to publish</span><span class="chip pend">Tool pin pending</span></h3>
+        <p><code>L80 pwdet</code> runs the <a href="https://github.com/launch80/poisoned-weights-detector">Poisoned Weights Detector</a> on a local checkpoint, a Hugging Face repo or a served endpoint. It runs static, provenance, black-box and white-box checks.</p>
+        <div class="cmd"><pre class="multi">L80 pwdet scan Qwen/Qwen3-0.6B --json        # {"verdict": ..., "report": ...}
+L80 pwdet scan ./model --profile full-static
+L80 pwdet scan org/model --publish --dry-run --payload-out page.json
+L80 pwdet scan org/model --publish           # a generic.report.v1 page
+L80 pwdet checks list</pre><button class="copy" type="button">Copy</button></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Exit</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td class="num">0</td><td>Clean or inconclusive</td></tr>
+            <tr><td class="num">1</td><td>Suspicious, or pwdet itself failed</td></tr>
+            <tr><td class="num">2</td><td>Likely tampered or malicious</td></tr>
+          </tbody>
+        </table></div>
+        <p>A published scan carries the verdict, the findings to review and the coverage. L80 removes the hostname, local paths and private endpoints, and refuses to publish if any remain.</p>
+      </article>
+
+      <article id="dashboard">
+        <h3>Telemetry dashboard <span class="chip free">Free</span><span class="chip pend">Tool pin pending</span></h3>
+        <p><code>L80 dashboard</code> opens the <a href="https://github.com/launch80/ai-command-dashboard">AI command dashboard</a> in your terminal. It shows GPU power, temperatures, VRAM and engines, live vLLM and gateway state, and per-model performance.</p>
+        <div class="cmd"><pre class="multi">L80 dashboard                  # the terminal view
+L80 dashboard serve            # sampler and web page on 127.0.0.1:8787
+L80 dashboard serve --force    # start even if a sampler already answers on the port</pre><button class="copy" type="button">Copy</button></div>
+        <p>It is read-only. Only one sampler runs per machine, and any other view attaches to it. It is tuned for Intel Arc today, and other GPUs get a generic view.</p>
+      </article>
+
+      <article id="tui">
+        <h3>The console <span class="chip free">Free</span></h3>
+        <p><code>L80 tui</code> is a full-screen console for everything on this page. Each screen runs the same code as its command, so anything you do here you can script later.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>Screen</th><th>What you can do</th></tr></thead>
+          <tbody>
+            <tr><td>Home</td><td>Server, token and tool status at a glance, plus your last publishes.</td></tr>
+            <tr><td>Benchmark</td><td>Fill in a form, watch the run stream, then publish or dry-run.</td></tr>
+            <tr><td>Vast</td><td>Pick a spec, see cost caps before renting, follow runs, destroy boxes.</td></tr>
+            <tr><td>pwdet</td><td>Scan a model, read the verdict and findings, publish the result.</td></tr>
+            <tr><td>Dashboard</td><td>Attach to the telemetry view or start the sampler.</td></tr>
+            <tr><td>History</td><td>Every page you published, with its trust tier. Press <kbd>v</kbd> to request verification.</td></tr>
+            <tr><td>Tools</td><td>How each tool resolves, and prefetch it.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Renting, destroying and publishing always ask first. <code>vast ssh</code> and the dashboard take over the terminal and hand it back when they exit. Linux and macOS.</p>
+      </article>
+
+      <article id="tools">
+        <h3>Pinned tools</h3>
+        <p>Each L80 release pins every tool to one git commit, so a given L80 version always runs the same tool code. L80 picks the first of these that works:</p>
+        <ul class="plain">
+          <li>The tool's override variable, such as <code>L80_PWDET</code></li>
+          <li>A copy on your PATH that is at least the pinned version</li>
+          <li>The pinned commit, fetched with <code>uvx</code> and cached</li>
+          <li>An older copy on your PATH, with a warning</li>
+        </ul>
+        <div class="tbl"><table>
+          <thead><tr><th>Tool</th><th>Runs</th><th>Pinned in 1.0.0</th><th>Override</th></tr></thead>
+          <tbody>
+            <tr><td><a href="https://github.com/GGZ14/BetterBench">BetterBench</a></td><td><code>betterbench</code></td><td><code>v0.6.1</code> · <code>f72bb90</code></td><td><code>L80_BETTERBENCH</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a></td><td><code>bbvastl80</code></td><td><span class="chip pend">Pending</span></td><td><code>L80_VAST</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/poisoned-weights-detector">pwdet</a></td><td><code>pwdet</code></td><td><span class="chip pend">Pending</span></td><td><code>L80_PWDET</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/ai-command-dashboard">AI command dashboard</a></td><td><code>ai-dashboard</code></td><td><span class="chip pend">Pending</span></td><td><code>L80_DASHBOARD</code></td></tr>
+          </tbody>
+        </table></div>
+        <div class="cmd"><pre class="multi">L80 tools list              # each tool and the version this release pins
+L80 tools check             # how each tool resolves on this machine
+L80 tools prefetch          # download and build the pinned tools now
+L80 tools path betterbench  # the exact command L80 would run</pre><button class="copy" type="button">Copy</button></div>
+        <p>A tool that is not pinned yet runs only from its override variable. If L80 cannot run a tool, it exits 11 and tells you how to fix it.</p>
+      </article>
+
+      <article id="skills">
+        <h3>Agent skills</h3>
+        <p>L80 ships skills that tell an agent which command to run. The CLI handles credentials and network calls, so the token never enters the model's context.</p>
+        <div class="cmd"><pre class="multi">L80 skills link --target claude-code
+L80 skills print l80-vast</pre><button class="copy" type="button">Copy</button></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Skill</th><th>Teaches the agent to</th></tr></thead>
+          <tbody>
+            <tr><td><code>l80-test-report</code></td><td>Pick a template and publish reports and BetterBench runs.</td></tr>
+            <tr><td><code>l80-vast</code></td><td>Rent and benchmark a GPU without leaving a box billing.</td></tr>
+            <tr><td><code>l80-pwdet</code></td><td>Scan weights, read the verdict, and publish it safely.</td></tr>
+          </tbody>
+        </table></div>
+      </article>
+
+      <article id="history">
+        <h3>History</h3>
+        <div class="cmd"><pre class="multi">L80 history                  # newest first: time, template, tier, URL, title
+L80 history --all --json     # everything this key ever published
+L80 history --local          # only this machine's publishes, with each source file
+L80 history --tier verified</pre><button class="copy" type="button">Copy</button></div>
+        <p>The server lists every page published with your key, from any machine. Each publish is also recorded in <code>~/.config/L80/history.jsonl</code>, which works offline and is the only record of which file each page came from.</p>
+      </article>
+
+      <article id="commands">
+        <h3>Command reference</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Command</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td><code>L80 betterbench</code></td><td>Run BetterBench and publish the results</td></tr>
+            <tr><td><code>L80 publish &lt;file&gt;</code></td><td>Publish a payload and print the URL</td></tr>
+            <tr><td><code>L80 templates list</code></td><td>List the page templates</td></tr>
+            <tr><td><code>L80 verify check|request|status</code></td><td>Verification checks and requests</td></tr>
+            <tr><td><code>L80 review list|approve|reject</code></td><td>Decide verification requests (reviewer keys)</td></tr>
+            <tr><td><code>L80 history</code></td><td>List the pages you published</td></tr>
+            <tr><td><code>L80 vast &lt;command&gt;</code></td><td>Rent a GPU, serve, benchmark, publish</td></tr>
+            <tr><td><code>L80 pwdet &lt;command&gt;</code></td><td>Check weights for tampering</td></tr>
+            <tr><td><code>L80 dashboard [tui|serve]</code></td><td>GPU and inference telemetry</td></tr>
+            <tr><td><code>L80 tools list|check|prefetch|path|run</code></td><td>The pinned Python tools</td></tr>
+            <tr><td><code>L80 tui</code></td><td>The full-screen console</td></tr>
+            <tr><td><code>L80 skills print|link</code></td><td>Agent skills</td></tr>
+            <tr><td><code>L80 auth status</code></td><td>The server and a masked token</td></tr>
+            <tr><td><code>L80 doctor</code></td><td>Check connectivity, config and tools</td></tr>
+            <tr><td><code>L80 update</code></td><td>Install the latest release in place</td></tr>
+            <tr><td><code>L80 version</code></td><td>Print the version</td></tr>
+          </tbody>
+        </table></div>
+        <p>Most commands take <code>--json</code> for machine-readable output, and <code>L80 &lt;command&gt; --help</code> lists every flag.</p>
+      </article>
+
+      <article id="exit">
+        <h3>Exit codes</h3>
+        <p>Every error prints a code, a message and a <code>remedy:</code> line naming the next action, so an agent can recover without guessing.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>Exit</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="num">0</td><td>Success</td></tr>
+            <tr><td class="num">1</td><td>Internal error, or an error code this version does not know</td></tr>
+            <tr><td class="num">2</td><td>Usage error, including <code>E_TEMPLATE_CONFLICT</code></td></tr>
+            <tr><td class="num">3</td><td>Input file missing, unreadable or not a template payload</td></tr>
+            <tr><td class="num">4</td><td>Validation failed: <code>E_SCHEMA_INVALID</code>, <code>E_PAYLOAD_UNSAFE</code>, <code>E_JSON_INVALID</code></td></tr>
+            <tr><td class="num">5</td><td>Token missing or not accepted</td></tr>
+            <tr><td class="num">6</td><td>Rate limited or over quota</td></tr>
+            <tr><td class="num">7</td><td>Network unreachable</td></tr>
+            <tr><td class="num">8</td><td>Server error, or a feature the server does not support yet</td></tr>
+            <tr><td class="num">9</td><td>Payload too large</td></tr>
+            <tr><td class="num">10</td><td>Unknown or missing template</td></tr>
+            <tr><td class="num">11</td><td>A tool L80 runs is not available here (<code>E_TOOL_UNAVAILABLE</code>)</td></tr>
+          </tbody>
+        </table></div>
+        <p>Wrapped tools keep their own exit codes once they start. When <code>L80 pwdet scan</code> exits 2, that is pwdet reporting a tampered model, not an L80 usage error.</p>
+      </article>
+
+      <article id="security">
+        <h3>Security model</h3>
+        <ul class="plain">
+          <li><strong>No third-party Go code.</strong> The binary holds your token, so it depends only on the Go standard library, including the console.</li>
+          <li><strong>Data, not markup.</strong> You publish JSON. The server renders it from its own templates, so no uploaded HTML or JavaScript is ever served.</li>
+          <li><strong>Secrets stay out of view.</strong> Tokens are masked. Endpoint keys travel by environment, never on a command line or in a results file.</li>
+          <li><strong>Private details stay home.</strong> Endpoints, hostnames and local paths are removed before publishing, and L80 refuses to publish if any remain.</li>
+          <li><strong>Pinned, checksummed code.</strong> Tools run at a fixed commit, and <code>L80 update</code> checks each download's SHA-256 before replacing the binary.</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>L80 CLI 1.0.0 · documentation updated 17 October 2026</span>
+    <span><a href="https://github.com/launch80/L80-CLI">github.com/launch80/L80-CLI</a> · <a href="https://launch80.com">launch80.com</a></span>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('.copy').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var pre = btn.parentElement.querySelector('pre');
+    var text = pre.textContent.split('\n').map(function (l) { return l.replace(/\s+#.*$/, ''); }).join('\n').trim();
+    var done = function (label) { btn.textContent = label; setTimeout(function () { btn.textContent = 'Copy'; }, 1400); };
+    var select = function () { var r = document.createRange(); r.selectNodeContents(pre); var s = getSelection(); s.removeAllRanges(); s.addRange(r); done('Selected'); };
+    try { navigator.clipboard.writeText(text).then(function () { done('Copied'); }, select); } catch (e) { select(); }
+  });
+});
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  if (!('IntersectionObserver' in window) || !links.length) return;
+  var byId = {}; links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (en.isIntersecting) { links.forEach(function (a) { a.classList.remove('on'); }); var a = byId[en.target.id]; if (a) a.classList.add('on'); }
+    });
+  }, { rootMargin: '-15% 0px -70% 0px' });
+  document.querySelectorAll('.doc article').forEach(function (s) { io.observe(s); });
+})();
+</script>

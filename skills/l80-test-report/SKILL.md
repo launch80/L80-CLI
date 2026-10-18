@@ -51,8 +51,9 @@ L80 betterbench --endpoint http://host:8080/v1 --model <name> [--quick] [--note 
 L80 betterbench --results results.json
 ```
 
-What it does: runs `betterbench run` (found on PATH, or bootstrapped with `uvx`
-from GitHub, or `L80_BETTERBENCH=/path/to/betterbench`), streams its output,
+What it does: runs `betterbench run` at the version this L80 pins (a new
+enough copy on PATH, else bootstrapped with `uvx`, or
+`L80_BETTERBENCH=/path/to/betterbench`), streams its output,
 keeps `results.json` in the working directory, removes `env.endpoint` and
 `env.host` (they never leave the machine), and publishes the file itself. The
 server derives every table and figure from the raw samples with a port of
@@ -60,6 +61,16 @@ BetterBench's own report code, so the page matches the HTML report the tool
 writes beside the file. Add `--title`, `--summary`, or `--section "Heading=Body"`
 for prose; add `--dry-run --payload-out p.json` to inspect the exact payload
 first. Flags after `--` go to `betterbench run` verbatim.
+
+If the endpoint needs a key, pass `--api-key <key>` before any `--` (or have the
+user set `L80_BETTERBENCH_API_KEY`); never put a key after `--`. Repeat any
+`warning:` lines L80 prints (older BetterBench version, prefix-cache hits) to
+the user before publishing.
+
+For a run the user may want **verified by Launch80** later, run it in full (no
+`--quick`, all phases) and record `--note engine=<stack and version>` and
+`--note hardware=<GPUs>`. Afterwards `L80 verify check <results.json>` shows
+whether it qualifies and `L80 verify request <url> --note "…"` asks for review.
 
 Before running: ask for the endpoint and model if not given, and tell the user
 a full run takes a while (20 passes per category plus sweeps); `--quick` is a

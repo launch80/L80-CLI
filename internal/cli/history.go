@@ -4,10 +4,10 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/config"
-	"github.com/launch80/L80-Skills/internal/history"
-	"github.com/launch80/L80-Skills/internal/output"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/history"
+	"github.com/launch80/L80-CLI/internal/output"
 )
 
 // runHistory lists what the configured key has published.
@@ -23,6 +23,7 @@ func runHistory(e env, args []string) int {
 	limit := fs.Int("limit", 50, "how many to list, newest first (max 200)")
 	local := fs.Bool("local", false, "read only the local record of publishes made from this machine")
 	all := fs.Bool("all", false, "keep paging until the whole history is listed")
+	tier := fs.String("tier", "", "only pages with this trust tier, e.g. verified or unverified")
 	if err := fs.Parse(args); err != nil {
 		return api.ExitUsage
 	}
@@ -37,7 +38,7 @@ func runHistory(e env, args []string) int {
 	if !*local {
 		entries, keyID, apiErr := fetchHistory(cfg, *limit, *all)
 		if apiErr == nil {
-			return printHistory(e, entries, "server", keyID, *asJSON)
+			return printHistory(e, filterTier(entries, *tier), "server", keyID, *asJSON)
 		}
 		switch apiErr.Code {
 		case "E_TOKEN_MISSING", "E_NETWORK", "E_NOT_FOUND":
@@ -60,7 +61,20 @@ func runHistory(e env, args []string) int {
 		}
 		entries = append(entries, en)
 	}
-	return printHistory(e, entries, "local", cfg.KeyID, *asJSON)
+	return printHistory(e, filterTier(entries, *tier), "local", cfg.KeyID, *asJSON)
+}
+
+func filterTier(entries []history.Entry, tier string) []history.Entry {
+	if tier == "" {
+		return entries
+	}
+	out := entries[:0:0]
+	for _, en := range entries {
+		if en.TrustTier == tier || (tier == "unverified" && en.TrustTier == "") {
+			out = append(out, en)
+		}
+	}
+	return out
 }
 
 func fetchHistory(cfg config.Config, limit int, all bool) ([]history.Entry, string, *api.Error) {
@@ -77,7 +91,7 @@ func fetchHistory(cfg config.Config, limit int, all bool) ([]history.Entry, stri
 		for _, a := range page.Artifacts {
 			out = append(out, history.Entry{
 				GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, TemplateVersion: a.TemplateVersion,
-				Title: a.Title, ByteSize: a.ByteSize, CreatedAt: a.CreatedAt,
+				Title: a.Title, ByteSize: a.ByteSize, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier,
 			})
 		}
 		if !all || page.NextBefore == nil || *page.NextBefore == "" {
@@ -100,7 +114,11 @@ func printHistory(e env, entries []history.Entry, source, keyID string, asJSON b
 		if len(when) >= 16 {
 			when = strings.Replace(when[:16], "T", " ", 1)
 		}
-		output.Successf(e.stdout, "%s  %-22s %s", when, en.TemplateID, en.URL)
+		tier := en.TrustTier
+		if tier == "" {
+			tier = "-"
+		}
+		output.Successf(e.stdout, "%s  %-22s %-10s %s", when, en.TemplateID, tier, en.URL)
 		if en.Title != "" {
 			output.Detailf(e.stdout, "%s", en.Title)
 		}

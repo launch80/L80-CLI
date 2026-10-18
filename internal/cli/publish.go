@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/betterbench"
-	"github.com/launch80/L80-Skills/internal/config"
-	"github.com/launch80/L80-Skills/internal/history"
-	"github.com/launch80/L80-Skills/internal/output"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/app"
+	"github.com/launch80/L80-CLI/internal/betterbench"
+	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/history"
+	"github.com/launch80/L80-CLI/internal/output"
 )
 
 // harnessDumpKeys are top-level fields of a BetterBench results.json. None of
@@ -219,23 +220,10 @@ func runPublish(e env, args []string) int {
 // publishBody sends an already-validated body and reports the result. Shared
 // by `publish` and `betterbench` so the two print the same thing.
 func publishBody(e env, body []byte, template, path, apiBase string, asJSON bool) int {
-	cfg := config.Load(apiBase)
-	artifact, apiErr := newClient(cfg).Publish(body)
-	if apiErr != nil {
-		return fail(e, apiErr)
+	artifact, code := publishArtifact(e, body, template, path, apiBase)
+	if artifact == nil {
+		return code
 	}
-
-	// Best effort: a failure to write the local record must not turn a
-	// successful publish into an error exit. The URL is still printed.
-	if err := history.Append(history.Entry{
-		GUID: artifact.GUID, URL: artifact.URL, TemplateID: artifact.TemplateID,
-		TemplateVersion: artifact.TemplateVersion, Title: titleOfBody(body, template),
-		ByteSize: artifact.ByteSize, CreatedAt: artifact.CreatedAt,
-		SourcePath: path, APIBase: cfg.BaseURL,
-	}); err != nil {
-		output.Detailf(e.stderr, "note: could not record this publish in %s: %v", history.Path(), err)
-	}
-
 	if asJSON {
 		return emitJSON(e, artifact)
 	}
@@ -245,6 +233,24 @@ func publishBody(e env, body []byte, template, path, apiBase string, asJSON bool
 	output.Detailf(e.stdout, "template %s v%d · %s · %d bytes",
 		artifact.TemplateID, artifact.TemplateVersion, artifact.TrustTier, artifact.ByteSize)
 	return api.ExitOK
+}
+
+// publishArtifact sends the body and records it locally. On failure it has
+// already printed the error and returns a nil artifact and the exit code.
+func publishArtifact(e env, body []byte, template, path, apiBase string) (*api.Artifact, int) {
+	cfg := config.Load(apiBase)
+	res, apiErr := app.Publish(newClient(cfg), app.PublishRequest{
+		Body: body, Template: template, Title: titleOfBody(body, template), SourcePath: path, APIBase: cfg.BaseURL,
+	})
+	if apiErr != nil {
+		return nil, fail(e, apiErr)
+	}
+	// Best effort: a failure to write the local record must not turn a
+	// successful publish into an error exit. The URL is still printed.
+	if res.LedgerErr != nil {
+		output.Detailf(e.stderr, "note: could not record this publish in %s: %v", history.Path(), res.LedgerErr)
+	}
+	return res.Artifact, api.ExitOK
 }
 
 // titleOfBody mirrors the server's titleOf for each template, so the local

@@ -3,9 +3,9 @@ package cli
 import (
 	"flag"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/config"
-	"github.com/launch80/L80-Skills/internal/output"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/output"
 )
 
 func runAuth(e env, args []string) int {

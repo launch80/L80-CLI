@@ -5,43 +5,35 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestResolveRunnerOrder(t *testing.T) {
-	old := lookPath
-	t.Cleanup(func() { lookPath = old })
-	t.Setenv("L80_BETTERBENCH", "")
-
-	lookPath = func(name string) (string, error) { return "/opt/bin/" + name, nil }
-	r, err := ResolveRunner()
-	if err != nil || r.Argv[0] != "/opt/bin/betterbench" || r.Source != "PATH" {
-		t.Fatalf("PATH should win: %+v %v", r, err)
-	}
-
-	lookPath = func(name string) (string, error) {
-		if name == "uvx" {
-			return "/opt/bin/uvx", nil
-		}
-		return "", exec.ErrNotFound
-	}
-	r, err = ResolveRunner()
-	if err != nil || strings.Join(r.Argv, " ") != "/opt/bin/uvx --from "+UpstreamRepo+" betterbench" {
-		t.Fatalf("uvx fallback: %+v %v", r, err)
-	}
-
-	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
-	if _, err = ResolveRunner(); !errors.Is(err, ErrNoRunner) {
-		t.Fatalf("want ErrNoRunner, got %v", err)
-	}
-
+func TestResolveRunnerUsesPinnedManifest(t *testing.T) {
 	t.Setenv("L80_BETTERBENCH", "/x/.venv/bin/python -m betterbench")
-	r, err = ResolveRunner()
+	r, err := ResolveRunner()
 	if err != nil || strings.Join(r.Argv, " ") != "/x/.venv/bin/python -m betterbench" || r.Source != "L80_BETTERBENCH" {
 		t.Fatalf("env override: %+v %v", r, err)
+	}
+	if tool := Tool(); tool.MinVersion != "0.6.1" || !tool.Pinned() {
+		t.Fatalf("betterbench must be pinned to 0.6.1: %+v", tool)
+	}
+	t.Setenv("L80_BETTERBENCH", "")
+	t.Setenv("PATH", t.TempDir())
+	if _, err := ResolveRunner(); !errors.Is(err, ErrNoRunner) {
+		t.Fatalf("want ErrNoRunner, got %v", err)
+	}
+}
+
+func TestRunOptionsEnvCarriesKeyNotArgv(t *testing.T) {
+	o := RunOptions{Endpoint: "http://h/v1", Model: "m", Out: "/tmp/r.json", Warmup: -1, APIKey: "sk-secret"}
+	if strings.Contains(strings.Join(o.Args(), " "), "sk-secret") {
+		t.Fatal("API key must not be on the command line")
+	}
+	env := strings.Join(o.Env(), " ")
+	if !strings.Contains(env, "BETTERBENCH_API_KEY=sk-secret") || !strings.Contains(env, "BETTERBENCH_NO_UPDATE_CHECK=1") {
+		t.Fatalf("env = %s", env)
 	}
 }
 

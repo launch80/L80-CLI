@@ -1,8 +1,8 @@
 BINARY := bin/L80
-VERSION ?= 0.4.0
-LDFLAGS := -s -w -X github.com/launch80/L80-Skills/internal/cli.Version=$(VERSION)
+VERSION ?= 1.0.0
+LDFLAGS := -s -w -X github.com/launch80/L80-CLI/internal/cli.Version=$(VERSION)
 
-.PHONY: build install test fmt vet clean hooks
+.PHONY: build install test fmt vet clean hooks bump-tools check-manifest
 
 # rm first: on a case-insensitive filesystem (default macOS) an existing
 # bin/l80 keeps its old directory entry when overwritten, so the release
@@ -27,6 +27,17 @@ vet:
 
 clean:
 	rm -rf bin
+
+# Pin each Python tool to the commit checked out in its local working copy
+# (paths in tools.local.json). Commit and push in those repos first.
+#   make bump-tools            all tools with a local path
+#   make bump-tools ONLY=pwdet one tool
+bump-tools:
+	go run ./cmd/bump-tools $(if $(ONLY),-only $(ONLY))
+
+# Confirm every pin is fetchable (and, with SMOKE=1, that uvx can run it).
+check-manifest:
+	./scripts/check-manifest.sh $(if $(SMOKE),--smoke)
 
 # Point git at the committed hooks, which refuse commits and pushes that are
 # not authored by the shared launch80 identity (team@launch80.com).

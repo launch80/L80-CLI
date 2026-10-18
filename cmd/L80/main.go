@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/launch80/L80-Skills/internal/cli"
+	"github.com/launch80/L80-CLI/internal/cli"
 )
 
 func main() {

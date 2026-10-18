@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	l80skills "github.com/launch80/L80-Skills"
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/output"
+	l80skills "github.com/launch80/L80-CLI"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/output"
 )
 
 const defaultSkill = "l80-test-report"

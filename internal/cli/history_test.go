@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/launch80/L80-Skills/internal/history"
+	"github.com/launch80/L80-CLI/internal/history"
 )
 
 // fakeAPI serves the listing and the publish endpoint, recording what it saw.
@@ -65,7 +65,7 @@ func TestHistoryListsFromServerNewestFirst(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	if !strings.Contains(out, "2026-09-06 10:00  bench.betterbench.v1   https://l80.test/a/g2") || !strings.Contains(out, "Second run") {
+	if !strings.Contains(out, "2026-09-06 10:00  bench.betterbench.v1   unverified https://l80.test/a/g2") || !strings.Contains(out, "Second run") {
 		t.Errorf("out = %s", out)
 	}
 	if strings.Index(out, "g2") > strings.Index(out, "g1") {
@@ -148,6 +148,11 @@ func TestPublishRecordsHistory(t *testing.T) {
 	got, _ := history.Read()
 	if len(got) != 1 || got[0].URL != "https://l80.test/a/1111" || got[0].Title != "Qwen3-8B on vLLM" || got[0].SourcePath != payload {
 		t.Fatalf("ledger = %+v", got)
+	}
+	// Provenance for a later verification request: the file's hash, the sent
+	// body's hash, and the tier the server assigned.
+	if len(got[0].SourceSHA256) != 64 || len(got[0].BodySHA256) != 64 || got[0].TrustTier != "unverified" {
+		t.Errorf("provenance not recorded: %+v", got[0])
 	}
 	_, hist, _ := runHist(t, "--local")
 	if !strings.Contains(hist, "https://l80.test/a/1111") || !strings.Contains(hist, "Qwen3-8B on vLLM") {

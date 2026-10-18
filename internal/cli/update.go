@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/output"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/output"
 )
 
 // releaseSource is where `L80 update` looks for releases. It mirrors what
@@ -33,8 +33,8 @@ type releaseSource struct {
 }
 
 var updateSource = releaseSource{
-	apiBase:      "https://api.github.com/repos/launch80/L80-Skills",
-	downloadBase: "https://github.com/launch80/L80-Skills",
+	apiBase:      "https://api.github.com/repos/launch80/L80-CLI",
+	downloadBase: "https://github.com/launch80/L80-CLI",
 }
 
 // currentExecutable is swapped in tests so the update replaces a scratch file

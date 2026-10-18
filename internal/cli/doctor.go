@@ -4,9 +4,10 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/config"
-	"github.com/launch80/L80-Skills/internal/output"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/app"
+	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/output"
 )
 
 func runDoctor(e env, args []string) int {
@@ -26,8 +27,12 @@ func runDoctor(e env, args []string) int {
 		templates = health.Templates
 	}
 
+	tools, _ := app.ToolsCheck(nil, false)
+
 	if *asJSON {
 		return emitJSON(e, map[string]any{
+			"tools":     tools,
+			"uvx":       app.HasUvx(),
 			"version":   Version,
 			"api_base":  cfg.BaseURL,
 			"reachable": reachable,
@@ -47,6 +52,14 @@ func runDoctor(e env, args []string) int {
 	}
 	output.Successf(e.stdout, "token        %s (masked), from %s",
 		output.Mask(cfg.Token), cfg.TokenSource)
+	for _, t := range tools {
+		line := t.Status
+		if t.Source != "" {
+			line += " via " + t.Source
+		}
+		output.Successf(e.stdout, "%-12s %s", t.Name, line)
+	}
+	output.Detailf(e.stdout, "`L80 tools check` probes versions and explains anything missing")
 
 	if !reachable {
 		return api.ExitCodeFor(apiErr.Code)

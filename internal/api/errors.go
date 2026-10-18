@@ -20,6 +20,10 @@ const (
 	ExitServer          = 8
 	ExitPayloadTooBig   = 9
 	ExitUnknownTemplate = 10
+	// ExitToolUnavailable means a tool L80 fronts (BetterBench, bbvastl80,
+	// pwdet, the dashboard) cannot be run here. A wrapped tool's own non-zero
+	// exit status is passed through unchanged and never maps to this.
+	ExitToolUnavailable = 11
 )
 
 // Detail is one field-level validation problem.
@@ -72,7 +76,15 @@ func ExitCodeFor(code string) int {
 		return ExitInputInvalid
 	case "E_USAGE":
 		return ExitUsage
-	case "E_NOT_FOUND", "E_INTERNAL":
+	case "E_NOT_FOUND", "E_INTERNAL", "E_SERVER":
+		return ExitServer
+	case "E_TOOL_UNAVAILABLE":
+		return ExitToolUnavailable
+	case "E_VERIFY_EXISTS", "E_VERIFY_INELIGIBLE":
+		return ExitValidation
+	case "E_FORBIDDEN_ROLE":
+		return ExitAuth
+	case "E_NOT_SUPPORTED":
 		return ExitServer
 	case "E_UPDATE_FAILED":
 		return ExitInternal

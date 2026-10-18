@@ -449,3 +449,41 @@ func errorsAs(err error, target **InputError) bool {
 	}
 	return ok
 }
+
+// A BetterBench 0.6.1 file: cached_tokens on every request, the 0.6.0
+// default concurrency levels, and one prefill request served from the
+// server's prefix cache although the run claims a cold one.
+func TestV061FixtureCacheHits(t *testing.T) {
+	data, err := os.ReadFile("testdata/results_schema2_v061.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.BetterBenchVersion != "0.6.1" || !r.CacheReported() || r.CacheHits() != 1 {
+		t.Fatalf("version %s reported %v hits %d", r.BetterBenchVersion, r.CacheReported(), r.CacheHits())
+	}
+	p, err := Build(r, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Concurrency) != 4 {
+		t.Errorf("want the 4 levels the run contains, got %d", len(p.Concurrency))
+	}
+	joined := strings.Join(p.Caveats, "\n")
+	if !strings.Contains(joined, "1 request(s) were served partly from the server's prefix cache") {
+		t.Errorf("cache-hit caveat missing:\n%s", joined)
+	}
+	body, err := PrepareRaw(data, Prose{})
+	if err != nil || !strings.Contains(string(body), `"cached_tokens":[3072,0,0`) {
+		t.Errorf("raw payload must keep cached_tokens as written: %v", err)
+	}
+
+	// The 0.4.0 fixture reports nothing, which is "unknown", not "cold".
+	old, _ := loadFixture(t)
+	if old.CacheReported() || old.CacheHits() != 0 {
+		t.Error("0.4.0 fixture has no cached_tokens")
+	}
+}
