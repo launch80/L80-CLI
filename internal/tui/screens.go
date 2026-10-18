@@ -60,38 +60,13 @@ func (h *homeScreen) update(c *Console, m Msg) Cmd {
 	switch v := m.(type) {
 	case homeLoaded:
 		h.loaded, h.reachable, h.reachErr, h.templates, h.tools, h.recent = true, v.reachable, v.err, v.templates, v.tools, v.recent
-	case KeyMsg:
-		if c.menu.HandleKey(v) {
-			return nil
-		}
-		switch {
-		case v.Code == input.Enter || v.Code == input.Right:
-			if it, ok := c.menu.Selected(); ok {
-				return c.open(it.Value.(screenID))
-			}
-		case v.Code == input.Rune && v.Rune >= '1' && v.Rune <= '7':
-			c.menu.Cursor = int(v.Rune - '1')
-			return c.open(c.menu.Items[c.menu.Cursor].Value.(screenID))
-		case v.Code == input.Rune && v.Rune == 'q':
-			return Quit
-		case v.Code == input.Rune && v.Rune == 'r':
-			return h.load(c)
-		case v.Code == input.Rune && v.Rune == '?':
-			c.scr = scrHelp
-		}
 	}
 	return nil
 }
 
 func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 	t := c.th
-	mw := min(46, w/2)
-	menu := []string{t.R(t.Title, "What do you want to do?"), ""}
-	menu = append(menu, c.menu.View(t, mw-2, ht-2, true)...)
-
-	sw := w - mw - 3
 	var st []string
-	st = append(st, t.R(t.Title, "This machine"), "")
 	if !h.loaded {
 		st = append(st, t.R(t.Muted, widgets.Spin(c.tick)+" checking…"))
 	} else {
@@ -109,23 +84,27 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 		for _, ts := range h.tools {
 			st = append(st, kv(t, ts.Name, toolState(t, ts)))
 		}
-		if len(h.recent) > 0 {
-			st = append(st, "", t.R(t.Title, "Recently published"))
-			for _, e := range h.recent {
-				when := e.CreatedAt
-				if len(when) >= 10 {
-					when = when[:10]
-				}
-				st = append(st, t.R(t.Muted, when+" ")+style.Sanitize(orDash(e.Title)))
-				st = append(st, t.R(t.Muted, "           ")+style.Sanitize(e.URL))
+		st = append(st, "", t.R(t.Title, "Last publishes"))
+		if len(h.recent) == 0 {
+			st = append(st, t.R(t.Muted, "  nothing yet: open Benchmark to publish your first run"))
+		}
+		for _, e := range h.recent {
+			tier := e.TrustTier
+			if tier == "" {
+				tier = "unverified"
 			}
+			tierS := t.R(t.Muted, tier)
+			if tier == "verified" {
+				tierS = t.R(t.OK, tier)
+			}
+			st = append(st, "  "+t.R(t.OK, "✓")+" "+style.Sanitize(clip(orDash(e.Title), max(10, w-18)))+"  "+tierS)
+			st = append(st, t.R(t.Muted, "    "+style.Sanitize(e.URL)))
 		}
 	}
 	for i := range st {
-		st[i] = style.Truncate(st[i], sw, "…")
+		st[i] = style.Truncate(st[i], w, "…")
 	}
-	body := style.JoinH(style.Fit(menu, mw, ht), style.Fit([]string{}, 2, ht), st)
-	return body, []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "open"}, {Keys: "1-7", Desc: "jump"}, {Keys: "r", Desc: "refresh"}, {Keys: "?", Desc: "help"}, {Keys: "q", Desc: "quit"}}
+	return style.Fit(st, w, ht), []widgets.Binding{{Keys: "r", Desc: "refresh"}}
 }
 
 func kv(t widgets.Theme, k, v string) string { return t.R(t.Muted, style.PadRight(k, 13)) + v }

@@ -53,9 +53,11 @@ L80 skills link --target claude-code --dev \
 L80 tui
 ```
 
-A full-screen console over everything below: benchmark an endpoint, rent a GPU
-and benchmark it, scan weights, open the dashboard, browse published pages and
-check the tools. Each screen drives the same code as the matching command, so
+A full-screen console over everything below. A sidebar lists Home, Benchmark,
+Vast, pwdet, Dashboard, History and Tools; moving through it previews each
+screen live, enter opens it and esc comes back. From it you can benchmark an
+endpoint, rent a GPU and benchmark it, scan weights, open the dashboard, browse
+published pages and check the tools. Each screen drives the same code as the matching command, so
 anything you do here you can script later. Runs stream into a scrollable log;
 renting, destroying and publishing ask first, with the cost caps or the
 privacy note in front of you. `vast ssh` and the dashboard take over the

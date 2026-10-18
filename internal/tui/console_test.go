@@ -29,9 +29,7 @@ func newTestConsole(t *testing.T) *Console {
 		VastEnv: func(string) ([]string, error) { return nil, nil }, RunsDir: t.TempDir(), DashboardState: t.TempDir()}}
 	c.prog = NewProgram(c)
 	c.th = widgets.DefaultTheme(style.NoColor, true)
-	c.menu = widgets.List{Items: []widgets.Item{{Title: "Benchmark an endpoint", Value: scrBench}, {Title: "Rent a GPU and benchmark", Value: scrVast},
-		{Title: "Scan weights for tampering", Value: scrPwdet}, {Title: "Telemetry dashboard", Value: scrDash},
-		{Title: "Published pages", Value: scrHistory}, {Title: "Tools", Value: scrTools}, {Title: "Help", Value: scrHelp}}}
+	c.side = sidebar
 	c.bench.init()
 	c.vast.init()
 	c.pw.init()
@@ -80,7 +78,7 @@ func TestHomeAtSeveralSizes(t *testing.T) {
 	for _, sz := range [][2]int{{80, 24}, {120, 40}, {60, 16}} {
 		feed(c, SizeMsg{sz[0], sz[1]})
 		got := checkFrame(t, c.View(sz[0], sz[1]), sz[0], sz[1])
-		for _, want := range []string{"What do you want to do?", "Benchmark an endpoint", "This machine", "reachable"} {
+		for _, want := range []string{"L80 console", "Benchmark", "Dashboard", "Server, token and tools at a glance.", "reachable", "↑↓ move"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("%dx%d: missing %q\n%s", sz[0], sz[1], want, got)
 			}
@@ -94,18 +92,18 @@ func TestHomeAtSeveralSizes(t *testing.T) {
 func TestNavigationAndDialog(t *testing.T) {
 	c := newTestConsole(t)
 	feed(c, SizeMsg{100, 30})
-	feed(c, input.Key{Code: input.Rune, Rune: '7'})
+	feed(c, input.Key{Code: input.Rune, Rune: '?'})
 	if c.scr != scrHelp || !strings.Contains(strings.Join(c.View(100, 30), "\n"), "Everything here is also a command") {
 		t.Fatal("help screen")
 	}
 	feed(c, input.Key{Code: input.Esc})
-	if c.scr != scrHome {
-		t.Fatal("esc returns home")
+	if c.scr != scrHome || c.paneFocus {
+		t.Fatal("esc returns to the sidebar")
 	}
 	// Vast: starting a real run asks first, quoting the spec's cost caps.
 	spec := filepath.Join(t.TempDir(), "run.yaml")
 	os.WriteFile(spec, []byte("name: t\ngpu:\n  names: [H100]\n  count: 2\n  max_dph: 6.5\nbudget:\n  max_total_usd: 20\n"), 0o644)
-	feed(c, input.Key{Code: input.Rune, Rune: '2'})
+	feed(c, input.Key{Code: input.Rune, Rune: '3'})
 	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
 	c.vast.form.Fields[0].Input.Set(spec)
 	c.vast.form.Fields[3].On = false // not a dry run
@@ -142,7 +140,7 @@ func TestBenchJobStreamsAndSummarises(t *testing.T) {
 	os.Chdir(t.TempDir())
 	defer os.Chdir(wd)
 
-	feed(c, input.Key{Code: input.Rune, Rune: '1'})
+	feed(c, input.Key{Code: input.Rune, Rune: '2'})
 	c.bench.form.Fields[0].Input.Set("http://h/v1")
 	c.bench.form.Fields[1].Input.Set("m")
 	c.bench.form.Fields[5].Input.Set("sk-secret")
@@ -174,5 +172,42 @@ func TestOverlayKeepsWidth(t *testing.T) {
 	got := overlay(base, "[dialog]", 10, 40)
 	if style.Width(got) != 40 || !strings.Contains(got, "xxxxxxxxxx[dialog]xxx") {
 		t.Errorf("overlay = %q", got)
+	}
+}
+
+func TestSidebarPreviewsAndFocus(t *testing.T) {
+	c := newTestConsole(t)
+	feed(c, SizeMsg{100, 30})
+	drain(c, c.Init(), 0)
+	// Moving the sidebar previews each screen without taking the keyboard.
+	feed(c, input.Key{Code: input.Down})
+	feed(c, input.Key{Code: input.Down})
+	if c.scr != scrVast || c.paneFocus {
+		t.Fatalf("preview: scr=%v focus=%v", c.scr, c.paneFocus)
+	}
+	view := checkFrame(t, c.View(100, 30), 100, 30)
+	for _, want := range []string{"Rent a Vast.ai GPU", "Home", "Tools", "enter open"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("missing %q:\n%s", want, view)
+		}
+	}
+	// Enter gives the pane the keyboard; esc hands it back on the same item.
+	feed(c, input.Key{Code: input.Enter})
+	if !c.paneFocus || !strings.Contains(strings.Join(c.View(100, 30), "\n"), "esc back") {
+		t.Fatal("enter focuses the pane")
+	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.paneFocus || c.scr != scrVast || c.sel != 2 {
+		t.Fatalf("esc: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
+	}
+	// Up from the top wraps to the bottom; enter on Home keeps the sidebar.
+	feed(c, input.Key{Code: input.Rune, Rune: '1'})
+	feed(c, input.Key{Code: input.Enter})
+	if c.paneFocus {
+		t.Error("Home has nothing to operate; the sidebar keeps focus")
+	}
+	feed(c, input.Key{Code: input.Up})
+	if c.scr != scrTools {
+		t.Errorf("wrap: scr=%v", c.scr)
 	}
 }

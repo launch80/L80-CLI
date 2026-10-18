@@ -28,16 +28,16 @@ func DefaultTheme(p style.Profile, unicodeOK bool) Theme {
 	}
 	return Theme{
 		P: p, Border: b,
-		Accent:   style.Style{FG: "#5fafff", Bold: true},
+		Accent:   style.Style{FG: "#ff9a52", Bold: true},
 		Muted:    style.Style{FG: "#8a8a8a"},
 		Text:     style.Style{},
-		Selected: style.Style{FG: "#000000", BG: "#5fafff", Reverse: p == style.NoColor},
+		Selected: style.Style{FG: "#ffffff", BG: "#3a2415", Bold: true, Reverse: p == style.NoColor},
 		OK:       style.Style{FG: "#5fd75f"},
 		Warn:     style.Style{FG: "#ffaf00"},
 		Bad:      style.Style{FG: "#ff5f5f", Bold: true},
 		Edge:     style.Style{FG: "#4e4e4e"},
 		Title:    style.Style{FG: "#ffffff", Bold: true},
-		Key:      style.Style{FG: "#5fafff"},
+		Key:      style.Style{FG: "#ff9a52", Bold: true},
 	}
 }
 
