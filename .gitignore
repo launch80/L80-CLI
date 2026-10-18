@@ -5,3 +5,5 @@ bin/
 .env
 
 .DS_Store
+# local checkout paths for `make bump-tools`
+tools.local.json

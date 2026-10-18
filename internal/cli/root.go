@@ -11,8 +11,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/config"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/tui/term"
 )
 
 type env struct {
@@ -26,6 +27,9 @@ func Run(args []string) int {
 
 	if len(args) < 2 {
 		usage(e.stdout)
+		if f, ok := e.stdout.(*os.File); ok && term.IsTerminal(f.Fd()) {
+			fmt.Fprintln(e.stdout, "Run `L80 tui` for the interactive console.")
+		}
 		return api.ExitUsage
 	}
 
@@ -46,6 +50,22 @@ func Run(args []string) int {
 		return runUpdate(e, args[2:])
 	case "history":
 		return runHistory(e, args[2:])
+	case "tools":
+		return runTools(e, args[2:])
+	case "vast":
+		return runVast(e, args[2:])
+	case "pwdet":
+		return runPwdet(e, args[2:])
+	case "dashboard":
+		return runDashboard(e, args[2:])
+	case "verify":
+		return runVerify(e, args[2:])
+	case "review":
+		return runReview(e, args[2:])
+	case "tui", "console":
+		return runTUI(e, args[2:])
+	case "onboard":
+		return runTUI(e, append([]string{"--onboarding"}, args[2:]...))
 	case "version", "--version", "-v":
 		fmt.Fprintln(e.stdout, VersionLine())
 		return api.ExitOK
@@ -77,30 +97,63 @@ func addCommonFlags(fs *flag.FlagSet) (apiBase *string, asJSON *bool) {
 	return
 }
 
-func usage(w io.Writer) {
-	fmt.Fprint(w, `L80 — publish structured results to launch80
+func usage(w io.Writer) { fmt.Fprint(w, usageText) }
+
+// usageText is `L80 help`; the console's About page shows it as its command directory.
+const usageText = `L80 — benchmark, inspect and publish to launch80
 
 Usage:
-  L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
-                          [--json] [--dry-run]
+  Benchmark and publish (publishing needs a token):
   L80 betterbench --endpoint <url> --model <m>   Run BetterBench and publish the results
                   [--quick] [--note k=v] ...     file as written (see --help)
   L80 betterbench --results <results.json>       Publish an existing results.json
-  L80 templates list [--json]                    List available templates
-  L80 skills print [name]                        Print a bundled SKILL.md
-  L80 skills link --target claude-code [--dev]   Install a skill for an agent
+  L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
+                          [--json] [--dry-run]
   L80 history [--limit N] [--json] [--local]     List the share URLs this key has published
+  L80 templates list [--json]                    List available templates
+  L80 verify check <results.json|url>            Run the checks a "verified by Launch80" review applies
+  L80 verify request <url> [--note text]         Ask launch80 to verify a published BetterBench page
+  L80 verify status <url>                        Where a verification request stands
+  L80 verify queue                               Other keys' requests, to review and reproduce
+  L80 verify reproduce <id> --endpoint <url>     Run a requested benchmark yourself and compare
+  L80 verify approve|reject <id>                 Stamp or reject a run (verifier keys)
+
+  Tools (free, no token):
+  L80 vast <command> [args]                      Rent a Vast.ai GPU, serve, benchmark, publish (bbvastl80)
+  L80 vast run --spec run.yaml [--max-hours N]   The whole pipeline, with an optional cost watchdog
+  L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering (Poisoned Weights Detector)
+  L80 dashboard [tui|serve]                      GPU and inference telemetry for this machine
+  L80 tools list [--json]                        Show the tools and the versions this release pins
+  L80 tools check [name...] [--json]             Show how each tool resolves on this machine
+  L80 tools prefetch [name...]                   Download and build pinned tools ahead of time
+
+  Interactive:
+  L80 tui                                        A full-screen console for everything above
+  L80 onboard                                    A short guided setup (runs by itself the first time)
+
+  Let your AI agents drive L80:
+  L80 skills targets [--json]                    The agent harnesses found here and their L80 skills
+  L80 skills link --target detected --all        Install every skill for every agent found
+  L80 skills link --target <t> [--name s|--all]  t: claude-code, agents (Codex, Cursor), gemini, opencode
+  L80 skills link --dir <path> [--all] [--dev]   Install into any skills directory
+  L80 skills print [name]                        Print a bundled SKILL.md (default: l80)
+  L80 skills agents-md                           An AGENTS.md snippet for agents without skills
+
+  Setup and maintenance:
   L80 auth status                                Show the resolved endpoint and key
-  L80 doctor                                     Check connectivity and config
-  L80 update [--check] [--json]                  Install the latest release in place
+  L80 doctor                                     Check connectivity, config and tools
+  L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
   L80 version                                    Print the version
 
 Environment:
-  L80_API_BASE   API base URL (default https://launch80.com)
-  L80_TOKEN      Publish token; otherwise ~/.config/L80/credentials.json
+  L80_API_BASE             API base URL (default https://www.launch80.com)
+  L80_TOKEN                Publish token; otherwise ~/.config/L80/credentials.json
+  L80_BETTERBENCH          Command to run instead of the pinned BetterBench
+  L80_BETTERBENCH_API_KEY  Bearer key for the endpoint under test (never recorded)
+  L80_VAST, L80_PWDET, L80_DASHBOARD   Commands to run instead of the pinned tools
+  VAST_API_KEY             Vast.ai key for L80 vast (or ~/.config/bbvastl80/credentials)
 
-`)
-}
+`
 
 // parseArgs parses flags that may appear before OR after positional arguments.
 //

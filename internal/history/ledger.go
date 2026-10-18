@@ -25,6 +25,15 @@ type Entry struct {
 	// Local-only context.
 	SourcePath string `json:"source_path,omitempty"`
 	APIBase    string `json:"api_base,omitempty"`
+	// Provenance, recorded at publish time so a later verification request can
+	// show the page was produced from a file that is still on this machine,
+	// unchanged. SourceSHA256 hashes the file as read; BodySHA256 the exact
+	// bytes sent; ContentHash is what the server reported for them.
+	SourceSHA256 string `json:"source_sha256,omitempty"`
+	BodySHA256   string `json:"body_sha256,omitempty"`
+	ContentHash  string `json:"content_hash,omitempty"`
+	// TrustTier is the server's tier for the page (e.g. "unverified").
+	TrustTier string `json:"trust_tier,omitempty"`
 }
 
 // Path is ~/.config/L80/history.jsonl, honouring XDG_CONFIG_HOME, beside the

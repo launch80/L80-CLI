@@ -4,9 +4,11 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/config"
-	"github.com/launch80/L80-Skills/internal/output"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/app"
+	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/output"
+	"github.com/launch80/L80-CLI/internal/pytool"
 )
 
 func runDoctor(e env, args []string) int {
@@ -26,8 +28,14 @@ func runDoctor(e env, args []string) int {
 		templates = health.Templates
 	}
 
+	// Probe only overrides: they are used unchecked, and probing one is cheap,
+	// whereas probing a uvx bootstrap may download and build it.
+	tools, _ := app.ToolsCheckSelective(nil, func(r pytool.Runner) bool { return r.Source == r.Tool.Env })
+
 	if *asJSON {
 		return emitJSON(e, map[string]any{
+			"tools":     tools,
+			"uvx":       app.HasUvx(),
 			"version":   Version,
 			"api_base":  cfg.BaseURL,
 			"reachable": reachable,
@@ -47,6 +55,20 @@ func runDoctor(e env, args []string) int {
 	}
 	output.Successf(e.stdout, "token        %s (masked), from %s",
 		output.Mask(cfg.Token), cfg.TokenSource)
+	for _, t := range tools {
+		line := t.Status
+		if t.Source != "" {
+			line += " via " + t.Source
+		}
+		output.Successf(e.stdout, "%-12s %s", t.Name, line)
+	}
+	output.Detailf(e.stdout, "`L80 tools check` probes versions and explains anything missing")
+	for _, t := range tools {
+		if t.Status != "ok" {
+			output.Detailf(e.stdout, "`L80 update` fixes what it can and says what is left")
+			break
+		}
+	}
 
 	if !reachable {
 		return api.ExitCodeFor(apiErr.Code)

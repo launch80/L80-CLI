@@ -51,8 +51,9 @@ L80 betterbench --endpoint http://host:8080/v1 --model <name> [--quick] [--note 
 L80 betterbench --results results.json
 ```
 
-What it does: runs `betterbench run` (found on PATH, or bootstrapped with `uvx`
-from GitHub, or `L80_BETTERBENCH=/path/to/betterbench`), streams its output,
+What it does: runs `betterbench run` at the version this L80 pins (a new
+enough copy on PATH, else bootstrapped with `uvx`, or
+`L80_BETTERBENCH=/path/to/betterbench`), streams its output,
 keeps `results.json` in the working directory, removes `env.endpoint` and
 `env.host` (they never leave the machine), and publishes the file itself. The
 server derives every table and figure from the raw samples with a port of
@@ -60,6 +61,20 @@ BetterBench's own report code, so the page matches the HTML report the tool
 writes beside the file. Add `--title`, `--summary`, or `--section "Heading=Body"`
 for prose; add `--dry-run --payload-out p.json` to inspect the exact payload
 first. Flags after `--` go to `betterbench run` verbatim.
+
+If the endpoint needs a key, pass `--api-key <key>` before any `--` (or have the
+user set `L80_BETTERBENCH_API_KEY`); never put a key after `--`. Repeat any
+`warning:` lines L80 prints (older BetterBench version, prefix-cache hits) to
+the user before publishing.
+
+For a run the user may want **verified by Launch80** later, run it in full (no
+`--quick`, all phases) and record `--note engine=<stack and version>` and
+`--note hardware=<GPUs>`. Afterwards `L80 verify check <results.json>` shows
+whether it qualifies and `L80 verify request <url> --note "…"` asks for review.
+To help verify someone else's run, `L80 verify queue` lists requests and
+`L80 verify reproduce <id> --endpoint <url>` reruns it on the user's hardware
+and compares. Only stamp (`L80 verify approve`) when the user is a verifier
+and explicitly asks you to; never approve or reject on your own judgement.
 
 Before running: ask for the endpoint and model if not given, and tell the user
 a full run takes a while (20 passes per category plus sweeps); `--quick` is a
@@ -175,6 +190,18 @@ Rules specific to this template:
   "Self-reported — not verified by launch80" badge. Tell the user this.
 - Pages are immutable. To change something, publish again and share the new URL.
 
+## Keeping L80 current
+
+`L80 update --json` brings everything up to date in one command: the L80
+binary, the pinned tools (BetterBench, bbvastl80, pwdet, the dashboard) and
+the installed L80 skills. Exit 0 with `"up_to_date": true` means done. Exit 12
+means it did what it could: each `actions[]` entry is one exact instruction it
+could not carry out itself, most often an old override variable in a shell
+profile. Show those to the user and ask before editing their profile. If the
+output has no `actions` key, the old L80 just replaced itself: run
+`L80 update --json` once more. `L80 update --check --json` reports the same
+thing without changing anything.
+
 ## If the command fails
 
 Read the `error:` code and the `remedy:` line, then act on them.
@@ -194,7 +221,8 @@ Read the `error:` code and the `remedy:` line, then act on them.
   the sections and retry.
 - `E_NETWORK` — run `L80 doctor`, then report the failure to the user.
 - Any error whose remedy seems wrong for the situation, or a code this list does
-  not mention — the CLI may be out of date. Run `L80 update`, then retry once.
+  not mention — the CLI may be out of date. Run `L80 update --json`, act on its
+  `actions`, then retry once.
 
 To find a page published earlier, run `L80 history` (newest first; `--all`
 for everything, `--json` for machine-readable output). Never ask the user to

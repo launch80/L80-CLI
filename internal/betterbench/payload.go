@@ -559,6 +559,9 @@ func buildCaveats(r *Results, rows []CategoryRow, conc []ConcurrencyRow, pre []P
 		add(fmt.Sprintf("Quick smoke run: %d passes per category after %d warmup. Too few passes for any percentile to hold; treat every figure as indicative, not as a result.",
 			r.Config.RunsPerCategory, r.Config.Warmup))
 	}
+	if hits := r.CacheHits(); hits > 0 && r.Config.UniqueNonce {
+		add(fmt.Sprintf("%d request(s) were served partly from the server's prefix cache although the run asked for a cold cache. Those timings measure a cache lookup, not prompt processing.", hits))
+	}
 	if len(gate) > 0 {
 		add(underSampledCaveat(gate))
 	}

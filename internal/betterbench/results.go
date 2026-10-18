@@ -19,10 +19,22 @@ type Results struct {
 	SingleStream       map[string][]Run   `json:"single_stream"`
 	Concurrency        []ConcurrencyLevel `json:"concurrency"`
 	Prefill            []PrefillDepth     `json:"prefill"`
+	RecordedGate       *SampleGate        `json:"sample_gate"`
 
 	// The order categories appear in the file. Go maps do not preserve it and
 	// the report prints them in file order, so it is recovered at decode time.
 	categoryOrder []string
+}
+
+// SampleGate is BetterBench's record of under-sampled percentiles.
+type SampleGate struct {
+	Rule         string `json:"rule"`
+	UnderSampled []struct {
+		Section string `json:"section"`
+		Metric  string `json:"metric"`
+		N       int    `json:"n"`
+		Need    int    `json:"need"`
+	} `json:"under_sampled"`
 }
 
 type Config struct {
@@ -74,6 +86,10 @@ type Run struct {
 	// per run, so the gaps are exactly recoverable (see test_migration.py).
 	ITLMs              []float64 `json:"itl_ms"`
 	ChunkTokenMismatch bool      `json:"chunk_token_mismatch"`
+	// CachedTokens is the server's usage.prompt_tokens_details.cached_tokens
+	// (BetterBench 0.6.1+). nil means the server did not report it, which is
+	// not the same as a verified 0.
+	CachedTokens *int `json:"cached_tokens"`
 }
 
 type ConcurrencyLevel struct {
@@ -83,6 +99,9 @@ type ConcurrencyLevel struct {
 	AggregateTPS float64   `json:"aggregate_tps"`
 	TTFTMs       []float64 `json:"ttft_ms"`
 	DecodeTPS    []float64 `json:"decode_tps"`
+	// CachedTokens holds one entry per request that reported the field
+	// (BetterBench 0.6.1+).
+	CachedTokens []int `json:"cached_tokens"`
 }
 
 type PrefillDepth struct {
@@ -92,6 +111,62 @@ type PrefillDepth struct {
 	PromptTokens []float64 `json:"prompt_tokens"`
 	TTFTMs       []float64 `json:"ttft_ms"`
 	PPTPS        []float64 `json:"pp_tps"`
+	CachedTokens []int     `json:"cached_tokens"`
+}
+
+// CacheHits counts requests the server answered partly from its prefix
+// cache, as BetterBench's report.cache_hits does. On a run that claims a cold
+// cache (unique_nonce) any hit means the timings measured a cache lookup,
+// not prompt processing.
+func (r *Results) CacheHits() int {
+	n := 0
+	for _, runs := range r.SingleStream {
+		for _, run := range runs {
+			if run.CachedTokens != nil && *run.CachedTokens > 0 {
+				n++
+			}
+		}
+	}
+	for _, p := range r.Prefill {
+		n += countPositive(p.CachedTokens)
+	}
+	for _, c := range r.Concurrency {
+		n += countPositive(c.CachedTokens)
+	}
+	return n
+}
+
+// CacheReported says whether any request in the file carried cached_tokens,
+// i.e. whether a zero from CacheHits means "verified cold" or "unknown".
+func (r *Results) CacheReported() bool {
+	for _, runs := range r.SingleStream {
+		for _, run := range runs {
+			if run.CachedTokens != nil {
+				return true
+			}
+		}
+	}
+	for _, p := range r.Prefill {
+		if len(p.CachedTokens) > 0 {
+			return true
+		}
+	}
+	for _, c := range r.Concurrency {
+		if len(c.CachedTokens) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func countPositive(xs []int) int {
+	n := 0
+	for _, x := range xs {
+		if x > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // ErrNotBetterBench is returned for JSON that is not a BetterBench results
@@ -107,6 +182,26 @@ var ErrSyntax = errors.New("invalid JSON")
 var ErrAlreadyPayload = fmt.Errorf("%w: it already carries $template", ErrNotBetterBench)
 
 // Parse decodes a results.json and recovers category order.
+// ParsePublished reads a stored bench.betterbench.v1 page: the results file
+// as published, which L80 marked with "$template" and may have given an
+// "l80" prose block. Both are removed and the rest parsed as results.
+func ParsePublished(data []byte) (*Results, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		return Parse(data)
+	}
+	if t, ok := top["$template"]; ok && string(t) == `"`+RawTemplateID+`"` {
+		delete(top, "$template")
+		delete(top, "l80")
+		b, err := json.Marshal(top)
+		if err != nil {
+			return nil, err
+		}
+		data = b
+	}
+	return Parse(data)
+}
+
 func Parse(data []byte) (*Results, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil {

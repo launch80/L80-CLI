@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/launch80/L80-Skills/internal/api"
-	"github.com/launch80/L80-Skills/internal/betterbench"
-	"github.com/launch80/L80-Skills/internal/output"
+	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/app"
+	"github.com/launch80/L80-CLI/internal/betterbench"
+	"github.com/launch80/L80-CLI/internal/output"
 )
 
 // multiFlag collects a repeatable string flag.
@@ -65,6 +66,7 @@ func runBetterbench(e env, args []string) int {
 	phases.flag(fs, "concurrency", "run the concurrency sweep")
 	noPrefill := fs.Bool("no-prefill", false, "skip the prefill sweep")
 	noConcurrency := fs.Bool("no-concurrency", false, "skip the concurrency sweep")
+	apiKey := fs.String("api-key", "", "bearer key for the endpoint (or L80_BETTERBENCH_API_KEY); passed to BetterBench by environment, never recorded")
 	out := fs.String("out", "", "where betterbench writes results.json (default ./betterbench-<model>-<time>.json)")
 
 	// Publishing an existing file instead.
@@ -130,13 +132,16 @@ func runBetterbench(e env, args []string) int {
 			"Run a benchmark with `L80 betterbench --endpoint http://host:8080/v1 --model <name>`, or publish a file with `L80 betterbench --results results.json`.",
 			"--endpoint and --model are required to run a benchmark"))
 	default:
-		runner, err := betterbench.ResolveRunner()
-		if err != nil {
-			return fail(e, api.Newf("E_INPUT_INVALID",
-				"Install uv (https://docs.astral.sh/uv/) so L80 can bootstrap BetterBench, or install BetterBench itself "+
-					"(`pip install git+https://github.com/GGZ14/BetterBench`) so `betterbench` is on PATH. "+
-					"L80_BETTERBENCH=/path/to/betterbench also works.",
-				"%v", err))
+		for _, a := range extra {
+			if name, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "="); strings.HasPrefix(a, "-") && strings.HasPrefix(name, "api-key") {
+				return fail(e, api.Newf("E_USAGE",
+					"Pass the key as `L80 betterbench --api-key <key>` (before --) or set L80_BETTERBENCH_API_KEY, so it reaches BetterBench by environment and never appears in a command line.",
+					"%s after -- would put the key on the command line", a))
+			}
+		}
+		key := *apiKey
+		if key == "" {
+			key = os.Getenv("L80_BETTERBENCH_API_KEY")
 		}
 		resultsPath = *out
 		if resultsPath == "" {
@@ -145,23 +150,32 @@ func runBetterbench(e env, args []string) int {
 		if abs, err := filepath.Abs(resultsPath); err == nil {
 			resultsPath = abs
 		}
+		if info, err := os.Stat(resultsPath); err == nil && info.IsDir() {
+			return fail(e, api.Newf("E_USAGE", "Pass --out with a file path such as ./results.json.",
+				"--out %s is a directory", resultsPath))
+		}
 		opts := betterbench.RunOptions{
 			Endpoint: *endpoint, Model: *model, Out: resultsPath, Quick: *quick,
 			Passes: *passes, Warmup: *warmup, Notes: notes, Phases: phases.list,
-			NoPrefill: *noPrefill, NoConcurrency: *noConcurrency, Extra: extra,
+			NoPrefill: *noPrefill, NoConcurrency: *noConcurrency, Extra: extra, APIKey: key,
 		}
-		output.Detailf(e.stderr, "running BetterBench via %s", runner.Source)
-		output.Detailf(e.stderr, "%s", strings.Join(append(append([]string{}, runner.Argv...), opts.Args()...), " "))
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-		data, err = betterbench.Execute(ctx, runner, opts, e.stderr, e.stderr)
+		res, apiErr := app.RunBenchmark(ctx, opts, app.WriterSink{W: e.stderr})
 		stop()
-		if err != nil {
-			return fail(e, api.Newf("E_INPUT_INVALID",
-				fmt.Sprintf("Fix what BetterBench reported above and retry. A partial results file, if any, is at %s.", resultsPath),
-				"benchmark did not complete: %v", err))
+		if apiErr != nil {
+			return fail(e, apiErr)
 		}
+		data = res.Data
 		output.Successf(e.stderr, "results written to %s", resultsPath)
+	}
+	if *results != "" {
+		// An existing file gets the same pre-publish caveats as a fresh run.
+		if r, perr := betterbench.Parse(data); perr == nil {
+			for _, w := range app.ResultWarnings(r) {
+				output.Detailf(e.stderr, "warning: %s", w)
+			}
+		}
 	}
 
 	// --- build the payload --------------------------------------------------
@@ -262,7 +276,9 @@ Run flags:
   --note KEY=VALUE        recorded in the run, shown as a chip (repeatable); engine=... names the stack
   --decode --prefill --concurrency, --no-prefill --no-concurrency   phase selection
   --out <path>            where results.json goes (default ./betterbench-<model>-<time>.json)
-  BetterBench must be on PATH, or uvx installed so L80 can bootstrap it. L80_BETTERBENCH overrides.
+  --api-key <key>         endpoint key (or L80_BETTERBENCH_API_KEY); sent by environment, never recorded
+  BetterBench runs at the version pinned in this L80 (see `+"`L80 tools list`"+`): a betterbench on PATH
+  that is at least that version, else uvx bootstraps the pinned commit. L80_BETTERBENCH overrides.
 
 Publish flags:
   --title, --summary, --section "Heading=Body"   prose shown on the page

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "tools": {
+    "betterbench": {
+      "repo": "https://github.com/GGZ14/BetterBench",
+      "ref": "v0.6.1",
+      "commit": "f72bb9011a830fd98e82ab89d01e549efa76e9c5",
+      "package": "betterbench",
+      "exe": "betterbench",
+      "env": "L80_BETTERBENCH",
+      "min_version": "0.6.1",
+      "version_cmd": ["--version"],
+      "notes": "Real-world percentile benchmark for OpenAI-compatible endpoints; the version launch80 renders."
+    },
+    "dashboard": {
+      "repo": "https://github.com/launch80/ai-command-dashboard",
+      "ref": "v0.1.0",
+      "commit": "3cc157570d1c0f96a44652918744c1aae26d87f5",
+      "package": "ai-command-dashboard",
+      "exe": "ai-dashboard",
+      "env": "L80_DASHBOARD",
+      "min_version": "0.1.0",
+      "version_cmd": ["--version"],
+      "notes": "Terminal and web dashboard for local GPU and inference telemetry."
+    },
+    "pwdet": {
+      "repo": "https://github.com/launch80/poisoned-weights-detector",
+      "ref": "v0.1.0",
+      "commit": "85f3ead97c0d43af7be633c59e50d7fdfea48280",
+      "package": "pwdet",
+      "exe": "pwdet",
+      "env": "L80_PWDET",
+      "python": "3.12",
+      "extras": ["gguf", "pickle"],
+      "min_version": "0.1.0",
+      "version_cmd": ["--version"],
+      "notes": "Poisoned Weights Detector: static, provenance, black-box and white-box checks on a checkpoint or endpoint."
+    },
+    "vast": {
+      "repo": "https://github.com/launch80/BB-VAST-L80",
+      "ref": "v0.1.0",
+      "commit": "d8ed73f5f9af436df9d575b3b8465ff7790d536d",
+      "package": "bbvastl80",
+      "exe": "bbvastl80",
+      "env": "L80_VAST",
+      "min_version": "0.1.0",
+      "version_cmd": ["--version"],
+      "notes": "Rent a Vast.ai GPU, serve a model, benchmark it with BetterBench, publish, tear down."
+    }
+  }
+}

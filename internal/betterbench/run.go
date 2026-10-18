@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"strings"
+
+	"github.com/launch80/L80-CLI/internal/pytool"
 )
 
 // RawTemplateID is the server template that stores a results.json as written.
@@ -18,42 +18,33 @@ const RawTemplateID = "bench.betterbench.v1"
 // RawMaxPayloadBytes mirrors the server's limit for RawTemplateID.
 const RawMaxPayloadBytes = 4 * 1024 * 1024
 
-// UpstreamRepo is where BetterBench lives; used to bootstrap it through uvx
-// when it is not installed.
-const UpstreamRepo = "git+https://github.com/GGZ14/BetterBench"
-
 // Runner is a resolved way to invoke the betterbench CLI.
-type Runner struct {
-	// Argv prefix, e.g. ["betterbench"] or ["uvx", "--from", <repo>, "betterbench"].
-	Argv []string
-	// How it was found, for the doctor line and error messages.
-	Source string
-}
+type Runner = pytool.Runner
 
-// lookPath and lookPathUvx are swapped in tests.
-var lookPath = exec.LookPath
-
-// ErrNoRunner means neither betterbench nor uvx is available.
+// ErrNoRunner means BetterBench cannot be run on this machine; errors.As it
+// to a *pytool.ErrNoRunner for the remedy.
 var ErrNoRunner = errors.New("betterbench is not installed and uvx is not available to bootstrap it")
 
-// ResolveRunner finds how to run BetterBench, in this order:
-//
-//  1. L80_BETTERBENCH, if set: a path to the betterbench executable (or any
-//     command line; it is split on spaces). Lets a checkout's .venv be used.
-//  2. `betterbench` on PATH.
-//  3. `uvx --from git+https://github.com/GGZ14/BetterBench betterbench`, when
-//     uvx is on PATH. uv caches the build, so this is a one-time download.
+// Tool returns BetterBench's manifest entry: the pinned commit and the
+// version this L80 release renders.
+func Tool() pytool.Tool {
+	t, err := pytool.Lookup("betterbench")
+	if err != nil {
+		// The manifest is embedded and tested; this cannot happen in a build.
+		panic(err)
+	}
+	return t
+}
+
+// ResolveRunner finds how to run BetterBench: L80_BETTERBENCH, then a
+// betterbench on PATH at least as new as the pinned version, then
+// `uvx --from betterbench @ git+https://github.com/GGZ14/BetterBench@<pin>`.
 func ResolveRunner() (Runner, error) {
-	if v := strings.TrimSpace(os.Getenv("L80_BETTERBENCH")); v != "" {
-		return Runner{Argv: strings.Fields(v), Source: "L80_BETTERBENCH"}, nil
+	r, err := pytool.Resolve(Tool())
+	if err != nil {
+		return Runner{}, fmt.Errorf("%w: %v", ErrNoRunner, err)
 	}
-	if p, err := lookPath("betterbench"); err == nil {
-		return Runner{Argv: []string{p}, Source: "PATH"}, nil
-	}
-	if p, err := lookPath("uvx"); err == nil {
-		return Runner{Argv: []string{p, "--from", UpstreamRepo, "betterbench"}, Source: "uvx (bootstrapped from GitHub)"}, nil
-	}
-	return Runner{}, ErrNoRunner
+	return r, nil
 }
 
 // RunOptions are the parts of `betterbench run` this command exposes by name.
@@ -69,6 +60,22 @@ type RunOptions struct {
 	Phases                   []string // "decode", "prefill", "concurrency": each becomes --<phase>
 	NoPrefill, NoConcurrency bool
 	Extra                    []string // passed through after the named flags
+	// APIKey authenticates requests to the endpoint. It reaches the child as
+	// BETTERBENCH_API_KEY, never on the command line, so it cannot show up in
+	// an echoed command, a process listing, or a results file.
+	APIKey string
+}
+
+// Env is the environment the run adds for the child. The update check is
+// switched off because L80 owns version alignment: the pinned version is the
+// one launch80 renders, and a "newer release" notice would only invite a
+// mismatch.
+func (o RunOptions) Env() []string {
+	env := []string{"BETTERBENCH_NO_UPDATE_CHECK=1"}
+	if o.APIKey != "" {
+		env = append(env, "BETTERBENCH_API_KEY="+o.APIKey)
+	}
+	return env
 }
 
 // Args builds the argv for `betterbench run`.
@@ -103,19 +110,14 @@ func (o RunOptions) Args() []string {
 func (o RunOptions) warmupSet() bool { return o.Warmup >= 0 }
 
 // Execute runs `betterbench run`, streaming its output to out/errOut, and
-// returns the results file it wrote.
+// returns the results file it wrote. Cancelling ctx interrupts the run.
 func Execute(ctx context.Context, r Runner, o RunOptions, out, errOut io.Writer) ([]byte, error) {
-	argv := append(append([]string{}, r.Argv...), o.Args()...)
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Stdout = out
-	cmd.Stderr = errOut
-	cmd.Stdin = nil
-	if err := cmd.Run(); err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			return nil, fmt.Errorf("betterbench exited with status %d", exit.ExitCode())
-		}
-		return nil, fmt.Errorf("could not start %s: %w", argv[0], err)
+	code, err := pytool.Exec(ctx, r, o.Args(), pytool.ExecOpts{Stdout: out, Stderr: errOut, ExtraEnv: o.Env()})
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("betterbench exited with status %d", code)
 	}
 	data, err := os.ReadFile(o.Out)
 	if err != nil {

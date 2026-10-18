@@ -11,4 +11,4 @@ import "embed"
 var FS embed.FS
 
 // SkillNames lists the skills this binary ships.
-var SkillNames = []string{"l80-test-report"}
+var SkillNames = []string{"l80", "l80-test-report", "l80-vast", "l80-pwdet"}

@@ -5,8 +5,8 @@
 # version baked into the binary via -X internal/cli.Version.
 #
 # Asset names must stay exactly as below — launch80.com/install.sh downloads
-#   https://github.com/launch80/L80-Skills/releases/latest/download/L80_<os>_<arch>.tar.gz
-#   https://github.com/launch80/L80-Skills/releases/latest/download/checksums.txt
+#   https://github.com/launch80/L80-CLI/releases/latest/download/L80_<os>_<arch>.tar.gz
+#   https://github.com/launch80/L80-CLI/releases/latest/download/checksums.txt
 # and expects each tarball to contain a single top-level file named L80.
 name: release
 
@@ -18,7 +18,28 @@ permissions:
   contents: write
 
 jobs:
+  # A release ships only if the tests pass and every pinned tool can be
+  # fetched and started from its public repo: a pin users cannot bootstrap
+  # would break the command that wraps it for everyone on this version.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: ./scripts/check-manifest.sh --smoke
+
   build:
+    needs: [test, manifest]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -41,7 +62,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist/stage
           go build -trimpath \
-            -ldflags "-s -w -X github.com/launch80/L80-Skills/internal/cli.Version=${VERSION}" \
+            -ldflags "-s -w -X github.com/launch80/L80-CLI/internal/cli.Version=${VERSION}" \
             -o dist/stage/L80 ./cmd/L80
           tar -C dist/stage -czf "dist/L80_${GOOS}_${GOARCH}.tar.gz" L80
       - uses: actions/upload-artifact@v4

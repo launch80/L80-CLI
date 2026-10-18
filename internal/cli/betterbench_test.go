@@ -23,7 +23,7 @@ func fixturePath(t *testing.T) string {
 func fakeOnPath(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
-	script := "#!/bin/sh\nout=''; while [ $# -gt 0 ]; do if [ \"$1\" = --out ]; then out=$2; fi; shift; done\n" +
+	script := "#!/bin/sh\n[ \"$1\" = --version ] && { echo 'BetterBench 0.6.1'; exit 0; }\nout=''; while [ $# -gt 0 ]; do if [ \"$1\" = --out ]; then out=$2; fi; shift; done\n" +
 		"echo '[single] chat: warmup 1 + 5 runs'\ncp " + fixturePath(t) + " \"$out\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "betterbench"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestRunsBenchmarkThenPreparesRawPayload(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "running BetterBench via PATH") || !strings.Contains(errOut, "--quick --note engine=vLLM 0.9 --seed 1") {
+	if !strings.Contains(errOut, "running BetterBench via PATH") || !strings.Contains(errOut, "--quick --note 'engine=vLLM 0.9' --seed 1") {
 		t.Errorf("stderr should show the resolved command: %s", errOut)
 	}
 	if !strings.Contains(errOut, "[single] chat") {
@@ -147,5 +147,54 @@ func TestPublishRawTemplateStripsAndAllowsLargeFiles(t *testing.T) {
 	code = runPublish(env{stdout: &out, stderr: &errOut}, []string{fixturePath(t), "--template", "bench.report.v1", "--dry-run"})
 	if code == 0 || !strings.Contains(errOut.String(), "E_INPUT_NOT_TEMPLATE") {
 		t.Errorf("bench.report.v1 with raw output: exit %d, %s", code, errOut.String())
+	}
+}
+
+// The endpoint key reaches BetterBench by environment and never appears in
+// the echoed command; a key smuggled after -- is refused.
+func TestAPIKeyIsPassedByEnvironmentAndNeverEchoed(t *testing.T) {
+	dir := t.TempDir()
+	envLog := filepath.Join(dir, "env")
+	script := "#!/bin/sh\n[ \"$1\" = --version ] && { echo 'BetterBench 0.6.1'; exit 0; }\n" +
+		"echo \"$BETTERBENCH_API_KEY|$BETTERBENCH_NO_UPDATE_CHECK\" > " + envLog + "\n" +
+		"out=''; while [ $# -gt 0 ]; do if [ \"$1\" = --out ]; then out=$2; fi; shift; done\ncp " + fixturePath(t) + " \"$out\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "betterbench"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("L80_BETTERBENCH", "")
+
+	code, _, errOut := runBB(t, "--endpoint", "http://h/v1", "--model", "m", "--api-key", "sk-very-secret",
+		"--out", filepath.Join(dir, "r.json"), "--dry-run")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if strings.Contains(errOut, "sk-very-secret") {
+		t.Error("key leaked to stderr")
+	}
+	got, _ := os.ReadFile(envLog)
+	if strings.TrimSpace(string(got)) != "sk-very-secret|1" {
+		t.Errorf("child env = %q", got)
+	}
+
+	code, _, errOut = runBB(t, "--endpoint", "http://h/v1", "--model", "m", "--out", filepath.Join(dir, "r2.json"), "--dry-run", "--", "--api-key", "x")
+	if code != 2 || !strings.Contains(errOut, "L80_BETTERBENCH_API_KEY") {
+		t.Errorf("key after -- must be refused: exit %d %s", code, errOut)
+	}
+	code, _, errOut = runBB(t, "--endpoint", "http://h/v1", "--model", "m", "--out", dir, "--dry-run")
+	if code != 2 || !strings.Contains(errOut, "is a directory") {
+		t.Errorf("--out dir must be refused: exit %d %s", code, errOut)
+	}
+}
+
+func TestOldResultsFileIsWarnedAbout(t *testing.T) {
+	_, _, errOut := runBB(t, "--results", fixturePath(t), "--dry-run")
+	if !strings.Contains(errOut, "written by BetterBench 0.4.0") {
+		t.Errorf("want a version warning: %s", errOut)
+	}
+	v061, _ := filepath.Abs("../betterbench/testdata/results_schema2_v061.json")
+	_, _, errOut = runBB(t, "--results", v061, "--dry-run")
+	if strings.Contains(errOut, "written by BetterBench") || !strings.Contains(errOut, "prefix cache") {
+		t.Errorf("0.6.1 file: want only the cache warning: %s", errOut)
 	}
 }
