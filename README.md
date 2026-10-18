@@ -339,7 +339,7 @@ verbatim and exits non-zero, so the server can add codes without a CLI release.
 
 ## Development
 
-![0 external dependencies; 16 commands, 4 tools, 4 platforms, 3 templates, 12 exit codes](docs/media/06-numbers.gif)
+![0 external dependencies; 16 commands, 4 tools, 4 platforms, 3 templates, 13 exit codes](docs/media/06-numbers.gif)
 
 ```sh
 make test             # go test ./...
