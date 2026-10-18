@@ -1,5 +1,7 @@
 # Making the sibling projects shippable through L80
 
+> **Status (2026-10-17):** done. All three repositories are public under github.com/launch80, tagged `v0.1.0`, and pinned in L80 1.0.0. Items each project skipped (bbvastl80 `--json`, pwdet `scan --redact` and a separate crash exit code, the dashboard's hardware generalisation) remain open there.
+
 `L80 vast`, `L80 pwdet` and `L80 dashboard` work today against a local
 checkout through their override variables (`L80_VAST`, `L80_PWDET`,
 `L80_DASHBOARD`). Before they work for anyone else, each project needs a public

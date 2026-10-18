@@ -373,7 +373,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
       </article>
 
       <article id="vast">
-        <h3>Rent a GPU and benchmark it <span class="chip free">Free</span><span class="chip pend">Tool pin pending</span></h3>
+        <h3>Rent a GPU and benchmark it <span class="chip free">Free</span></h3>
         <p><code>L80 vast</code> runs <a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a>. It rents a Vast.ai GPU, serves a model on it with vLLM or llama.cpp, runs BetterBench from your machine, publishes, and destroys the box. Every bbvastl80 command works through it.</p>
         <div class="cmd"><pre class="multi">L80 vast doctor                              # Vast key, SSH key, and the L80 and BetterBench it will call
 L80 vast search --spec run.yaml              # matching offers and prices; does not bill
@@ -389,7 +389,7 @@ L80 vast destroy --run &lt;id&gt;                  # asks before destroying</pre
       </article>
 
       <article id="pwdet">
-        <h3>Check weights for tampering <span class="chip free">Free to scan</span><span class="chip gate">Token to publish</span><span class="chip pend">Tool pin pending</span></h3>
+        <h3>Check weights for tampering <span class="chip free">Free to scan</span><span class="chip gate">Token to publish</span></h3>
         <p><code>L80 pwdet</code> runs the <a href="https://github.com/launch80/poisoned-weights-detector">Poisoned Weights Detector</a> on a local checkpoint, a Hugging Face repo or a served endpoint. It runs static, provenance, black-box and white-box checks.</p>
         <div class="cmd"><pre class="multi">L80 pwdet scan Qwen/Qwen3-0.6B --json        # {"verdict": ..., "report": ...}
 L80 pwdet scan ./model --profile full-static
@@ -408,7 +408,7 @@ L80 pwdet checks list</pre><button class="copy" type="button">Copy</button></div
       </article>
 
       <article id="dashboard">
-        <h3>Telemetry dashboard <span class="chip free">Free</span><span class="chip pend">Tool pin pending</span></h3>
+        <h3>Telemetry dashboard <span class="chip free">Free</span></h3>
         <p><code>L80 dashboard</code> opens the <a href="https://github.com/launch80/ai-command-dashboard">AI command dashboard</a> in your terminal. It shows GPU power, temperatures, VRAM and engines, live vLLM and gateway state, and per-model performance.</p>
         <div class="cmd"><pre class="multi">L80 dashboard                  # the terminal view
 L80 dashboard serve            # sampler and web page on 127.0.0.1:8787
@@ -447,16 +447,16 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
           <thead><tr><th>Tool</th><th>Runs</th><th>Pinned in 1.0.0</th><th>Override</th></tr></thead>
           <tbody>
             <tr><td><a href="https://github.com/GGZ14/BetterBench">BetterBench</a></td><td><code>betterbench</code></td><td><code>v0.6.1</code> · <code>f72bb90</code></td><td><code>L80_BETTERBENCH</code></td></tr>
-            <tr><td><a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a></td><td><code>bbvastl80</code></td><td><span class="chip pend">Pending</span></td><td><code>L80_VAST</code></td></tr>
-            <tr><td><a href="https://github.com/launch80/poisoned-weights-detector">pwdet</a></td><td><code>pwdet</code></td><td><span class="chip pend">Pending</span></td><td><code>L80_PWDET</code></td></tr>
-            <tr><td><a href="https://github.com/launch80/ai-command-dashboard">AI command dashboard</a></td><td><code>ai-dashboard</code></td><td><span class="chip pend">Pending</span></td><td><code>L80_DASHBOARD</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a></td><td><code>bbvastl80</code></td><td><code>v0.1.0</code> · <code>d8ed73f</code></td><td><code>L80_VAST</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/poisoned-weights-detector">pwdet</a></td><td><code>pwdet</code></td><td><code>v0.1.0</code> · <code>85f3ead</code></td><td><code>L80_PWDET</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/ai-command-dashboard">AI command dashboard</a></td><td><code>ai-dashboard</code></td><td><code>v0.1.0</code> · <code>3cc1575</code></td><td><code>L80_DASHBOARD</code></td></tr>
           </tbody>
         </table></div>
         <div class="cmd"><pre class="multi">L80 tools list              # each tool and the version this release pins
 L80 tools check             # how each tool resolves on this machine
 L80 tools prefetch          # download and build the pinned tools now
 L80 tools path betterbench  # the exact command L80 would run</pre><button class="copy" type="button">Copy</button></div>
-        <p>A tool that is not pinned yet runs only from its override variable. If L80 cannot run a tool, it exits 11 and tells you how to fix it.</p>
+        <p>If L80 cannot run a tool, it exits 11 and tells you how to fix it.</p>
       </article>
 
       <article id="skills">

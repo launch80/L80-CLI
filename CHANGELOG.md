@@ -5,6 +5,9 @@
 First stable release. It ships everything listed under 0.5.0 to 0.8.0 below;
 those were development milestones and were never released on their own.
 
+- `L80 vast`, `L80 pwdet` and `L80 dashboard` work out of the box: bbvastl80,
+  pwdet and the AI command dashboard are public under github.com/launch80 and
+  pinned at v0.1.0 (`L80 tools list`).
 - The repository is renamed **launch80/L80-CLI** (was L80-Skills); the Go module
   path follows. `L80 update` now fetches releases from L80-CLI. Older binaries
   keep updating through GitHub's redirect from the old name.
