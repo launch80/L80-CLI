@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
@@ -215,7 +216,11 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 }
 
 func TestVerifyScreenQueueAndStamp(t *testing.T) {
-	fixture, _ := os.ReadFile("../betterbench/testdata/results_schema2_v061.json")
+	raw, _ := os.ReadFile("../betterbench/testdata/results_schema2_v061.json")
+	fixture, err := betterbench.PrepareRaw(raw, betterbench.Prose{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var decided string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

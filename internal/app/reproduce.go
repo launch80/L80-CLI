@@ -36,7 +36,7 @@ type Plan struct {
 
 // PlanFrom reads a published BetterBench payload.
 func PlanFrom(payload []byte) (Plan, error) {
-	r, err := betterbench.Parse(payload)
+	r, err := betterbench.ParsePublished(payload)
 	if err != nil {
 		return Plan{}, fmt.Errorf("the published page is not a BetterBench run: %w", err)
 	}

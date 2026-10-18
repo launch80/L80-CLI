@@ -182,6 +182,26 @@ var ErrSyntax = errors.New("invalid JSON")
 var ErrAlreadyPayload = fmt.Errorf("%w: it already carries $template", ErrNotBetterBench)
 
 // Parse decodes a results.json and recovers category order.
+// ParsePublished reads a stored bench.betterbench.v1 page: the results file
+// as published, which L80 marked with "$template" and may have given an
+// "l80" prose block. Both are removed and the rest parsed as results.
+func ParsePublished(data []byte) (*Results, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		return Parse(data)
+	}
+	if t, ok := top["$template"]; ok && string(t) == `"`+RawTemplateID+`"` {
+		delete(top, "$template")
+		delete(top, "l80")
+		b, err := json.Marshal(top)
+		if err != nil {
+			return nil, err
+		}
+		data = b
+	}
+	return Parse(data)
+}
+
 func Parse(data []byte) (*Results, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil {

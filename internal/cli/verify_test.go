@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/history"
 )
 
@@ -191,7 +192,12 @@ func fakeReproducer(t *testing.T, results string) {
 
 func TestVerificationWorkflow(t *testing.T) {
 	published := verifiableFixture(t)
-	payload, _ := os.ReadFile(published)
+	raw, _ := os.ReadFile(published)
+	// The server stores what L80 published: the file marked with $template.
+	payload, err := betterbench.PrepareRaw(raw, betterbench.Prose{Title: "Qwen3-8B run"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	f := &fakeVerificationServer{payload: payload}
 	srv := httptest.NewServer(f.handler(t))
 	defer srv.Close()
