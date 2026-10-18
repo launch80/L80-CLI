@@ -1,5 +1,7 @@
 # L80 CLI
 
+![L80 CLI, Version 1: a major upgrade for the Launch80 Engineering Community](docs/media/01-intro.gif)
+
 A local CLI (`L80`) plus a skill bundle that lets any LLM agent publish
 structured results to launch80 and get back a shareable URL, and that puts the
 Launch80 toolset behind one command: BetterBench, rented-GPU benchmarking on
@@ -26,6 +28,8 @@ pipeline are untouched.
 
 ## Install
 
+![Install with one line: curl -fsSL https://launch80.com/install.sh | sh](docs/media/08-install.gif)
+
 ```sh
 curl -fsSL https://launch80.com/install.sh | sh   # prebuilt release -> ~/.local/bin/L80
 ```
@@ -47,7 +51,7 @@ L80 skills link --target claude-code --dev \
 
 ## The console: `L80 tui`
 
-![The L80 console stepping through Home, Benchmark, Vast, pwdet, Dashboard, History and Tools](docs/media/04-console.gif)
+![The real L80 console: Home, then the sidebar previewing Benchmark, Vast, pwdet, Dashboard, History, Verify and Tools](docs/media/tui-console.gif)
 
 ```sh
 L80 tui
@@ -69,7 +73,7 @@ the command list. `NO_COLOR` turns colour off.
 
 ## Publishing a BetterBench run
 
-![L80 betterbench runs the pinned BetterBench, publishes the page and requests verification](docs/media/03-benchmark.gif)
+![Benchmarking from the console: fill in the form, BetterBench streams into the log, review the summary, publish](docs/media/tui-benchmark.gif)
 
 `L80 betterbench` runs [BetterBench](https://github.com/GGZ14/BetterBench)
 against an OpenAI-compatible endpoint and publishes the `results.json` it
@@ -86,7 +90,7 @@ L80 betterbench --results results.json --template bench.report.v1             # 
 ```
 
 Each L80 release pins the BetterBench it was validated against (0.6.1 in
-0.5.0; `L80 tools list` shows the pin). A `betterbench` on PATH is used when
+1.0.0; `L80 tools list` shows the pin). A `betterbench` on PATH is used when
 it is at least that version; otherwise L80 bootstraps the pinned commit with
 `uvx` (uv caches the build). `L80_BETTERBENCH=/path/to/betterbench` overrides
 both, unchecked. An endpoint behind a gateway takes `--api-key <key>` or
@@ -115,6 +119,8 @@ L80 tools check             # how each tool resolves here: PATH, override, or th
 L80 tools prefetch          # download and build pinned tools now, not on first use
 L80 tools path betterbench  # the exact command L80 would run
 ```
+
+![The console's Tools screen: each pinned tool, its version and how it resolves on this machine](docs/media/tui-tools.gif)
 
 A tool is found in this order: its override variable (`L80_BETTERBENCH`,
 `L80_VAST`, `L80_PWDET`, `L80_DASHBOARD`), a copy on PATH that is at least the
@@ -176,6 +182,8 @@ GPUs get a generic view.
 
 ## Verified by Launch80
 
+![The console's Verify screen: open another key's request, reproduce it on your hardware, compare, and stamp it](docs/media/tui-verify.gif)
+
 A published BetterBench page is self-reported. A Launch80 verifier can stamp
 it **verified**: a complete, cold-cache run, described well enough to reproduce.
 
@@ -213,6 +221,8 @@ changed since. The server side is specified in
 launch80 enables it, `verify request` says so and `verify check` still works.
 
 ## History
+
+![The console's History screen: every page this key published, with its trust tier](docs/media/tui-history.gif)
 
 ```sh
 L80 history                 # newest first: time, template, URL, title
