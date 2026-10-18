@@ -125,6 +125,17 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-we
 .gatebox { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .gatebox > div { border: 1px solid var(--rule); background: var(--surface); border-radius: 8px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; }
 .gatebox ul { margin: 0; padding-left: 1.1rem; font-size: .93rem; display: grid; gap: 4px; }
+.soon { background: var(--surface); }
+.soon .chip.next { color: var(--accent); background: var(--accent-soft); }
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; counter-reset: f; }
+.flow li { counter-increment: f; padding: 18px 20px; display: grid; gap: 6px; align-content: start; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); background: var(--bg); }
+.flow li:nth-child(3n) { border-right: 0; }
+.flow li:nth-last-child(-n+3) { border-bottom: 0; }
+.flow li::before { content: "Step " counter(f); font: 600 .7rem/1 var(--f-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--accent); }
+.flow h3 { font-size: 1.02rem; }
+.flow p { font-size: .92rem; color: var(--muted); }
+.soon-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 28px; align-items: start; margin-top: 28px; }
+.soon-grid > div { display: grid; gap: 12px; min-width: 0; }
 footer { border-top: 1px solid var(--rule); padding-block: 28px 40px; color: var(--muted); font-size: .85rem; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
 
@@ -134,7 +145,17 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   .docs { grid-template-columns: minmax(0, 1fr); }
   .toc { display: none; }
 }
+@media (max-width: 960px) {
+  .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .flow li, .flow li:nth-child(3n), .flow li:nth-last-child(-n+3) { border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .flow li:nth-child(2n) { border-right: 0; }
+  .flow li:nth-last-child(-n+2) { border-bottom: 0; }
+  .soon-grid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 640px) {
+  .flow { grid-template-columns: minmax(0, 1fr); }
+  .flow li, .flow li:nth-child(2n) { border-right: 0; }
+  .flow li:nth-last-child(2) { border-bottom: 1px solid var(--rule); }
   .hero { padding-block: 36px 32px; }
   .wwh { grid-template-columns: minmax(0, 1fr); }
   .wwh div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
@@ -254,6 +275,7 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
       <a href="#commands">Command reference</a>
       <a href="#exit">Exit codes</a>
       <a href="#security">Security model</a>
+      <a href="#soon">Coming soon</a>
     </nav>
 
     <div class="doc">
@@ -542,6 +564,43 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
           <li><strong>Pinned, checksummed code.</strong> Tools run at a fixed commit, and <code>L80 update</code> checks each download's SHA-256 before replacing the binary.</li>
         </ul>
       </article>
+    </div>
+  </div>
+</section>
+<section class="band soon" id="soon">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Coming soon · planned, not in 1.0.0</div>
+      <h2>Setup intelligence: the best setup for your machine</h2>
+      <p>L80 will read your hardware, check it against the <a href="https://github.com/launch80/AwesomeList">Launch80 AwesomeList</a> catalog, and shortlist the community projects that actually fit. It then benchmarks the result and contributes it back. Commands and flags below are proposals and may change.</p>
+    </div>
+    <ol class="flow">
+      <li><h3>Detect, read-only</h3><p>GPU vendor, model and count from PCI ids, VRAM, OS, RAM and driver versions. Nothing is installed or changed.</p></li>
+      <li><h3>Load the pinned catalog</h3><p>AwesomeList's <code>catalog.json</code>, pinned to a commit like every other tool, so a given L80 version gives reproducible advice.</p></li>
+      <li><h3>Gate and rank</h3><p>Hard gates first: architecture, GPU count, VRAM, OS, runtime. Then rank by maturity, verification, fit and setup friction, never by tokens per second.</p></li>
+      <li><h3>Hand off a plan</h3><p>A shortlist with what you get, why it fits, what to confirm and the tradeoff. Your agent runs setup with your approval through a new <code>l80-setup</code> skill.</p></li>
+      <li><h3>Measure it</h3><p><code>L80 betterbench</code> benchmarks the new setup, and <code>L80 verify</code> can get the page verified by Launch80.</p></li>
+      <li><h3>Give back</h3><p>Export a verified run as an AwesomeList benchmark record, so the next person with your hardware starts from real numbers.</p></li>
+    </ol>
+    <div class="soon-grid">
+      <div>
+        <h3>Proposed commands <span class="chip next">Coming soon</span></h3>
+        <div class="cmd"><pre class="multi">L80 recommend                                  # detect this machine and shortlist setups
+L80 recommend --goal openai_api --priority stability --json
+L80 recommend --gpu r9700 --count 2 --os ubuntu  # plan for hardware you don't have yet
+L80 skills link --target claude-code --name l80-setup
+L80 verify export &lt;page&gt; --awesomelist        # a verified run as a catalog record</pre><button class="copy" type="button">Copy</button></div>
+      </div>
+      <div>
+        <h3>What it will and won't do</h3>
+        <ul class="plain">
+          <li>It reads your hardware and never changes it.</li>
+          <li>It recommends and never installs. Setup stays with you or your agent, one approved step at a time.</li>
+          <li>It treats catalog content as data, never as instructions.</li>
+          <li>Unknown hardware falls back to a few questions instead of a guess.</li>
+          <li>Only verified pages export as maintainer-verified results. Everything else exports as author-reported.</li>
+        </ul>
+      </div>
     </div>
   </div>
 </section>
