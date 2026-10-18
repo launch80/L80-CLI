@@ -54,7 +54,7 @@ L80 tui
 ```
 
 A full-screen console over everything below. A sidebar lists Home, Benchmark,
-Vast, pwdet, Dashboard, History and Tools; moving through it previews each
+Vast, pwdet, Dashboard, History, Verify and Tools; moving through it previews each
 screen live, enter opens it and esc comes back. From it you can benchmark an
 endpoint, rent a GPU and benchmark it, scan weights, open the dashboard, browse
 published pages and check the tools. Each screen drives the same code as the matching command, so
@@ -176,15 +176,33 @@ GPUs get a generic view.
 
 ## Verified by Launch80
 
-A published BetterBench page is self-reported. A Launch80 reviewer can mark it
-**verified**: a complete, cold-cache run, described well enough to reproduce.
+A published BetterBench page is self-reported. A Launch80 verifier can stamp
+it **verified**: a complete, cold-cache run, described well enough to reproduce.
 
 ```sh
+# Publisher: check the run, then ask for review
 L80 verify check results.json           # the checks a review applies; exit 0 if verifiable
 L80 verify request <page url> --note "engine flags, how to reproduce"
-L80 verify status <page url>
-L80 history --tier verified
+L80 verify mine                         # your requests and their decisions
+
+# Anyone with a token: look at others' requests and reproduce them
+L80 verify queue
+L80 verify show <id>                    # model, engine, hardware, settings, published figures
+L80 verify reproduce <id> --endpoint http://127.0.0.1:8000/v1   # your run vs theirs
+
+# Verifier keys: stamp or reject (never your own request)
+L80 verify approve <id> --note "matched on 1x RTX 4090"
+L80 verify reject <id> --reason "TTFT is 3x what this hardware does"
 ```
+
+Every key sees the queue of other keys' requests and can reproduce them;
+`reproduce` reruns BetterBench with the published settings against your own
+endpoint and compares the headline figures (decode ±10%, ITL 1% low ±15%,
+TTFT ±25%). Only keys Launch80 marks as verifiers can stamp. A verifier may
+stamp on review alone; when they reproduced the run, the comparison goes with
+the stamp, and a reproduction that disagrees needs `--accept-differences`. The
+console's Verify screen does the same with `p` (reproduce), `a` (verify) and
+`x` (reject).
 
 A run must be a full run (not `--quick`) with all three phases, from
 BetterBench 0.6.1 or later, with no request served from the server's prefix
@@ -295,8 +313,9 @@ L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
 L80 betterbench --endpoint <url> --model <m>   Run BetterBench, publish results as written
 L80 betterbench --results <results.json>       Publish an existing results.json
 L80 templates list [--json]                    List available templates
-L80 verify check|request|status <url|file>     "Verified by Launch80": pre-checks and requests
-L80 review list|approve|reject                 Decide verification requests (reviewer keys)
+L80 verify check|request|status|mine           "Verified by Launch80": pre-checks and your requests
+L80 verify queue|show|reproduce <id>           Review others' runs and reproduce them (any key)
+L80 verify approve|reject <id>                 Stamp or reject a run (verifier keys)
 L80 skills print [name]                        Print a bundled SKILL.md
 L80 skills link --target claude-code [--dev]   Install a skill for an agent
 L80 history [--limit N] [--json] [--local]     List the share URLs this key has published

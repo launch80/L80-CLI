@@ -42,6 +42,7 @@ const (
 	scrPwdet
 	scrDash
 	scrHistory
+	scrVerify
 	scrTools
 	scrHelp
 )
@@ -72,6 +73,7 @@ type Console struct {
 	pw      pwdetScreen
 	dash    dashScreen
 	hist    histScreen
+	verify  verifyScreen
 	tools   toolsScreen
 	redraw  atomic.Bool
 	running int // jobs in flight, for the spinner tick
@@ -273,15 +275,15 @@ func (c *Console) Update(m Msg) (Model, Cmd) {
 }
 
 func (c *Console) cancelAll() {
-	for _, j := range []*job{c.bench.job, c.vast.job, c.pw.job, c.tools.job} {
+	for _, j := range []*job{c.bench.job, c.vast.job, c.pw.job, c.tools.job, c.verify.job} {
 		if j != nil && j.running && j.cancel != nil {
 			j.cancel()
 		}
 	}
 }
 
-// sidebar is the console's navigation, in order; 1-7 jump to these.
-var sidebar = []screenID{scrHome, scrBench, scrVast, scrPwdet, scrDash, scrHistory, scrTools}
+// sidebar is the console's navigation, in order; the number keys jump to these.
+var sidebar = []screenID{scrHome, scrBench, scrVast, scrPwdet, scrDash, scrHistory, scrVerify, scrTools}
 
 // route sends input to the sidebar or the focused pane, and everything else
 // (load results, finished jobs) to every screen, since a result can arrive
@@ -370,6 +372,8 @@ func (c *Console) routeTo(s screenID, m Msg) Cmd {
 		return c.dash.update(c, m)
 	case scrHistory:
 		return c.hist.update(c, m)
+	case scrVerify:
+		return c.verify.update(c, m)
 	case scrTools:
 		return c.tools.update(c, m)
 	case scrHelp:
@@ -392,6 +396,8 @@ func (c *Console) open(s screenID) Cmd {
 		return c.home.load(c)
 	case scrHistory:
 		return c.hist.load(c)
+	case scrVerify:
+		return c.verify.load(c)
 	case scrTools:
 		return c.tools.load(c, false)
 	case scrDash:
@@ -407,7 +413,7 @@ func (c *Console) open(s screenID) Cmd {
 // labels name each screen in the sidebar and at the top of the pane.
 var labels = map[screenID]string{
 	scrHome: "Home", scrBench: "Benchmark", scrVast: "Vast", scrPwdet: "pwdet",
-	scrDash: "Dashboard", scrHistory: "History", scrTools: "Tools", scrHelp: "Help",
+	scrDash: "Dashboard", scrHistory: "History", scrVerify: "Verify", scrTools: "Tools", scrHelp: "Help",
 }
 
 // blurbs is the one line under each pane title.
@@ -418,6 +424,7 @@ var blurbs = map[screenID]string{
 	scrPwdet:   "Check model weights for tampering.",
 	scrDash:    "GPU and inference telemetry for this machine.",
 	scrHistory: "What this key has published, and each page's tier.",
+	scrVerify:  "Review others' runs: reproduce them, and stamp them if you are a verifier.",
 	scrTools:   "The pinned tools and how each resolves here.",
 	scrHelp:    "Keys, commands and environment.",
 }
@@ -480,6 +487,8 @@ func (c *Console) View(w, h int) []string {
 		body, keys = c.dash.view(c, padW, contentH)
 	case scrHistory:
 		body, keys = c.hist.view(c, padW, contentH)
+	case scrVerify:
+		body, keys = c.verify.view(c, padW, contentH)
 	case scrTools:
 		body, keys = c.tools.view(c, padW, contentH)
 	case scrHelp:
@@ -501,8 +510,8 @@ func (c *Console) View(w, h int) []string {
 	frame = append(frame, style.Box(t.Border, t.P, t.Edge, "", inner, w, bodyH)...)
 
 	if !c.paneFocus {
-		keys = []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "open"}, {Keys: "1-7", Desc: "jump"}, {Keys: "?", Desc: "help"}, {Keys: "q", Desc: "quit"}}
-	} else if !slices.ContainsFunc(keys, func(b widgets.Binding) bool { return b.Desc == "back" }) {
+		keys = []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "open"}, {Keys: fmt.Sprintf("1-%d", len(c.side)), Desc: "jump"}, {Keys: "?", Desc: "help"}, {Keys: "q", Desc: "quit"}}
+	} else if !slices.ContainsFunc(keys, func(b widgets.Binding) bool { return b.Keys == "esc" || strings.HasPrefix(b.Desc, "back") }) {
 		keys = append(keys, widgets.Binding{Keys: "esc", Desc: "back"})
 	}
 	footer := widgets.HelpLine(t, w-2, keys...)

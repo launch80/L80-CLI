@@ -13,7 +13,7 @@ build:
 
 install: build
 	mkdir -p $(HOME)/.local/bin
-	cp $(BINARY) $(HOME)/.local/bin/L80
+	cp $(BINARY) $(HOME)/.local/bin/.L80.new && mv -f $(HOME)/.local/bin/.L80.new $(HOME)/.local/bin/L80
 	@echo "installed to $(HOME)/.local/bin/L80"
 
 test:

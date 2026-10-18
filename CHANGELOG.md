@@ -21,7 +21,16 @@ those were development milestones and were never released on their own.
   pinned at v0.1.0 (`L80 tools list`).
 - **`L80 tui` gets a sidebar.** Every screen is listed on the left; moving
   through the list previews each one live in the pane, enter opens it, esc
-  goes back. `1`-`7` jump, `?` opens help. Amber accent throughout.
+  goes back. `1`-`8` jump, `?` opens help. Amber accent throughout.
+- **Verification is a community workflow.** Any key sees other keys' requests
+  (`L80 verify queue`, the console's new Verify screen) and can reproduce them:
+  `L80 verify reproduce <id> --endpoint <url>` reruns BetterBench with the
+  published settings on your hardware and compares the headline figures.
+  Verifier keys (`publisher_keys.is_verifier`) stamp with `L80 verify approve`
+  or reject with `L80 verify reject --reason`, never on their own requests;
+  reproducing first is optional, and a reproduction goes with the stamp.
+  `L80 review` remains as an alias. Tool output now streams live into the
+  console's log (Python tools run unbuffered).
 - The repository is renamed **launch80/L80-CLI** (was L80-Skills); the Go module
   path follows. `L80 update` now fetches releases from L80-CLI. Older binaries
   keep updating through GitHub's redirect from the old name.

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -209,5 +211,60 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	feed(c, input.Key{Code: input.Up})
 	if c.scr != scrTools {
 		t.Errorf("wrap: scr=%v", c.scr)
+	}
+}
+
+func TestVerifyScreenQueueAndStamp(t *testing.T) {
+	fixture, _ := os.ReadFile("../betterbench/testdata/results_schema2_v061.json")
+	var decided string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/keys/me":
+			fmt.Fprint(w, `{"ok":true,"data":{"key_id":"k2","is_verifier":true}}`)
+		case r.URL.Path == "/api/v1/verifications" && r.URL.Query().Get("scope") == "queue":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":"v1","artifact_guid":"g1","url":"https://l80.test/a/g1","title":"Qwen3-8B on vLLM","key_id":"k1","status":"requested","requested_at":"2026-10-17T12:00:00Z"}]}`)
+		case r.URL.Path == "/api/v1/verifications":
+			fmt.Fprint(w, `{"ok":true,"data":[]}`)
+		case r.URL.Path == "/api/v1/artifacts/g1/payload":
+			fmt.Fprintf(w, `{"ok":true,"data":%s}`, fixture)
+		case r.URL.Path == "/api/v1/verifications/v1/decision":
+			b, _ := io.ReadAll(r.Body)
+			decided = string(b)
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"v1","status":"verified","url":"https://l80.test/a/g1"}}`)
+		default:
+			fmt.Fprint(w, `{"ok":true,"data":{"service":"x","templates":[]}}`)
+		}
+	}))
+	defer srv.Close()
+	c := newTestConsole(t)
+	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
+	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
+	feed(c, SizeMsg{120, 36})
+	feed(c, input.Key{Code: input.Rune, Rune: '7'})
+	view := checkFrame(t, c.View(120, 36), 120, 36)
+	for _, want := range []string{"Verify", "Queue (1)", "Qwen3-8B on vLLM", "verifier"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("queue missing %q:\n%s", want, view)
+		}
+	}
+	feed(c, input.Key{Code: input.Enter})
+	view = checkFrame(t, c.View(120, 36), 120, 36)
+	for _, want := range []string{"To reproduce", "Published figures", "Combined decode", "p reproduce"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("detail missing %q:\n%s", want, view)
+		}
+	}
+	// A verifier can stamp on review alone; it asks first, Cancel focused.
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	if c.dialog == nil || !strings.Contains(c.dialog.Body, "review alone") || c.dialog.Choice != 1 {
+		t.Fatalf("stamp must ask first: %+v", c.dialog)
+	}
+	feed(c, input.Key{Code: input.Left})
+	feed(c, input.Key{Code: input.Enter})
+	if !strings.Contains(decided, `"decision":"verified"`) || strings.Contains(decided, "reproduction") {
+		t.Errorf("decision sent = %s", decided)
+	}
+	if !strings.Contains(c.flash, "verified") {
+		t.Errorf("flash = %q", c.flash)
 	}
 }

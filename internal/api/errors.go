@@ -84,9 +84,10 @@ func ExitCodeFor(code string) int {
 		return ExitServer
 	case "E_TOOL_UNAVAILABLE":
 		return ExitToolUnavailable
-	case "E_VERIFY_EXISTS", "E_VERIFY_INELIGIBLE":
+	case "E_VERIFY_EXISTS", "E_VERIFY_INELIGIBLE", "E_OUTSIDE_TOLERANCE":
 		return ExitValidation
-	case "E_FORBIDDEN_ROLE":
+	// Not a verifier key, or a key deciding on its own request.
+	case "E_NOT_VERIFIER", "E_OWN_REQUEST":
 		return ExitAuth
 	case "E_NOT_SUPPORTED":
 		return ExitServer

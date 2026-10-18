@@ -34,16 +34,21 @@ type VerificationRequest struct {
 
 // Verification is a request's state.
 type Verification struct {
-	ID           string        `json:"id"`
-	ArtifactGUID string        `json:"artifact_guid"`
-	URL          string        `json:"url,omitempty"`
-	Title        string        `json:"title,omitempty"`
-	KeyID        string        `json:"key_id,omitempty"`
-	Status       string        `json:"status"` // requested | in_review | verified | rejected
-	RequestedAt  string        `json:"requested_at,omitempty"`
-	ReviewedAt   string        `json:"reviewed_at,omitempty"`
-	Note         string        `json:"note,omitempty"`
-	DecisionNote string        `json:"decision_note,omitempty"`
+	ID           string `json:"id"`
+	ArtifactGUID string `json:"artifact_guid"`
+	URL          string `json:"url,omitempty"`
+	Title        string `json:"title,omitempty"`
+	KeyID        string `json:"key_id,omitempty"`
+	Status       string `json:"status"` // requested | in_review | verified | rejected
+	RequestedAt  string `json:"requested_at,omitempty"`
+	ReviewedAt   string `json:"reviewed_at,omitempty"`
+	Note         string `json:"note,omitempty"`
+	DecisionNote string `json:"decision_note,omitempty"`
+	ReviewerID   string `json:"reviewer_id,omitempty"`
+	// Mine is true when the request was made with the calling key: a key
+	// never sees its own requests in the queue and may not decide on them.
+	Mine         bool          `json:"mine,omitempty"`
+	Reproduction *Reproduction `json:"reproduction,omitempty"`
 	TrustTier    string        `json:"trust_tier,omitempty"`
 	ClientChecks []ClientCheck `json:"client_checks,omitempty"`
 	ServerChecks []ClientCheck `json:"server_checks,omitempty"`
@@ -69,27 +74,105 @@ func (c *Client) VerificationStatus(guid string) (*Verification, *Error) {
 	return &out, nil
 }
 
-// ReviewQueue lists verification requests for a reviewer-role key.
-func (c *Client) ReviewQueue(status string) ([]Verification, *Error) {
-	path := "/api/v1/review/queue"
+// Key is the calling key as the server sees it. IsVerifier mirrors
+// publisher_keys.is_verifier: only those keys may stamp a page verified.
+type Key struct {
+	KeyID      string `json:"key_id"`
+	Label      string `json:"label,omitempty"`
+	IsVerifier bool   `json:"is_verifier"`
+}
+
+// Me reports the calling key and whether it is a verifier.
+func (c *Client) Me() (*Key, *Error) {
+	var out Key
+	if e := c.do(http.MethodGet, "/api/v1/keys/me", nil, true, &out); e != nil {
+		return nil, e
+	}
+	return &out, nil
+}
+
+// Verifications lists requests. scope "queue" is every other key's
+// requests, open to any valid key so anyone can look and reproduce; scope
+// "mine" is the calling key's own. status filters (requested, in_review,
+// verified, rejected); empty means all.
+func (c *Client) Verifications(scope, status string) ([]Verification, *Error) {
+	q := url.Values{"scope": {scope}}
 	if status != "" {
-		path += "?status=" + url.QueryEscape(status)
+		q.Set("status", status)
 	}
 	var out []Verification
-	if e := c.do(http.MethodGet, path, nil, true, &out); e != nil {
+	if e := c.do(http.MethodGet, "/api/v1/verifications?"+q.Encode(), nil, true, &out); e != nil {
 		return nil, e
 	}
 	return out, nil
 }
 
-// ReviewDecision records a reviewer's decision: "verified" or "rejected".
-func (c *Client) ReviewDecision(id, decision, note string) (*Verification, *Error) {
-	if decision != "verified" && decision != "rejected" {
-		return nil, Newf("E_USAGE", "Use verified or rejected.", "unknown decision %q", decision)
-	}
-	body, _ := json.Marshal(map[string]string{"decision": decision, "note": note})
+// Verification is one request by id.
+func (c *Client) Verification(id string) (*Verification, *Error) {
 	var out Verification
-	if e := c.do(http.MethodPost, fmt.Sprintf("/api/v1/review/%s/decision", url.PathEscape(id)), body, true, &out); e != nil {
+	if e := c.do(http.MethodGet, "/api/v1/verifications/"+url.PathEscape(id), nil, true, &out); e != nil {
+		return nil, e
+	}
+	return &out, nil
+}
+
+// ArtifactPayload is the body a page was published with, exactly as stored:
+// for a BetterBench page, the results.json a verifier reproduces.
+func (c *Client) ArtifactPayload(guid string) ([]byte, *Error) {
+	var out json.RawMessage
+	if e := c.do(http.MethodGet, "/api/v1/artifacts/"+url.PathEscape(guid)+"/payload", nil, false, &out); e != nil {
+		return nil, e
+	}
+	return out, nil
+}
+
+// Reproduction is a verifier's own run of a requested benchmark, compared
+// with the published one. It is optional: a verifier may stamp on review
+// alone, and when they did reproduce the run it travels with the decision as
+// evidence.
+type Reproduction struct {
+	BetterBenchVersion string            `json:"betterbench_version"`
+	Model              string            `json:"model"`
+	Notes              map[string]string `json:"notes,omitempty"`
+	RunsPerCategory    int               `json:"runs_per_category"`
+	Phases             []string          `json:"phases"`
+	Metrics            []MetricDelta     `json:"metrics"`
+	WithinTolerance    bool              `json:"within_tolerance"`
+	ResultsSHA256      string            `json:"results_sha256"`
+	RanAt              string            `json:"ran_at"`
+	L80Version         string            `json:"l80_version"`
+}
+
+// MetricDelta compares one headline figure.
+type MetricDelta struct {
+	Label        string  `json:"label"`
+	Unit         string  `json:"unit,omitempty"`
+	Published    float64 `json:"published"`
+	Reproduced   float64 `json:"reproduced"`
+	DeltaPct     float64 `json:"delta_pct"`
+	TolerancePct float64 `json:"tolerance_pct"`
+	Within       bool    `json:"within"`
+}
+
+// Decision is a verifier's ruling. A "rejected" one must carry a note; a
+// "verified" one carries the verifier's reproduction when there is one.
+type Decision struct {
+	Decision     string        `json:"decision"`
+	Note         string        `json:"note,omitempty"`
+	Reproduction *Reproduction `json:"reproduction,omitempty"`
+}
+
+// Decide records a verifier's decision on a request.
+func (c *Client) Decide(id string, d Decision) (*Verification, *Error) {
+	switch {
+	case d.Decision != "verified" && d.Decision != "rejected":
+		return nil, Newf("E_USAGE", "Use verified or rejected.", "unknown decision %q", d.Decision)
+	case d.Decision == "rejected" && strings.TrimSpace(d.Note) == "":
+		return nil, Newf("E_USAGE", "Say why; the publisher sees it.", "a rejection needs a reason")
+	}
+	body, _ := json.Marshal(d)
+	var out Verification
+	if e := c.do(http.MethodPost, fmt.Sprintf("/api/v1/verifications/%s/decision", url.PathEscape(id)), body, true, &out); e != nil {
 		return nil, e
 	}
 	return &out, nil

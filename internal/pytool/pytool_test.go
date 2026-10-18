@@ -164,11 +164,12 @@ func script(t *testing.T, body string) Runner {
 }
 
 func TestExecReturnsChildStatusAndEnv(t *testing.T) {
-	r := script(t, `echo "$L80_X $1"; exit 3`+"\n")
+	r := script(t, `echo "$L80_X $1 $PYTHONUNBUFFERED"; exit 3`+"\n")
 	r.Env = []string{"L80_X=hello"}
 	var out strings.Builder
 	code, err := Exec(context.Background(), r, []string{"arg"}, ExecOpts{Stdout: &out})
-	if err != nil || code != 3 || strings.TrimSpace(out.String()) != "hello arg" {
+	// Captured output must stream: Python tools get unbuffered stdout.
+	if err != nil || code != 3 || strings.TrimSpace(out.String()) != "hello arg 1" {
 		t.Fatalf("code %d err %v out %q", code, err, out.String())
 	}
 	if _, err := Exec(context.Background(), Runner{Argv: []string{"/nonexistent/x"}}, nil, ExecOpts{}); !errors.Is(err, ErrNotStarted) {

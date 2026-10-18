@@ -44,6 +44,12 @@ func Exec(ctx context.Context, r Runner, args []string, o ExecOpts) (int, error)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = o.Dir
 	cmd.Env = append(append(os.Environ(), r.Env...), o.ExtraEnv...)
+	if !o.Interactive {
+		// The tools are Python, which block-buffers a pipe: without this a
+		// benchmark's progress would reach the log only when it finished.
+		// First, so a value the user set still wins.
+		cmd.Env = append([]string{"PYTHONUNBUFFERED=1"}, cmd.Env...)
+	}
 	if o.Interactive {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	} else {

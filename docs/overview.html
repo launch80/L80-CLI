@@ -174,7 +174,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       <p class="lede">L80 is a single binary that runs the Launch80 toolset on your machine and turns a benchmark into a shareable launch80 page. Publishing needs a token. Everything else is free.</p>
       <div class="wwh">
         <div><h3>What</h3><p>A command-line tool and full-screen console for BetterBench, rented Vast.ai GPUs, the Poisoned Weights Detector and a GPU telemetry dashboard.</p></div>
-        <div><h3>Why</h3><p>Every number on a launch80 page comes from the same pinned harness, private details never leave your machine, and reviewers can mark a run verified.</p></div>
+        <div><h3>Why</h3><p>Every number on a launch80 page comes from the same pinned harness, private details never leave your machine, and community verifiers can reproduce a run and stamp it verified.</p></div>
         <div><h3>How</h3><p>A Go binary with no third-party code. It pins each Python tool to a git commit and fetches it with <code>uvx</code> the first time you use it.</p></div>
       </div>
     </div>
@@ -295,7 +295,8 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
             <li><code>L80 publish</code></li>
             <li><code>L80 pwdet scan --publish</code></li>
             <li><code>L80 verify request</code>, <code>status</code></li>
-            <li><code>L80 review</code> (reviewer keys only)</li>
+            <li><code>L80 verify queue</code>, <code>reproduce</code> (any key)</li>
+            <li><code>L80 verify approve</code>, <code>reject</code> (verifier keys)</li>
           </ul></div>
         </div>
         <p>Vast.ai bills you directly for rented GPUs. L80 itself charges nothing.</p>
@@ -374,9 +375,16 @@ L80 publish report.json --template bench.report.v1 --dry-run</pre><button class=
 
       <article id="verify">
         <h3>Verified by Launch80</h3>
-        <p>A Launch80 reviewer can mark a published BetterBench page <strong>verified</strong>. That means it is a complete cold-cache run, described well enough for someone else to reproduce. <code>verify check</code> runs the same checks locally first.</p>
-        <div class="cmd"><pre class="multi">L80 verify check results.json          # exit 0 if the run qualifies
+        <p>A Launch80 verifier can stamp a published BetterBench page <strong>verified</strong>. That means it is a complete cold-cache run, described well enough for someone else to reproduce. Every key with a token sees other keys' requests and can reproduce them on its own hardware. Only verifier keys stamp, never their own requests, and reproducing first is optional; when a verifier did, the comparison goes with the stamp.</p>
+        <div class="cmd"><pre class="multi"># publisher
+L80 verify check results.json          # exit 0 if the run qualifies
 L80 verify request &lt;page url&gt; --note "engine flags, how to reproduce"
+# anyone with a token
+L80 verify queue
+L80 verify reproduce &lt;id&gt; --endpoint http://127.0.0.1:8000/v1
+# verifier keys
+L80 verify approve &lt;id&gt; --note "matched on 1x RTX 4090"
+L80 verify reject &lt;id&gt; --reason "…"
 L80 verify status &lt;page url&gt;
 L80 history --tier verified</pre><button class="copy" type="button">Copy</button></div>
         <div class="tbl"><table>
@@ -391,7 +399,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td>Provenance</td><td>This machine published the page, from a file that has not changed since.</td></tr>
           </tbody>
         </table></div>
-        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. Reviewers decide with <code>L80 review list</code>, <code>approve</code> and <code>reject --reason</code>.</p>
+        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. A reproduction compares the headline figures with tolerances: decode ±10%, ITL 1% low ±15%, TTFT ±25%. One that disagrees needs <code>--accept-differences</code> and a note to stamp. The console's Verify screen does all of this with <kbd>p</kbd>, <kbd>a</kbd> and <kbd>x</kbd>.</p>
         <div class="note">Verification is rolling out on launch80. Until the server accepts requests, <code>verify request</code> says it is not supported (exit 8), and <code>verify check</code> still works.</div>
       </article>
 
@@ -441,7 +449,7 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
 
       <article id="tui">
         <h3>The console <span class="chip free">Free</span></h3>
-        <p><code>L80 tui</code> is a full-screen console for everything on this page. A sidebar lists every screen. Moving through it previews each one live, <kbd>enter</kbd> opens it, <kbd>esc</kbd> comes back, <kbd>1</kbd>–<kbd>7</kbd> jump and <kbd>?</kbd> opens help. Each screen runs the same code as its command, so anything you do here you can script later.</p>
+        <p><code>L80 tui</code> is a full-screen console for everything on this page. A sidebar lists every screen. Moving through it previews each one live, <kbd>enter</kbd> opens it, <kbd>esc</kbd> comes back, <kbd>1</kbd>–<kbd>8</kbd> jump and <kbd>?</kbd> opens help. Each screen runs the same code as its command, so anything you do here you can script later.</p>
         <div class="tbl"><table>
           <thead><tr><th>Screen</th><th>What you can do</th></tr></thead>
           <tbody>
@@ -450,6 +458,7 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
             <tr><td>Vast</td><td>Pick a spec, see cost caps before renting, follow runs, destroy boxes.</td></tr>
             <tr><td>pwdet</td><td>Scan a model, read the verdict and findings, publish the result.</td></tr>
             <tr><td>Dashboard</td><td>Attach to the telemetry view or start the sampler.</td></tr>
+            <tr><td>Verify</td><td>Other keys' requests to review: reproduce them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
             <tr><td>History</td><td>Every page you published, with its trust tier. Press <kbd>v</kbd> to request verification.</td></tr>
             <tr><td>Tools</td><td>How each tool resolves, and prefetch it.</td></tr>
           </tbody>
@@ -514,8 +523,9 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td><code>L80 betterbench</code></td><td>Run BetterBench and publish the results</td></tr>
             <tr><td><code>L80 publish &lt;file&gt;</code></td><td>Publish a payload and print the URL</td></tr>
             <tr><td><code>L80 templates list</code></td><td>List the page templates</td></tr>
-            <tr><td><code>L80 verify check|request|status</code></td><td>Verification checks and requests</td></tr>
-            <tr><td><code>L80 review list|approve|reject</code></td><td>Decide verification requests (reviewer keys)</td></tr>
+            <tr><td><code>L80 verify check|request|status|mine</code></td><td>Verification checks and your requests</td></tr>
+            <tr><td><code>L80 verify queue|show|reproduce</code></td><td>Review and reproduce others' runs (any key)</td></tr>
+            <tr><td><code>L80 verify approve|reject</code></td><td>Stamp or reject a run (verifier keys)</td></tr>
             <tr><td><code>L80 history</code></td><td>List the pages you published</td></tr>
             <tr><td><code>L80 vast &lt;command&gt;</code></td><td>Rent a GPU, serve, benchmark, publish</td></tr>
             <tr><td><code>L80 pwdet &lt;command&gt;</code></td><td>Check weights for tampering</td></tr>

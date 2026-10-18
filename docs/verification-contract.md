@@ -9,16 +9,27 @@ locally.
 ## What verification means
 
 A published `bench.betterbench.v1` page is **self-reported**: anyone with a
-key can publish any numbers. A **verified** page is one a Launch80 reviewer
-has checked: the run is complete and cold, the setup is described well enough
-to reproduce, and, where the reviewer chooses, the result has been reproduced.
+key can publish any numbers. A **verified** page is one a Launch80 verifier
+has stamped: the run is complete and cold, the setup is described well enough
+to reproduce, and, where the verifier chose to, they reproduced it themselves.
+
+The workflow has three roles, all ordinary publish keys:
+
+1. **Publisher**: the key that published the page asks for verification.
+2. **Any other key**: sees the request in its queue (`L80 verify queue`, the
+   console's Verify screen), can open it and reproduce the run on its own
+   hardware. This is open to every valid key so the community can check runs.
+3. **Verifier**: a key with `publisher_keys.is_verifier = true` stamps the
+   page verified or rejects it. Reproducing first is optional; when the
+   verifier did, their reproduction goes with the decision as evidence. A key
+   never sees its own requests in the queue and may never decide on them.
 
 - Only `bench.betterbench.v1` pages are eligible in this version.
 - **Pages stay immutable.** Verification changes the page's *tier*
   (metadata the template renders as a badge), never the stored payload. A run
   that needs fixing is published again and the new page is verified.
 - Verification is requested by the key that published the page and decided by
-  a key with the reviewer role.
+  a verifier key other than the publisher's.
 
 ## Tiers
 
@@ -28,8 +39,8 @@ to reproduce, and, where the reviewer chooses, the result has been reproduced.
 |---|---|---|
 | `unverified` | Default. | "Self-reported — not verified by launch80" (unchanged) |
 | `pending` | A request is open. | "Self-reported — verification requested" |
-| `verified` | A reviewer approved it. | "Verified by Launch80 · <reviewed date>" |
-| `rejected` | A reviewer declined it. Renders like `unverified`; the reason is shown to the owner only. | as `unverified` |
+| `verified` | A verifier stamped it. | "Verified by Launch80 · <reviewed date>", plus "reproduced" when the decision carried a reproduction |
+| `rejected` | A verifier declined it. Renders like `unverified`; the reason is shown to the owner only. | as `unverified` |
 
 These map onto the AwesomeList vocabulary when results are exported there:
 `verified` → `maintainer_verified`; everything else → `author_reported`.
@@ -43,9 +54,8 @@ ALTER TABLE artifacts
   CHECK (trust_tier IN ('unverified', 'pending', 'verified', 'rejected'));
 ALTER TABLE artifacts ADD COLUMN verified_at timestamptz NULL;
 
--- keys gain a role
-ALTER TABLE api_keys ADD COLUMN role text NOT NULL DEFAULT 'publisher'
-  CHECK (role IN ('publisher', 'reviewer'));
+-- only verifiers may stamp; set by Launch80, never by the key holder
+ALTER TABLE publisher_keys ADD COLUMN is_verifier boolean NOT NULL DEFAULT false;
 
 CREATE TABLE verification_requests (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,9 +65,10 @@ CREATE TABLE verification_requests (
                  CHECK (status IN ('requested', 'in_review', 'verified', 'rejected', 'withdrawn')),
   requested_at   timestamptz NOT NULL DEFAULT now(),
   reviewed_at    timestamptz NULL,
-  reviewer_id    text NULL,                  -- reviewer key id
+  reviewer_id    text NULL,                  -- the verifier key that decided
   note           text NULL,                  -- publisher's note, <= 2000 chars
-  decision_note  text NULL,                  -- reviewer's note / rejection reason, <= 2000 chars
+  decision_note  text NULL,                  -- verifier's note / rejection reason, <= 2000 chars
+  reproduction   jsonb NULL,                 -- the verifier's reproduction, when they ran one
   client_checks  jsonb NOT NULL DEFAULT '[]',
   server_checks  jsonb NOT NULL DEFAULT '[]',
   source_sha256  text NULL,                  -- from the publisher's ledger
@@ -85,9 +96,19 @@ A `Verification` object:
   "requested_at": "RFC 3339", "reviewed_at": "RFC 3339 or omitted",
   "note": "…", "decision_note": "…",
   "client_checks": [{ "name": "cold_cache", "status": "pass", "detail": "…" }],
-  "server_checks": [{ "name": "cold_cache", "status": "pass", "detail": "…" }]
+  "server_checks": [{ "name": "cold_cache", "status": "pass", "detail": "…" }],
+  "mine": false,
+  "reviewer_id": "…", "reproduction": { … }
 }
 ```
+
+`mine` is true when the request was made with the calling key. The CLI uses it
+to stop a key reviewing its own run before the server has to refuse.
+
+### `GET /api/v1/keys/me`
+
+Any valid key. `{ "key_id": "…", "label": "…", "is_verifier": false }`. The CLI
+and console use it to show whether the key can stamp.
 
 ### `POST /api/v1/artifacts/{guid}/verification`
 
@@ -119,22 +140,58 @@ too.
 
 ### `GET /api/v1/artifacts/{guid}/verification`
 
-Owner or reviewer. The latest request for the page, or `E_NOT_FOUND`.
+Any valid key. The latest request for the page, or `E_NOT_FOUND`.
 
-### `GET /api/v1/review/queue?status=requested`
+### `GET /api/v1/verifications?scope=queue|mine&status=requested`
 
-Reviewer role only (`E_FORBIDDEN_ROLE`, HTTP 403, otherwise). An array of
-`Verification`, oldest first. `status` may be `requested`, `in_review`,
-`verified`, `rejected`; omitted means every status. Opening a request in the
-review UI may move it to `in_review`.
+Any valid key. An array of `Verification`, oldest first.
 
-### `POST /api/v1/review/{id}/decision`
+- `scope=queue`: requests made by **other** keys. Never the caller's own.
+- `scope=mine`: the caller's own requests, with their decisions.
+- `status` filters (`requested`, `in_review`, `verified`, `rejected`); omitted
+  means every status.
 
-Reviewer role only. Body `{ "decision": "verified" | "rejected", "note": "…" }`;
-a rejection requires a note. Sets the request's status, `reviewed_at`,
-`reviewer_id`, `decision_note`, and the page's tier (`verified` +
-`verified_at`, or `rejected`). A reviewer may not decide on a page their own
-key published.
+### `GET /api/v1/verifications/{id}`
+
+Any valid key. One `Verification`, with `mine` set for the caller.
+
+### `GET /api/v1/artifacts/{guid}/payload`
+
+Public, like the page itself. The body the page was published with, exactly as
+stored, as `data`: for a BetterBench page, the results.json a verifier
+reproduces. L80 reads the model, notes and settings from it to rerun the
+benchmark, and the published headline figures to compare against.
+
+### `POST /api/v1/verifications/{id}/decision`
+
+Verifier keys only (`is_verifier`; otherwise `E_NOT_VERIFIER`, HTTP 403). The
+caller may not be the request's key (`E_OWN_REQUEST`, HTTP 403). Body:
+
+```json
+{
+  "decision": "verified" | "rejected",
+  "note": "required for rejected",
+  "reproduction": {
+    "betterbench_version": "0.6.1", "model": "Qwen3-8B",
+    "notes": { "engine": "vLLM 0.9.3", "hardware": "1x RTX 4090", "reproduces": "Qwen3-8B" },
+    "runs_per_category": 20, "phases": ["decode", "prefill", "concurrency"],
+    "metrics": [
+      { "label": "Combined decode", "unit": "t/s", "published": 142.4, "reproduced": 139.8,
+        "delta_pct": -1.8, "tolerance_pct": 10, "within": true }
+    ],
+    "within_tolerance": true, "results_sha256": "hex", "ran_at": "RFC 3339", "l80_version": "1.0.0"
+  }
+}
+```
+
+`reproduction` is optional. Store it as sent. Sets the request's status,
+`reviewed_at`, `reviewer_id`, `decision_note`, `reproduction`, and the page's
+tier (`verified` + `verified_at`, or `rejected`). The request must be open
+(`requested` or `in_review`), else `E_VERIFY_CLOSED` (HTTP 409).
+
+Tolerances the CLI applies before it lets a verifier stamp a reproduction that
+disagrees (it then needs `--accept-differences` and a note): combined decode
+±10%, ITL 1% low ±15%, TTFT p50 ±25%, peak aggregate ±15%, prefill ±20%.
 
 ### Existing endpoints
 
@@ -151,7 +208,11 @@ key published.
 |---|---|---|
 | `E_VERIFY_EXISTS` | 409 | 4 |
 | `E_VERIFY_INELIGIBLE` | 422 | 4 |
-| `E_FORBIDDEN_ROLE` | 403 | 5 |
+| `E_VERIFY_CLOSED` | 409 | 4 |
+| `E_NOT_VERIFIER` | 403 | 5 |
+| `E_OWN_REQUEST` | 403 | 5 |
+
+`E_OUTSIDE_TOLERANCE` (exit 4) is client-side only.
 
 ## Server checks
 
@@ -174,14 +235,14 @@ Client-only check: `provenance` (the local results file still hashes to what
 was published). The server cannot see the file; it compares `body_sha256`
 instead.
 
-## What a reviewer looks at
+## What a verifier looks at
 
-The server checks get a run to the queue; a reviewer decides. Suggested
+The server checks get a run to the queue; a verifier decides. Suggested
 review: the page's numbers are plausible for the stated hardware and engine;
 the engine version and launch flags are stated (note, or a linked recipe);
-there is no sign of a warm cache or batching games; for headline claims,
-someone reproduces the run (AwesomeList's reproduction-report flow) and the
-reproduction is linked in `decision_note`.
+there is no sign of a warm cache or batching games. For headline claims, the
+verifier reproduces the run with `L80 verify reproduce` (or the console's `p`)
+on matching hardware, and the comparison is attached to the stamp.
 
 ## Rendering changes in `bench.betterbench.v1`
 
@@ -205,9 +266,12 @@ L80 verify check results.json      # local pre-checks; exit 0 verifiable, 4 not
 L80 verify check <url | guid>      # same, plus provenance via the local ledger
 L80 verify request <url | guid> [--note "how to reproduce"] [--skip-checks]
 L80 verify status <url | guid>
-L80 review list [--status requested|in_review|verified|rejected|all]   # reviewer keys
-L80 review approve <id> [--note …]
-L80 review reject <id> --reason …
+L80 verify mine                                    # your requests and their decisions
+L80 verify queue [--status requested|…|all]        # other keys' requests (any key)
+L80 verify show <id>                               # what to reproduce, published figures
+L80 verify reproduce <id> --endpoint <url> [--model m] [--api-key k]
+L80 verify approve <id> [--note …] [--accept-differences]   # verifier keys
+L80 verify reject <id> --reason …                            # verifier keys
 L80 history [--tier verified]      # TIER column
 ```
 

@@ -110,6 +110,9 @@ Usage:
   L80 verify check <results.json|url>            Run the checks a "verified by Launch80" review applies
   L80 verify request <url> [--note text]         Ask launch80 to verify a published BetterBench page
   L80 verify status <url>                        Where a verification request stands
+  L80 verify queue                               Other keys' requests, to review and reproduce
+  L80 verify reproduce <id> --endpoint <url>     Run a requested benchmark yourself and compare
+  L80 verify approve|reject <id>                 Stamp or reject a run (verifier keys)
 
   Tools (free, no token):
   L80 vast <command> [args]                      Rent a Vast.ai GPU, serve, benchmark, publish (bbvastl80)

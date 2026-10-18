@@ -71,6 +71,10 @@ For a run the user may want **verified by Launch80** later, run it in full (no
 `--quick`, all phases) and record `--note engine=<stack and version>` and
 `--note hardware=<GPUs>`. Afterwards `L80 verify check <results.json>` shows
 whether it qualifies and `L80 verify request <url> --note "…"` asks for review.
+To help verify someone else's run, `L80 verify queue` lists requests and
+`L80 verify reproduce <id> --endpoint <url>` reruns it on the user's hardware
+and compares. Only stamp (`L80 verify approve`) when the user is a verifier
+and explicitly asks you to; never approve or reject on your own judgement.
 
 Before running: ask for the endpoint and model if not given, and tell the user
 a full run takes a while (20 passes per category plus sweeps); `--quick` is a
