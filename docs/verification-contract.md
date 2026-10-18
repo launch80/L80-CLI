@@ -91,16 +91,22 @@ A `Verification` object:
 
 ```json
 {
-  "id": "uuid", "artifact_guid": "uuid", "url": "https://launch80.com/a/…", "title": "…",
+  "id": "uuid", "artifact_guid": "uuid", "url": "https://www.launch80.com/a/…", "title": "…",
   "key_id": "…", "status": "requested", "trust_tier": "pending",
   "requested_at": "RFC 3339", "reviewed_at": "RFC 3339 or omitted",
   "note": "…", "decision_note": "…",
   "client_checks": [{ "name": "cold_cache", "status": "pass", "detail": "…" }],
   "server_checks": [{ "name": "cold_cache", "status": "pass", "detail": "…" }],
   "mine": false,
-  "reviewer_id": "…", "reproduction": { … }
+  "reviewer_id": "…", "reproduction": { … },
+  "requester_label": "…", "reviewer_label": "…"
 }
 ```
+
+`requester_label` and `reviewer_label` are the requesting and deciding keys'
+labels (`publisher_keys.label`). The CLI and console show them wherever they
+name who asked or who reviewed, and fall back to `key_id` / `reviewer_id` only
+when a label is absent, so the server may omit those ids for other keys.
 
 `mine` is true when the request was made with the calling key. The CLI uses it
 to stop a key reviewing its own run before the server has to refuse.
@@ -311,7 +317,7 @@ is announced. The sections above give the detail for each item.
       `pp_tps` for older files (Rendering changes above).
 
 **Website**
-- [ ] `https://launch80.com/install.sh` downloads releases from
+- [ ] `https://www.launch80.com/install.sh` downloads releases from
       `launch80/L80-CLI` (the repo was renamed from L80-Skills).
 
 ## Client behaviour (implemented)

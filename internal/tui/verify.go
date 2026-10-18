@@ -88,11 +88,11 @@ func (s *verifyScreen) fillTable() {
 		if len(when) >= 16 {
 			when = strings.Replace(when[:16], "T", " ", 1)
 		}
-		by := v.KeyID
+		by := v.Requester()
 		if v.Mine {
 			by = "you"
 		}
-		s.table.Rows = append(s.table.Rows, []string{orDash(when), v.Status, orDash(by), style.Sanitize(orDash(v.Title))})
+		s.table.Rows = append(s.table.Rows, []string{orDash(when), v.Status, style.Sanitize(orDash(by)), style.Sanitize(orDash(v.Title))})
 	}
 }
 
@@ -365,12 +365,15 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 		return fitW(out, w), []widgets.Binding{{Keys: "tab", Desc: "next field"}, {Keys: "enter", Desc: "next / submit"}, {Keys: "esc", Desc: "back"}}
 	}
 	v := s.cur
-	by := orDash(v.KeyID)
+	by := orDash(v.Requester())
 	if v.Mine {
 		by = "you"
 	}
 	out = append(out, t.R(t.Title, style.Sanitize(orDash(v.Title))), t.R(t.Muted, orDash(v.URL)),
-		kv(t, "status", v.Status)+t.R(t.Muted, "   requested by "+by+" "+v.RequestedAt))
+		kv(t, "status", v.Status)+t.R(t.Muted, "   requested by "+style.Sanitize(by)+" "+v.RequestedAt))
+	if r := v.Reviewer(); r != "" {
+		out = append(out, kv(t, "reviewed by", style.Sanitize(r)+t.R(t.Muted, " "+v.ReviewedAt)))
+	}
 	if v.Note != "" {
 		out = append(out, kv(t, "publisher", style.Sanitize(v.Note)))
 	}

@@ -282,6 +282,8 @@ func fakeBetterbench(t *testing.T, v string) {
 func isolateSync(t *testing.T, profile string) {
 	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	t.Setenv("HOME", t.TempDir()) // other harnesses' skill dirs live under $HOME
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	rc := filepath.Join(t.TempDir(), ".bashrc")
 	if err := os.WriteFile(rc, []byte(profile), 0o644); err != nil {
 		t.Fatal(err)
@@ -345,7 +347,7 @@ func TestSyncRefreshesInstalledSkillsOnly(t *testing.T) {
 
 	quiet := env{stdout: io.Discard, stderr: io.Discard}
 	check := defaultSync(quiet, syncOpts{})
-	if !check.Pending || check.Skills[0].Status != "outdated" {
+	if !check.Pending || skillRow(check, "l80-test-report").Status != "outdated" {
 		t.Fatalf("check: %+v", check)
 	}
 	if b, _ := os.ReadFile(stale); string(b) != "old skill" {
@@ -369,6 +371,15 @@ func TestSyncRefreshesInstalledSkillsOnly(t *testing.T) {
 	if len(res.Actions) != 0 {
 		t.Fatalf("an uninstalled skill is not an action: %q", res.Actions)
 	}
+}
+
+func skillRow(res syncResult, name string) skillSync {
+	for _, s := range res.Skills {
+		if s.Name == name {
+			return s
+		}
+	}
+	return skillSync{}
 }
 
 func TestSyncReportsAnOverrideThatPointsAtNothing(t *testing.T) {

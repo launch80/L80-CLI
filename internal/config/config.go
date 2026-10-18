@@ -9,7 +9,9 @@ import (
 	"strings"
 )
 
-const DefaultBaseURL = "https://launch80.com"
+const DefaultBaseURL = "https://www.launch80.com"
+
+const apexBaseURL = "https://launch80.com"
 
 // TokenSource records where the credential came from, so `L80 auth status` and
 // `L80 doctor` can explain the resolution without ever printing the secret.
@@ -48,7 +50,7 @@ func CredentialsPath() string {
 
 // Load resolves configuration in a documented precedence order:
 //
-//	base URL: --api-base flag > L80_API_BASE > https://launch80.com
+//	base URL: --api-base flag > L80_API_BASE > https://www.launch80.com
 //	token:    L80_TOKEN > ~/.config/L80/credentials.json > none
 //
 // A missing token is NOT an error here. Only commands that publish require one,
@@ -63,6 +65,12 @@ func Load(apiBaseFlag string) Config {
 		c.BaseURL = apiBaseFlag
 	}
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
+	// The apex answers every request with a 307 to www. Go follows it but
+	// drops Authorization on the change of host, so an authenticated call
+	// would arrive without its token: go to www directly instead.
+	if c.BaseURL == apexBaseURL {
+		c.BaseURL = DefaultBaseURL
+	}
 
 	if v := os.Getenv("L80_TOKEN"); v != "" {
 		c.Token = v

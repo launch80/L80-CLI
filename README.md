@@ -1,7 +1,5 @@
 # L80 CLI
 
-![L80 CLI, Version 1: a major upgrade for the Launch80 Engineering Community](docs/media/01-intro.gif)
-
 A local CLI (`L80`) plus a skill bundle that lets any LLM agent publish
 structured results to launch80 and get back a shareable URL, and that puts the
 Launch80 toolset behind one command: BetterBench, rented-GPU benchmarking on
@@ -28,10 +26,8 @@ pipeline are untouched.
 
 ## Install
 
-![Install with one line: curl -fsSL https://launch80.com/install.sh | sh](docs/media/08-install.gif)
-
 ```sh
-curl -fsSL https://launch80.com/install.sh | sh   # prebuilt release -> ~/.local/bin/L80
+curl -fsSL https://www.launch80.com/install.sh | sh   # prebuilt release -> ~/.local/bin/L80
 ```
 
 Or build from source:
@@ -41,25 +37,53 @@ make build     # -> ./bin/L80
 make install   # -> ~/.local/bin/L80
 ```
 
-Then install the skill for your agent:
+Then run `L80 tui`: the first time, a short onboarding checks the machine,
+sets up publishing and installs L80's skills for the AI agents it finds.
+`L80 onboard` runs it again.
+
+## Let your AI agents drive L80
+
+L80 ships skills in the open Agent Skills format (a folder with a `SKILL.md`),
+so your coding agent can benchmark, rent, scan and publish for you without you
+touching the console or the commands. The `l80` skill teaches the whole command
+surface; `l80-test-report`, `l80-vast` and `l80-pwdet` go deep on publishing,
+renting and scanning.
 
 ```sh
-L80 skills link --target claude-code           # copy from the embedded bundle
+L80 skills targets                             # the agent harnesses found here, and what is installed
+L80 skills link --target detected --all        # every skill, for every harness found
+L80 skills link --target agents --all          # ~/.agents/skills: Codex, Cursor and others
+L80 skills link --target claude-code --all     # ~/.claude/skills (honours CLAUDE_CONFIG_DIR)
+L80 skills link --dir ./.claude/skills --all   # any directory, e.g. inside a repo
 L80 skills link --target claude-code --dev \
-  --from ./skills                              # symlink, so edits are live
+  --from ./skills --all                        # symlink, so edits are live
+L80 skills agents-md >> AGENTS.md              # for an agent that reads instructions but not skills
 ```
+
+| `--target` | Directory | Read by |
+|---|---|---|
+| `claude-code` (`claude`) | `~/.claude/skills` | Claude Code |
+| `agents` (`codex`, `cursor`) | `~/.agents/skills` | Codex, Cursor and other Agent Skills harnesses |
+| `gemini` | `~/.gemini/skills` | Gemini CLI |
+| `opencode` | `~/.config/opencode/skills` | OpenCode |
+
+`L80 update` refreshes installed copies in all of them.
 
 ## The console: `L80 tui`
 
-![The real L80 console: Home, then the sidebar previewing Benchmark, Vast, pwdet, Dashboard, History, Verify and Tools](docs/media/tui-console.gif)
+![The real L80 console: Home, then the sidebar previewing each screen](docs/media/tui-console.gif)
 
 ```sh
 L80 tui
 ```
 
-A full-screen console over everything below. A sidebar lists Home, Benchmark,
-Vast, pwdet, Dashboard, History, Verify and Tools; moving through it previews each
-screen live, enter opens it and esc comes back. From it you can benchmark an
+A full-screen console over everything below. A sidebar lists Home, then A to Z:
+About, Benchmark, Dashboard, History, Onboarding, pwdet, Recommendations
+(coming soon), Rent (vast), Tools, Train & Tune (coming soon: train, tune and
+quantize models) and Verify. Moving through it previews each screen live,
+enter opens it and esc comes back; `1`-`9` jump. About has our story, the
+[Discord](https://discord.gg/launch80), the
+[Supporter](https://www.launch80.com/supporter) page and every command. From it you can benchmark an
 endpoint, rent a GPU and benchmark it, scan weights, open the dashboard, browse
 published pages and check the tools. Each screen drives the same code as the matching command, so
 anything you do here you can script later. Runs stream into a scrollable log;
@@ -274,8 +298,8 @@ out which piece is stale:
 2. **The pinned tools.** Builds each tool's pinned commit through uvx now
    rather than on first use. A copy on PATH that `uv tool install` put there
    and that is older than the pin is upgraded to it.
-3. **The skills.** Every L80 skill installed as a copy is refreshed from the
-   binary. A `--dev` symlink is left alone, and a skill that is not installed
+3. **The skills.** Every L80 skill installed as a copy, in any agent's skills
+   directory (see `L80 skills targets`), is refreshed from the binary. A `--dev` symlink is left alone, and a skill that is not installed
    stays uninstalled.
 4. **Everything else is reported, not guessed at.** An override variable
    (`L80_BETTERBENCH` and friends) pointing at a tool older than the pin cannot
@@ -295,13 +319,13 @@ runs of `L80 update`: the first installs this release, the second syncs.
 
 Prebuilt releases exist for macOS and Linux on amd64 and arm64. Elsewhere,
 pull and `make install`. Re-running the install script
-(`curl -fsSL https://launch80.com/install.sh | sh`) is equivalent to `L80 update`.
+(`curl -fsSL https://www.launch80.com/install.sh | sh`) is equivalent to `L80 update`.
 
 ## Configuration
 
 | Variable | Meaning |
 |---|---|
-| `L80_API_BASE` | API base URL. Default `https://launch80.com`; use `http://localhost:3007` against a local server. |
+| `L80_API_BASE` | API base URL. Default `https://www.launch80.com`; use `http://localhost:3007` against a local server. |
 | `L80_TOKEN` | Publish token, shaped `L80_<keyid>_<secret>`. |
 | `L80_BETTERBENCH` | Command to run instead of the pinned BetterBench (e.g. a checkout's `.venv/bin/betterbench`). |
 | `L80_BETTERBENCH_API_KEY` | Bearer key for the endpoint under test; passed by environment, never recorded. |
@@ -326,15 +350,18 @@ L80 templates list [--json]                    List available templates
 L80 verify check|request|status|mine           "Verified by Launch80": pre-checks and your requests
 L80 verify queue|show|reproduce <id>           Review others' runs and reproduce them (any key)
 L80 verify approve|reject <id>                 Stamp or reject a run (verifier keys)
-L80 skills print [name]                        Print a bundled SKILL.md
-L80 skills link --target claude-code [--dev]   Install a skill for an agent
+L80 skills targets [--json]                    Agent harnesses found here and their L80 skills
+L80 skills link --target <t>|--dir <path>      Install skills for an agent (--all, --dev, --force)
+L80 skills print [name]                        Print a bundled SKILL.md (default: l80)
+L80 skills agents-md                           An AGENTS.md snippet for agents without skills
 L80 history [--limit N] [--json] [--local]     List the share URLs this key has published
 L80 auth status                                Show the resolved endpoint and key
 L80 vast <command> [args]                      Rent a GPU, serve, benchmark, publish (bbvastl80)
 L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering
 L80 dashboard [tui|serve]                      GPU and inference telemetry
 L80 tools list|check|prefetch|path|run         Show, check, fetch and run the pinned Python tools
-L80 tui                                        Full-screen console for all of the above
+L80 tui [--onboarding]                         Full-screen console for all of the above
+L80 onboard                                    Guided setup (runs by itself the first time)
 L80 doctor                                     Check connectivity, config and tools
 L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
 L80 version

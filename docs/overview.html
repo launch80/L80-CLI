@@ -188,9 +188,9 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 <span class="t-d">  decode · prefill · concurrency [1, 2, 4, 8]</span>
 <span class="t-d">  results.json kept: ./betterbench-Qwen3-8B-1017.json</span>
 <span class="t-d">  removed env.endpoint, env.host</span>
-<span class="t-ok">✓ published: https://launch80.com/a/&lt;id&gt;</span>
+<span class="t-ok">✓ published: https://www.launch80.com/a/&lt;id&gt;</span>
 
-<span class="t-p">$</span> L80 verify request https://launch80.com/a/&lt;id&gt; \
+<span class="t-p">$</span> L80 verify request https://www.launch80.com/a/&lt;id&gt; \
     --note "vLLM 0.9.3, --max-model-len 32768"
 <span class="t-ok">✓ checks passed · verification requested</span>
 <span class="t-p">$</span> <span class="cursor"></span></pre>
@@ -202,7 +202,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   <div class="wrap">
     <ul>
       <li><b>0</b><span>third-party Go modules in the binary</span></li>
-      <li><b>16</b><span>top-level commands</span></li>
+      <li><b>17</b><span>top-level commands</span></li>
       <li><b>4</b><span>Python tools behind one CLI</span></li>
       <li><b>3</b><span>launch80 page templates</span></li>
       <li><b>4</b><span>release builds: macOS and Linux, amd64 and arm64</span></li>
@@ -222,7 +222,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       <li>
         <h3>Install L80</h3>
         <p>Puts the binary in <code>~/.local/bin</code>. Run it again any time to update.</p>
-        <div class="cmd"><pre>curl -fsSL https://launch80.com/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
+        <div class="cmd"><pre>curl -fsSL https://www.launch80.com/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
       </li>
       <li>
         <h3>Install uv</h3>
@@ -247,9 +247,9 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
       </li>
       <li>
         <h3>Explore the console</h3>
-        <p>Every capability in one full-screen view. Or give your agent the skills.</p>
+        <p>Every capability in one full-screen view. The first run walks you through setup. Or give your AI agents the skills, so they drive L80 for you.</p>
         <div class="cmd"><pre>L80 tui</pre><button class="copy" type="button">Copy</button></div>
-        <div class="cmd"><pre>L80 skills link --target claude-code</pre><button class="copy" type="button">Copy</button></div>
+        <div class="cmd"><pre>L80 skills link --target detected --all</pre><button class="copy" type="button">Copy</button></div>
       </li>
     </ol>
   </div>
@@ -304,7 +304,7 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
 
       <article id="install">
         <h3>Install and update</h3>
-        <div class="cmd"><pre>curl -fsSL https://launch80.com/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
+        <div class="cmd"><pre>curl -fsSL https://www.launch80.com/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
         <div class="cmd"><pre class="multi">L80 update                 # the binary, the pinned tools and the installed skills
 L80 update --check         # report what is out of date; change nothing
 L80 update --json          # the same report, for an agent
@@ -318,7 +318,7 @@ L80 version</pre><button class="copy" type="button">Copy</button></div>
           <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
           <tbody>
             <tr><td><code>L80_TOKEN</code></td><td>Publish token, shaped <code>L80_&lt;keyid&gt;_&lt;secret&gt;</code>. Falls back to <code>~/.config/L80/credentials.json</code> (mode 0600).</td></tr>
-            <tr><td><code>L80_API_BASE</code></td><td>Server URL. Default <code>https://launch80.com</code>. Every network command also takes <code>--api-base</code>.</td></tr>
+            <tr><td><code>L80_API_BASE</code></td><td>Server URL. Default <code>https://www.launch80.com</code>. Every network command also takes <code>--api-base</code>.</td></tr>
             <tr><td><code>L80_BETTERBENCH_API_KEY</code></td><td>Bearer key for the endpoint you are benchmarking. Passed by environment and never recorded.</td></tr>
             <tr><td><code>L80_BETTERBENCH</code>, <code>L80_VAST</code>, <code>L80_PWDET</code>, <code>L80_DASHBOARD</code></td><td>Run this command instead of the pinned tool, for example your own checkout. Used without a version check.</td></tr>
             <tr><td><code>L80_PWDET_EXTRAS</code></td><td>pwdet extras to install. Default <code>gguf,pickle</code>; empty means none.</td></tr>
@@ -449,18 +449,22 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
 
       <article id="tui">
         <h3>The console <span class="chip free">Free</span></h3>
-        <p><code>L80 tui</code> is a full-screen console for everything on this page. A sidebar lists every screen. Moving through it previews each one live, <kbd>enter</kbd> opens it, <kbd>esc</kbd> comes back, <kbd>1</kbd>–<kbd>8</kbd> jump and <kbd>?</kbd> opens help. Each screen runs the same code as its command, so anything you do here you can script later.</p>
+        <p><code>L80 tui</code> is a full-screen console for everything on this page. A sidebar lists Home, then every other screen A to Z. Moving through it previews each one live, <kbd>enter</kbd> opens it, <kbd>esc</kbd> comes back, <kbd>1</kbd>–<kbd>9</kbd> jump and <kbd>?</kbd> opens help. The first time it opens on a short onboarding; <code>L80 onboard</code> runs it again. Each screen runs the same code as its command, so anything you do here you can script later.</p>
         <div class="tbl"><table>
           <thead><tr><th>Screen</th><th>What you can do</th></tr></thead>
           <tbody>
             <tr><td>Home</td><td>Server, token and tool status at a glance, plus your last publishes.</td></tr>
+            <tr><td>About</td><td>Our story, the <a href="https://discord.gg/launch80">Discord</a>, the <a href="https://www.launch80.com/supporter">Supporter</a> page and the full command directory.</td></tr>
             <tr><td>Benchmark</td><td>Fill in a form, watch the run stream, then publish or dry-run.</td></tr>
-            <tr><td>Vast</td><td>Pick a spec, see cost caps before renting, follow runs, destroy boxes.</td></tr>
-            <tr><td>pwdet</td><td>Scan a model, read the verdict and findings, publish the result.</td></tr>
             <tr><td>Dashboard</td><td>Attach to the telemetry view or start the sampler.</td></tr>
-            <tr><td>Verify</td><td>Other keys' requests to review: reproduce them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
             <tr><td>History</td><td>Every page you published, with its trust tier. Press <kbd>v</kbd> to request verification.</td></tr>
+            <tr><td>Onboarding</td><td>Check the tools, save a publish token, pick where to start, and install skills for the AI agents found.</td></tr>
+            <tr><td>pwdet</td><td>Scan a model, read the verdict and findings, publish the result.</td></tr>
+            <tr><td>Recommendations</td><td><span class="chip pend">Coming soon</span> What to run a model on, from the community's published results.</td></tr>
+            <tr><td>Rent (vast)</td><td>Pick a spec, see cost caps before renting, follow runs, destroy boxes.</td></tr>
             <tr><td>Tools</td><td>How each tool resolves, and prefetch it.</td></tr>
+            <tr><td>Train &amp; Tune</td><td><span class="chip pend">Coming soon</span> Train, fine-tune and quantize models, then benchmark the result.</td></tr>
+            <tr><td>Verify</td><td>Other keys' requests to review, by key label: reproduce them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
           </tbody>
         </table></div>
         <p>Renting, destroying and publishing always ask first. <code>vast ssh</code> and the dashboard take over the terminal and hand it back when they exit. Linux and macOS.</p>
@@ -493,12 +497,24 @@ L80 tools path betterbench  # the exact command L80 would run</pre><button class
 
       <article id="skills">
         <h3>Agent skills</h3>
-        <p>L80 ships skills that tell an agent which command to run. The CLI handles credentials and network calls, so the token never enters the model's context.</p>
-        <div class="cmd"><pre class="multi">L80 skills link --target claude-code
-L80 skills print l80-vast</pre><button class="copy" type="button">Copy</button></div>
+        <p>L80 ships skills in the open Agent Skills format, so your AI agent can benchmark, rent, scan and publish for you without you touching the console. The CLI handles credentials and network calls, so the token never enters the model's context.</p>
+        <div class="cmd"><pre class="multi">L80 skills targets                          # agent harnesses found here
+L80 skills link --target detected --all     # every skill, every harness found
+L80 skills link --dir ./.claude/skills --all
+L80 skills agents-md &gt;&gt; AGENTS.md           # for agents without skills</pre><button class="copy" type="button">Copy</button></div>
+        <div class="tbl"><table>
+          <thead><tr><th><code>--target</code></th><th>Directory</th><th>Read by</th></tr></thead>
+          <tbody>
+            <tr><td><code>claude-code</code></td><td><code>~/.claude/skills</code></td><td>Claude Code</td></tr>
+            <tr><td><code>agents</code> (<code>codex</code>, <code>cursor</code>)</td><td><code>~/.agents/skills</code></td><td>Codex, Cursor and other Agent Skills harnesses</td></tr>
+            <tr><td><code>gemini</code></td><td><code>~/.gemini/skills</code></td><td>Gemini CLI</td></tr>
+            <tr><td><code>opencode</code></td><td><code>~/.config/opencode/skills</code></td><td>OpenCode</td></tr>
+          </tbody>
+        </table></div>
         <div class="tbl"><table>
           <thead><tr><th>Skill</th><th>Teaches the agent to</th></tr></thead>
           <tbody>
+            <tr><td><code>l80</code></td><td>Use the whole CLI: every command, its JSON output and exit codes, and when to ask before spending or publishing.</td></tr>
             <tr><td><code>l80-test-report</code></td><td>Pick a template and publish reports and BetterBench runs.</td></tr>
             <tr><td><code>l80-vast</code></td><td>Rent and benchmark a GPU without leaving a box billing.</td></tr>
             <tr><td><code>l80-pwdet</code></td><td>Scan weights, read the verdict, and publish it safely.</td></tr>
@@ -532,7 +548,8 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td><code>L80 dashboard [tui|serve]</code></td><td>GPU and inference telemetry</td></tr>
             <tr><td><code>L80 tools list|check|prefetch|path|run</code></td><td>The pinned Python tools</td></tr>
             <tr><td><code>L80 tui</code></td><td>The full-screen console</td></tr>
-            <tr><td><code>L80 skills print|link</code></td><td>Agent skills</td></tr>
+            <tr><td><code>L80 onboard</code></td><td>Guided setup (runs by itself the first time)</td></tr>
+            <tr><td><code>L80 skills targets|link|print|agents-md</code></td><td>Agent skills for any harness</td></tr>
             <tr><td><code>L80 auth status</code></td><td>The server and a masked token</td></tr>
             <tr><td><code>L80 doctor</code></td><td>Check connectivity, config and tools</td></tr>
             <tr><td><code>L80 update</code></td><td>Update L80, its pinned tools and installed skills</td></tr>
@@ -620,8 +637,8 @@ L80 verify export &lt;page&gt; --awesomelist        # a verified run as a catalo
 
 <footer>
   <div class="wrap">
-    <span>L80 CLI 1.0.0 · documentation updated 17 October 2026</span>
-    <span><a href="https://github.com/launch80/L80-CLI">github.com/launch80/L80-CLI</a> · <a href="https://launch80.com">launch80.com</a></span>
+    <span>L80 CLI 1.0.0 · documentation updated 18 October 2026</span>
+    <span><a href="https://github.com/launch80/L80-CLI">github.com/launch80/L80-CLI</a> · <a href="https://www.launch80.com">launch80.com</a></span>
   </div>
 </footer>
 

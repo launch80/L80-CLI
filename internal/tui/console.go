@@ -31,6 +31,10 @@ type Deps struct {
 	RunsDir string
 	// DashboardState is AI_DASHBOARD_STATE for the dashboard.
 	DashboardState string
+	// Usage is `L80 help`'s command list, for the About page's directory.
+	Usage string
+	// Onboard opens the console on onboarding (first run, or `L80 onboard`).
+	Onboard bool
 }
 
 type screenID int
@@ -45,6 +49,10 @@ const (
 	scrVerify
 	scrTools
 	scrHelp
+	scrAbout
+	scrOnboard
+	scrRecs
+	scrTrain
 )
 
 // Console is the root model.
@@ -75,6 +83,8 @@ type Console struct {
 	hist    histScreen
 	verify  verifyScreen
 	tools   toolsScreen
+	about   aboutScreen
+	onb     onboardScreen
 	redraw  atomic.Bool
 	running int // jobs in flight, for the spinner tick
 }
@@ -217,7 +227,12 @@ func (c *Console) confirm(d *widgets.Dialog, then func(int) Cmd) {
 
 // --- Elm loop -------------------------------------------------------------------
 
-func (c *Console) Init() Cmd { return c.home.load(c) }
+func (c *Console) Init() Cmd {
+	if c.d.Onboard {
+		return Batch(c.home.load(c), c.startOnboarding())
+	}
+	return c.home.load(c)
+}
 
 func (c *Console) Update(m Msg) (Model, Cmd) {
 	switch v := m.(type) {
@@ -282,8 +297,9 @@ func (c *Console) cancelAll() {
 	}
 }
 
-// sidebar is the console's navigation, in order; the number keys jump to these.
-var sidebar = []screenID{scrHome, scrBench, scrVast, scrPwdet, scrDash, scrHistory, scrVerify, scrTools}
+// sidebar is the console's navigation: Home, then the rest A to Z by label
+// (a test keeps it that way). The number keys jump to the first nine.
+var sidebar = []screenID{scrHome, scrAbout, scrBench, scrDash, scrHistory, scrOnboard, scrPwdet, scrRecs, scrVast, scrTools, scrTrain, scrVerify}
 
 // route sends input to the sidebar or the focused pane, and everything else
 // (load results, finished jobs) to every screen, since a result can arrive
@@ -337,7 +353,7 @@ func (c *Console) sideKey(k KeyMsg) Cmd {
 		return move(0)
 	case k.Code == input.End:
 		return move(len(c.side) - 1)
-	case k.Code == input.Rune && k.Rune >= '1' && int(k.Rune-'1') < len(c.side):
+	case k.Code == input.Rune && k.Rune >= '1' && k.Rune <= '9' && int(k.Rune-'1') < len(c.side):
 		cmd := move(int(k.Rune - '1'))
 		if c.side[c.sel] != scrHome {
 			c.paneFocus = true
@@ -376,7 +392,11 @@ func (c *Console) routeTo(s screenID, m Msg) Cmd {
 		return c.verify.update(c, m)
 	case scrTools:
 		return c.tools.update(c, m)
-	case scrHelp:
+	case scrAbout:
+		return c.about.update(c, m)
+	case scrOnboard:
+		return c.onb.update(c, m)
+	case scrHelp, scrRecs, scrTrain:
 		if k, ok := m.(KeyMsg); ok && isBack(k) {
 			c.scr = scrHome
 		}
@@ -404,6 +424,10 @@ func (c *Console) open(s screenID) Cmd {
 		return c.dash.load(c)
 	case scrVast:
 		return c.vast.loadRuns(c)
+	case scrAbout:
+		c.about.off = 0
+	case scrOnboard:
+		return c.onb.start(c)
 	}
 	return nil
 }
@@ -412,8 +436,19 @@ func (c *Console) open(s screenID) Cmd {
 
 // labels name each screen in the sidebar and at the top of the pane.
 var labels = map[screenID]string{
-	scrHome: "Home", scrBench: "Benchmark", scrVast: "Vast", scrPwdet: "pwdet",
+	scrHome: "Home", scrBench: "Benchmark", scrVast: "Rent (vast)", scrPwdet: "pwdet",
 	scrDash: "Dashboard", scrHistory: "History", scrVerify: "Verify", scrTools: "Tools", scrHelp: "Help",
+	scrAbout: "About", scrOnboard: "Onboarding", scrRecs: "Recommendations", scrTrain: "Train & Tune",
+}
+
+// titles override the pane title where the sidebar label is a short form.
+var titles = map[screenID]string{scrTrain: "Train, Tune, Quantize"}
+
+func title(s screenID) string {
+	if t, ok := titles[s]; ok {
+		return t
+	}
+	return labels[s]
 }
 
 // blurbs is the one line under each pane title.
@@ -427,9 +462,22 @@ var blurbs = map[screenID]string{
 	scrVerify:  "Review others' runs: reproduce them, and stamp them if you are a verifier.",
 	scrTools:   "The pinned tools and how each resolves here.",
 	scrHelp:    "Keys, commands and environment.",
+	scrAbout:   "Who we are, where to find us, and every command.",
+	scrOnboard: "A short tour that sets L80 up on this machine.",
+	scrRecs:    "Coming soon: what to run a model on, from the community's results.",
+	scrTrain:   "Coming soon: train, fine-tune and quantize models, then benchmark them.",
 }
 
 const sideW = 22
+
+// narrowSideW fits the longest label with the selection bar, and no more.
+var narrowSideW = func() int {
+	n := 0
+	for _, s := range sidebar {
+		n = max(n, style.Width(labels[s]))
+	}
+	return n + 4
+}()
 
 func (c *Console) View(w, h int) []string {
 	if w < 60 || h < 16 {
@@ -451,7 +499,7 @@ func (c *Console) View(w, h int) []string {
 	innerW, innerH := w-2, bodyH-2
 	sw := sideW
 	if innerW < 80 {
-		sw = 14
+		sw = narrowSideW
 	}
 	pw := innerW - sw - 1
 	padW := pw - 4
@@ -493,10 +541,16 @@ func (c *Console) View(w, h int) []string {
 		body, keys = c.tools.view(c, padW, contentH)
 	case scrHelp:
 		body, keys = helpView(c, padW, contentH)
+	case scrAbout:
+		body, keys = c.about.view(c, padW, contentH)
+	case scrOnboard:
+		body, keys = c.onb.view(c, padW, contentH)
+	case scrRecs, scrTrain:
+		body, keys = soonView(c, c.scr, padW, contentH)
 	default:
 		body, keys = c.home.view(c, padW, contentH)
 	}
-	pane := []string{"", t.R(t.Title, labels[c.scr]), t.R(t.Muted, style.Truncate(blurbs[c.scr], padW, "…")), ""}
+	pane := []string{"", t.R(t.Title, title(c.scr)), t.R(t.Muted, style.Truncate(blurbs[c.scr], padW, "…")), ""}
 	pane = append(pane, body...)
 	for i := range pane {
 		pane[i] = "  " + pane[i]
@@ -510,7 +564,7 @@ func (c *Console) View(w, h int) []string {
 	frame = append(frame, style.Box(t.Border, t.P, t.Edge, "", inner, w, bodyH)...)
 
 	if !c.paneFocus {
-		keys = []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "open"}, {Keys: fmt.Sprintf("1-%d", len(c.side)), Desc: "jump"}, {Keys: "?", Desc: "help"}, {Keys: "q", Desc: "quit"}}
+		keys = []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "open"}, {Keys: fmt.Sprintf("1-%d", min(9, len(c.side))), Desc: "jump"}, {Keys: "?", Desc: "help"}, {Keys: "q", Desc: "quit"}}
 	} else if !slices.ContainsFunc(keys, func(b widgets.Binding) bool { return b.Keys == "esc" || strings.HasPrefix(b.Desc, "back") }) {
 		keys = append(keys, widgets.Binding{Keys: "esc", Desc: "back"})
 	}

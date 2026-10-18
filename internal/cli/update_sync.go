@@ -2,10 +2,8 @@ package cli
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,6 +15,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/output"
 	"github.com/launch80/L80-CLI/internal/pytool"
+	"github.com/launch80/L80-CLI/internal/skillinstall"
 )
 
 // What `L80 update` brings current besides the binary: the pinned tools and
@@ -38,6 +37,7 @@ type toolSync struct {
 // skillSync is one bundled skill's row in the update report.
 type skillSync struct {
 	Name   string `json:"name"`
+	Target string `json:"target"`
 	Path   string `json:"path"`
 	Status string `json:"status"` // current | updated | outdated | linked | not_installed | failed
 	Fix    string `json:"fix,omitempty"`
@@ -83,7 +83,7 @@ func defaultSync(e env, opts syncOpts) syncResult {
 		return false
 	})
 	if err != nil {
-		res.Actions = append(res.Actions, "Reinstall L80 (`curl -fsSL https://launch80.com/install.sh | sh`): its tool manifest is unreadable: "+err.Error())
+		res.Actions = append(res.Actions, "Reinstall L80 (`curl -fsSL https://www.launch80.com/install.sh | sh`): its tool manifest is unreadable: "+err.Error())
 	}
 	for _, r := range rows {
 		res.Tools = append(res.Tools, toolRow(r, upgraded[r.Name], &res))
@@ -237,62 +237,52 @@ func defaultProfileFiles() []string {
 	return out
 }
 
-// syncSkills refreshes every bundled skill that is installed as a copy and
-// differs from the one in this binary. A --dev symlink is the user's live
-// source tree and is never touched; a skill that is not installed stays so.
+// syncSkills refreshes every bundled skill that is installed as a copy, in
+// any harness's skills directory, and differs from the one in this binary. A
+// --dev symlink is the user's live source tree and is never touched; a skill
+// that is not installed stays so. Claude Code reports uninstalled skills too
+// (as optional fixes); other harnesses report only what is there.
 func syncSkills(opts syncOpts, res *syncResult) []skillSync {
 	var out []skillSync
-	for _, name := range l80skills.SkillNames {
-		dest, err := claudeSkillDir(name)
-		if err != nil {
-			continue
-		}
-		row := skillSync{Name: name, Path: dest}
-		info, statErr := os.Lstat(dest)
-		switch {
-		case statErr != nil:
-			row.Status = "not_installed"
-			row.Fix = fmt.Sprintf("optional: `L80 skills link --target claude-code --name %s`", name)
-		case info.Mode()&os.ModeSymlink != 0:
-			row.Status = "linked"
-		case skillMatches(name, dest):
-			row.Status = "current"
-		case !opts.apply:
-			row.Status = "outdated"
-			res.Pending = true
-		default:
-			if err := materialize(name, dest); err != nil {
-				row.Status = "failed"
-				row.Fix = fmt.Sprintf("Run `L80 skills link --target claude-code --name %s --force`: %v", name, err)
-				res.Actions = append(res.Actions, "skill "+row.Fix)
-			} else {
-				row.Status = "updated"
+	for _, t := range skillinstall.Targets {
+		for _, name := range l80skills.SkillNames {
+			dest, err := t.SkillDir(name)
+			if err != nil {
+				continue
 			}
+			row := skillSync{Name: name, Target: t.Name, Path: dest}
+			switch skillinstall.Status(name, dest) {
+			case skillinstall.NotInstalled:
+				if t.Name != "claude-code" {
+					continue
+				}
+				row.Status = "not_installed"
+				row.Fix = fmt.Sprintf("optional: `L80 skills link --target %s --name %s`", t.Name, name)
+			case skillinstall.Linked:
+				row.Status = "linked"
+			case skillinstall.Current:
+				row.Status = "current"
+			default:
+				if !opts.apply {
+					row.Status = "outdated"
+					res.Pending = true
+					break
+				}
+				if err := materialize(name, dest); err != nil {
+					row.Status = "failed"
+					row.Fix = fmt.Sprintf("Run `L80 skills link --target %s --name %s --force`: %v", t.Name, name, err)
+					res.Actions = append(res.Actions, "skill "+row.Fix)
+				} else {
+					row.Status = "updated"
+				}
+			}
+			out = append(out, row)
 		}
-		out = append(out, row)
 	}
 	return out
 }
 
-// skillMatches reports whether every file of the embedded skill is on disk
-// with the same content. Files the user added are ignored.
-func skillMatches(name, dest string) bool {
-	root := filepath.Join("skills", name)
-	same := true
-	_ = fs.WalkDir(l80skills.FS, root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !same || d.IsDir() {
-			return err
-		}
-		rel, _ := filepath.Rel(root, path)
-		want, _ := l80skills.FS.ReadFile(path)
-		got, rerr := os.ReadFile(filepath.Join(dest, rel))
-		if rerr != nil || !bytes.Equal(got, want) {
-			same = false
-		}
-		return nil
-	})
-	return same
-}
+func skillMatches(name, dest string) bool { return skillinstall.Matches(name, dest) }
 
 func defaultUvToolDir() (string, error) {
 	out, err := exec.Command("uv", "tool", "dir").Output()

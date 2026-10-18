@@ -64,6 +64,8 @@ func Run(args []string) int {
 		return runReview(e, args[2:])
 	case "tui", "console":
 		return runTUI(e, args[2:])
+	case "onboard":
+		return runTUI(e, append([]string{"--onboarding"}, args[2:]...))
 	case "version", "--version", "-v":
 		fmt.Fprintln(e.stdout, VersionLine())
 		return api.ExitOK
@@ -95,8 +97,10 @@ func addCommonFlags(fs *flag.FlagSet) (apiBase *string, asJSON *bool) {
 	return
 }
 
-func usage(w io.Writer) {
-	fmt.Fprint(w, `L80 — benchmark, inspect and publish to launch80
+func usage(w io.Writer) { fmt.Fprint(w, usageText) }
+
+// usageText is `L80 help`; the console's About page shows it as its command directory.
+const usageText = `L80 — benchmark, inspect and publish to launch80
 
 Usage:
   Benchmark and publish (publishing needs a token):
@@ -125,25 +129,31 @@ Usage:
 
   Interactive:
   L80 tui                                        A full-screen console for everything above
+  L80 onboard                                    A short guided setup (runs by itself the first time)
+
+  Let your AI agents drive L80:
+  L80 skills targets [--json]                    The agent harnesses found here and their L80 skills
+  L80 skills link --target detected --all        Install every skill for every agent found
+  L80 skills link --target <t> [--name s|--all]  t: claude-code, agents (Codex, Cursor), gemini, opencode
+  L80 skills link --dir <path> [--all] [--dev]   Install into any skills directory
+  L80 skills print [name]                        Print a bundled SKILL.md (default: l80)
+  L80 skills agents-md                           An AGENTS.md snippet for agents without skills
 
   Setup and maintenance:
-  L80 skills print [name]                        Print a bundled SKILL.md
-  L80 skills link --target claude-code [--dev]   Install a skill for an agent
   L80 auth status                                Show the resolved endpoint and key
   L80 doctor                                     Check connectivity, config and tools
   L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
   L80 version                                    Print the version
 
 Environment:
-  L80_API_BASE             API base URL (default https://launch80.com)
+  L80_API_BASE             API base URL (default https://www.launch80.com)
   L80_TOKEN                Publish token; otherwise ~/.config/L80/credentials.json
   L80_BETTERBENCH          Command to run instead of the pinned BetterBench
   L80_BETTERBENCH_API_KEY  Bearer key for the endpoint under test (never recorded)
   L80_VAST, L80_PWDET, L80_DASHBOARD   Commands to run instead of the pinned tools
   VAST_API_KEY             Vast.ai key for L80 vast (or ~/.config/bbvastl80/credentials)
 
-`)
-}
+`
 
 // parseArgs parses flags that may appear before OR after positional arguments.
 //

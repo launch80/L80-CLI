@@ -103,3 +103,38 @@ func writeCreds(t *testing.T, dir, contents string) {
 		t.Fatal(err)
 	}
 }
+
+func TestOnboardingStateAndSavedToken(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("L80_TOKEN", "")
+	if !LoadState().NeedsOnboarding() {
+		t.Fatal("a fresh machine needs onboarding")
+	}
+	if err := MarkOnboarded(true); err != nil {
+		t.Fatal(err)
+	}
+	if s := LoadState(); s.NeedsOnboarding() || !s.OnboardSkipped {
+		t.Fatalf("state = %+v", s)
+	}
+
+	if err := SaveCredentials("L80_k9_secret"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(CredentialsPath())
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("credentials file: %v %v", info, err)
+	}
+	if c := Load(""); c.Token != "L80_k9_secret" || c.KeyID != "k9" || c.TokenSource != SourceFile {
+		t.Errorf("loaded = %+v", c)
+	}
+}
+
+func TestApexBaseURLGoesToWWW(t *testing.T) {
+	t.Setenv("L80_API_BASE", "https://launch80.com/")
+	if got := Load("").BaseURL; got != "https://www.launch80.com" {
+		t.Errorf("apex = %q", got)
+	}
+	if got := Load("http://localhost:3007").BaseURL; got != "http://localhost:3007" {
+		t.Errorf("other hosts are left alone: %q", got)
+	}
+}

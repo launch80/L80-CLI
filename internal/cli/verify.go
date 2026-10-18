@@ -164,16 +164,23 @@ func printChecks(e env, checks []betterbench.Check) {
 	}
 }
 
+func byWhom(who string) string {
+	if who == "" {
+		return ""
+	}
+	return " by " + who
+}
+
 func printVerification(e env, v *api.Verification) {
 	output.Detailf(e.stdout, "status %s", v.Status)
 	if v.TrustTier != "" {
 		output.Detailf(e.stdout, "tier   %s", v.TrustTier)
 	}
 	if v.RequestedAt != "" {
-		output.Detailf(e.stdout, "requested %s", v.RequestedAt)
+		output.Detailf(e.stdout, "requested %s%s", v.RequestedAt, byWhom(v.Requester()))
 	}
 	if v.ReviewedAt != "" {
-		output.Detailf(e.stdout, "reviewed  %s", v.ReviewedAt)
+		output.Detailf(e.stdout, "reviewed  %s%s", v.ReviewedAt, byWhom(v.Reviewer()))
 	}
 	if v.DecisionNote != "" {
 		output.Detailf(e.stdout, "reviewer: %s", v.DecisionNote)
@@ -223,8 +230,11 @@ func verifyList(e env, cfg config.Config, scope, status string, asJSON bool) int
 		if it.Title != "" {
 			output.Detailf(e.stdout, "%s", it.Title)
 		}
-		if scope == "queue" && it.KeyID != "" {
-			output.Detailf(e.stdout, "requested by %s %s", it.KeyID, it.RequestedAt)
+		if r := it.Requester(); scope == "queue" && r != "" {
+			output.Detailf(e.stdout, "requested by %s %s", r, it.RequestedAt)
+		}
+		if r := it.Reviewer(); r != "" {
+			output.Detailf(e.stdout, "reviewed by %s %s", r, it.ReviewedAt)
 		}
 		for _, c := range append(append([]api.ClientCheck{}, it.ServerChecks...), it.ClientChecks...) {
 			if c.Status != "pass" {
@@ -272,7 +282,10 @@ func verifyShow(e env, cfg config.Config, id string, asJSON bool) int {
 	}
 	output.Successf(e.stdout, "%s  %s", v.ID, orNone(v.Title))
 	output.Detailf(e.stdout, "page    %s", orNone(v.URL))
-	output.Detailf(e.stdout, "status  %s, requested by %s %s", v.Status, orNone(v.KeyID), v.RequestedAt)
+	output.Detailf(e.stdout, "status  %s, requested by %s %s", v.Status, orNone(v.Requester()), v.RequestedAt)
+	if r := v.Reviewer(); r != "" {
+		output.Detailf(e.stdout, "reviewed by %s %s", r, v.ReviewedAt)
+	}
 	if v.Note != "" {
 		output.Detailf(e.stdout, "publisher: %s", v.Note)
 	}

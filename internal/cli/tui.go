@@ -18,6 +18,7 @@ func runTUI(e env, args []string) int {
 	fs := flag.NewFlagSet("tui", flag.ContinueOnError)
 	fs.SetOutput(e.stderr)
 	apiBase := fs.String("api-base", "", "API base URL (overrides L80_API_BASE)")
+	onboarding := fs.Bool("onboarding", false, "open on the guided setup (it runs by itself the first time)")
 	if err := fs.Parse(args); err != nil {
 		return api.ExitUsage
 	}
@@ -29,6 +30,7 @@ func runTUI(e env, args []string) int {
 	err := tui.Run(tui.Deps{
 		Version: Version, Config: cfg, Client: newClient(cfg),
 		VastEnv: vastEnv, RunsDir: vast.RunsDir(), DashboardState: dashboardState(),
+		Usage: usageText, Onboard: *onboarding || config.LoadState().NeedsOnboarding(),
 	})
 	switch {
 	case errors.Is(err, tui.ErrNoTTY), errors.Is(err, term.ErrUnsupported):

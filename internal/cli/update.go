@@ -107,13 +107,13 @@ func (s releaseSource) latestTag() (string, *api.Error) {
 	resp, err := updateHTTP.Do(req)
 	if err != nil {
 		return "", api.Newf("E_NETWORK",
-			"Check the network and retry. If GitHub is unreachable, reinstall with `curl -fsSL https://launch80.com/install.sh | sh`.",
+			"Check the network and retry. If GitHub is unreachable, reinstall with `curl -fsSL https://www.launch80.com/install.sh | sh`.",
 			"could not reach the release index: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return "", api.Newf("E_NETWORK",
-			"Retry in a few minutes. If it persists, reinstall with `curl -fsSL https://launch80.com/install.sh | sh`.",
+			"Retry in a few minutes. If it persists, reinstall with `curl -fsSL https://www.launch80.com/install.sh | sh`.",
 			"release index returned HTTP %d", resp.StatusCode)
 	}
 
@@ -281,7 +281,7 @@ func runUpdate(e env, args []string) int {
 	target, err := currentExecutable()
 	if err != nil {
 		return fail(e, api.Newf("E_UPDATE_FAILED",
-			"Reinstall with `curl -fsSL https://launch80.com/install.sh | sh`.",
+			"Reinstall with `curl -fsSL https://www.launch80.com/install.sh | sh`.",
 			"could not locate the running binary: %v", err))
 	}
 
@@ -314,7 +314,7 @@ func runUpdate(e env, args []string) int {
 	if err := replaceExecutable(target, binData); err != nil {
 		return fail(e, api.Newf("E_UPDATE_FAILED",
 			fmt.Sprintf("Cannot write to %s. Rerun with permission to write there, or reinstall with "+
-				"`curl -fsSL https://launch80.com/install.sh | sh -s -- --prefix <writable dir>`.", filepath.Dir(target)),
+				"`curl -fsSL https://www.launch80.com/install.sh | sh -s -- --prefix <writable dir>`.", filepath.Dir(target)),
 			"could not replace %s: %v", target, err))
 	}
 	bin.Installed, bin.Path = true, target

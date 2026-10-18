@@ -16,12 +16,33 @@ those were development milestones and were never released on their own.
   From 0.4.0, run `L80 update` twice: the first run installs 1.0.0, the
   second syncs.
 
+- **Your AI agents can drive L80.** A new umbrella `l80` skill teaches an agent
+  the whole command surface, and `L80 skills link` installs skills for any
+  harness: `--target claude-code | agents (Codex, Cursor) | gemini | opencode |
+  detected`, or `--dir PATH`; `--all` installs every skill. `L80 skills targets`
+  shows what is found and installed; `L80 skills agents-md` prints an AGENTS.md
+  snippet for agents without skills. `L80 update` refreshes copies in every
+  harness, and its JSON skill rows gain `target`.
+- **Onboarding.** The first `L80 tui` opens a short guided setup: check the
+  tools, save a publish token, pick where to start, install skills for the
+  agents found. Skipping is remembered too (`~/.config/L80/state.json`).
+  `L80 onboard` or the sidebar runs it again.
+- The default server is **`https://www.launch80.com`**. The apex redirects
+  every request to www, and Go drops the token on that cross-host redirect, so
+  an `L80_API_BASE` of `https://launch80.com` is sent to www directly.
+- Verification shows **`requester_label` and `reviewer_label`**: who asked and
+  who reviewed are named by key label in `verify queue | show | status | mine`
+  and the console, falling back to key ids only when no label is sent.
 - `L80 vast`, `L80 pwdet` and `L80 dashboard` work out of the box: bbvastl80,
   pwdet and the AI command dashboard are public under github.com/launch80 and
   pinned at v0.1.0 (`L80 tools list`).
 - **`L80 tui` gets a sidebar.** Every screen is listed on the left; moving
   through the list previews each one live in the pane, enter opens it, esc
-  goes back. `1`-`8` jump, `?` opens help. Amber accent throughout.
+  goes back. `1`-`9` jump, `?` opens help. Amber accent throughout. Home
+  sits on top and the rest is A to Z; Vast is now **Rent (vast)**. New screens:
+  **About** (our story, the Discord, the Supporter page and the full command
+  directory), **Onboarding**, and two previews of what is coming,
+  **Recommendations** and **Train & Tune** (train, tune, quantize).
 - **Verification is a community workflow.** Any key sees other keys' requests
   (`L80 verify queue`, the console's new Verify screen) and can reproduce them:
   `L80 verify reproduce <id> --endpoint <url>` reruns BetterBench with the

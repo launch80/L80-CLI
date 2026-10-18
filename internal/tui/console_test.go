@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,8 @@ func newTestConsole(t *testing.T) *Console {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cfg := config.Config{BaseURL: srv.URL}
 	c := &Console{d: Deps{Version: "0.7.0", Config: cfg, Client: api.NewClient(srv.URL, "", "test"),
-		VastEnv: func(string) ([]string, error) { return nil, nil }, RunsDir: t.TempDir(), DashboardState: t.TempDir()}}
+		VastEnv: func(string) ([]string, error) { return nil, nil }, RunsDir: t.TempDir(), DashboardState: t.TempDir(),
+		Usage: "L80 — test\n\nUsage:\n  Tools (free, no token):\n  L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering (Poisoned Weights Detector)\n"}}
 	c.prog = NewProgram(c)
 	c.th = widgets.DefaultTheme(style.NoColor, true)
 	c.side = sidebar
@@ -81,7 +83,7 @@ func TestHomeAtSeveralSizes(t *testing.T) {
 	for _, sz := range [][2]int{{80, 24}, {120, 40}, {60, 16}} {
 		feed(c, SizeMsg{sz[0], sz[1]})
 		got := checkFrame(t, c.View(sz[0], sz[1]), sz[0], sz[1])
-		for _, want := range []string{"L80 console", "Benchmark", "Dashboard", "Server, token and tools at a glance.", "reachable", "↑↓ move"} {
+		for _, want := range []string{"L80 console", "Benchmark", "Dashboard", "Server, token and tools", "reachable", "↑↓ move"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("%dx%d: missing %q\n%s", sz[0], sz[1], want, got)
 			}
@@ -106,7 +108,7 @@ func TestNavigationAndDialog(t *testing.T) {
 	// Vast: starting a real run asks first, quoting the spec's cost caps.
 	spec := filepath.Join(t.TempDir(), "run.yaml")
 	os.WriteFile(spec, []byte("name: t\ngpu:\n  names: [H100]\n  count: 2\n  max_dph: 6.5\nbudget:\n  max_total_usd: 20\n"), 0o644)
-	feed(c, input.Key{Code: input.Rune, Rune: '3'})
+	feed(c, input.Key{Code: input.Rune, Rune: '9'})
 	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
 	c.vast.form.Fields[0].Input.Set(spec)
 	c.vast.form.Fields[3].On = false // not a dry run
@@ -143,7 +145,7 @@ func TestBenchJobStreamsAndSummarises(t *testing.T) {
 	os.Chdir(t.TempDir())
 	defer os.Chdir(wd)
 
-	feed(c, input.Key{Code: input.Rune, Rune: '2'})
+	feed(c, input.Key{Code: input.Rune, Rune: '3'})
 	c.bench.form.Fields[0].Input.Set("http://h/v1")
 	c.bench.form.Fields[1].Input.Set("m")
 	c.bench.form.Fields[5].Input.Set("sk-secret")
@@ -183,13 +185,14 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	feed(c, SizeMsg{100, 30})
 	drain(c, c.Init(), 0)
 	// Moving the sidebar previews each screen without taking the keyboard.
-	feed(c, input.Key{Code: input.Down})
-	feed(c, input.Key{Code: input.Down})
+	for range 8 {
+		feed(c, input.Key{Code: input.Down})
+	}
 	if c.scr != scrVast || c.paneFocus {
 		t.Fatalf("preview: scr=%v focus=%v", c.scr, c.paneFocus)
 	}
 	view := checkFrame(t, c.View(100, 30), 100, 30)
-	for _, want := range []string{"Rent a Vast.ai GPU", "Home", "Tools", "enter open"} {
+	for _, want := range []string{"Rent a Vast.ai GPU", "Home", "Rent (vast)", "Tools", "enter open", "1-9 jump"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q:\n%s", want, view)
 		}
@@ -200,7 +203,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 		t.Fatal("enter focuses the pane")
 	}
 	feed(c, input.Key{Code: input.Esc})
-	if c.paneFocus || c.scr != scrVast || c.sel != 2 {
+	if c.paneFocus || c.scr != scrVast || c.sel != 8 {
 		t.Fatalf("esc: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
 	}
 	// Up from the top wraps to the bottom; enter on Home keeps the sidebar.
@@ -210,7 +213,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 		t.Error("Home has nothing to operate; the sidebar keeps focus")
 	}
 	feed(c, input.Key{Code: input.Up})
-	if c.scr != scrTools {
+	if c.scr != scrVerify {
 		t.Errorf("wrap: scr=%v", c.scr)
 	}
 }
@@ -227,7 +230,7 @@ func TestVerifyScreenQueueAndStamp(t *testing.T) {
 		case r.URL.Path == "/api/v1/keys/me":
 			fmt.Fprint(w, `{"ok":true,"data":{"key_id":"k2","is_verifier":true}}`)
 		case r.URL.Path == "/api/v1/verifications" && r.URL.Query().Get("scope") == "queue":
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":"v1","artifact_guid":"g1","url":"https://l80.test/a/g1","title":"Qwen3-8B on vLLM","key_id":"k1","status":"requested","requested_at":"2026-10-17T12:00:00Z"}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":"v1","artifact_guid":"g1","url":"https://l80.test/a/g1","title":"Qwen3-8B on vLLM","requester_label":"lab-mi300","status":"requested","requested_at":"2026-10-17T12:00:00Z"}]}`)
 		case r.URL.Path == "/api/v1/verifications":
 			fmt.Fprint(w, `{"ok":true,"data":[]}`)
 		case r.URL.Path == "/api/v1/artifacts/g1/payload":
@@ -245,9 +248,10 @@ func TestVerifyScreenQueueAndStamp(t *testing.T) {
 	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
 	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
 	feed(c, SizeMsg{120, 36})
-	feed(c, input.Key{Code: input.Rune, Rune: '7'})
+	feed(c, input.Key{Code: input.End}) // Verify is last; past the number keys
+	feed(c, input.Key{Code: input.Enter})
 	view := checkFrame(t, c.View(120, 36), 120, 36)
-	for _, want := range []string{"Verify", "Queue (1)", "Qwen3-8B on vLLM", "verifier"} {
+	for _, want := range []string{"Verify", "Queue (1)", "Qwen3-8B on vLLM", "verifier", "lab-mi300"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("queue missing %q:\n%s", want, view)
 		}
@@ -271,5 +275,130 @@ func TestVerifyScreenQueueAndStamp(t *testing.T) {
 	}
 	if !strings.Contains(c.flash, "verified") {
 		t.Errorf("flash = %q", c.flash)
+	}
+}
+
+func TestSidebarIsAlphabetical(t *testing.T) {
+	if sidebar[0] != scrHome {
+		t.Fatal("Home stays on top")
+	}
+	names := []string{}
+	for _, s := range sidebar[1:] {
+		names = append(names, strings.ToLower(labels[s]))
+	}
+	if !slices.IsSorted(names) {
+		t.Errorf("sidebar after Home is not A-Z: %v", names)
+	}
+}
+
+func TestAboutAndComingSoon(t *testing.T) {
+	c := newTestConsole(t)
+	c.side = sidebar
+	feed(c, SizeMsg{80, 24})
+	feed(c, input.Key{Code: input.Rune, Rune: '2'})
+	if c.scr != scrAbout || !c.paneFocus {
+		t.Fatalf("scr=%v", c.scr)
+	}
+	view := checkFrame(t, c.View(80, 24), 80, 24)
+	if !strings.Contains(view, "Our story") || !strings.Contains(view, "more lines") {
+		t.Errorf("about top:\n%s", view)
+	}
+	all := strings.Join(c.about.lines(c, 60), "\n")
+	for _, want := range []string{"discord.gg/launch80", "launch80.com/supporter"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("about missing %q", want)
+		}
+	}
+	feed(c, input.Key{Code: input.End})
+	view = checkFrame(t, c.View(80, 24), 80, 24)
+	for _, want := range []string{"Command directory", "L80 pwdet scan", "Check weights"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("about end missing %q:\n%s", want, view)
+		}
+	}
+	feed(c, input.Key{Code: input.Esc})
+	feed(c, input.Key{Code: input.Rune, Rune: '8'})
+	view = checkFrame(t, c.View(80, 24), 80, 24)
+	if c.scr != scrRecs || !strings.Contains(view, "Coming soon") {
+		t.Errorf("recommendations:\n%s", view)
+	}
+	feed(c, input.Key{Code: input.Esc})
+	for c.scr != scrTrain {
+		feed(c, input.Key{Code: input.Down})
+	}
+	view = checkFrame(t, c.View(80, 24), 80, 24)
+	if !strings.Contains(view, "Train, Tune, Quantize") || !strings.Contains(view, "Train & Tune") || !strings.Contains(view, "Recommendations") {
+		t.Errorf("train:\n%s", view)
+	}
+}
+
+func TestOnboardingFlow(t *testing.T) {
+	c := newTestConsole(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	os.MkdirAll(filepath.Join(home, ".codex"), 0o755)
+	for _, n := range []string{"L80_BETTERBENCH", "L80_VAST", "L80_PWDET", "L80_DASHBOARD"} {
+		t.Setenv(n, "true")
+	}
+	c.d.Onboard = true
+	c.d.Config.CredPath = config.CredentialsPath()
+	feed(c, SizeMsg{100, 30})
+	drain(c, c.Init(), 0)
+	if c.scr != scrOnboard || !c.paneFocus {
+		t.Fatalf("first run opens onboarding: scr=%v", c.scr)
+	}
+	enter := input.Key{Code: input.Enter}
+	feed(c, enter) // welcome -> machine
+	view := checkFrame(t, c.View(100, 30), 100, 30)
+	if !strings.Contains(view, "Step 2 of 6") || !strings.Contains(view, "betterbench") {
+		t.Errorf("machine step:\n%s", view)
+	}
+	feed(c, enter) // -> token
+	feed(c, PasteMsg{Text: "not-a-token"})
+	feed(c, enter)
+	if c.onb.step != obToken || !c.onb.tokenBad {
+		t.Fatal("a malformed token must not be saved")
+	}
+	c.onb.token.Set("L80_k7_secret")
+	feed(c, enter)
+	if c.onb.step != obGoal || !c.d.Config.HasToken() {
+		t.Fatalf("token: step=%d msg=%q", c.onb.step, c.onb.tokenMsg)
+	}
+	if strings.Contains(strings.Join(c.View(100, 30), "\n"), "secret") {
+		t.Error("token shown")
+	}
+	feed(c, input.Key{Code: input.Down}) // rented GPU
+	feed(c, enter)                       // -> agents
+	if c.onb.step != obAgents {
+		t.Fatalf("step=%d", c.onb.step)
+	}
+	feed(c, enter) // install into the detected harness
+	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", "l80", "SKILL.md")); err != nil {
+		t.Errorf("skill not installed for the detected harness: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".gemini")); err == nil {
+		t.Error("installed for a harness that is not there")
+	}
+	feed(c, enter) // -> done
+	if config.LoadState().NeedsOnboarding() {
+		t.Error("finishing must be recorded")
+	}
+	feed(c, enter)
+	if c.scr != scrVast || c.paneFocus || c.side[c.sel] != scrVast {
+		t.Errorf("lands on the chosen screen: scr=%v sel=%d", c.scr, c.sel)
+	}
+}
+
+func TestOnboardingSkip(t *testing.T) {
+	c := newTestConsole(t)
+	feed(c, SizeMsg{100, 30})
+	drain(c, c.startOnboarding(), 0)
+	feed(c, input.Key{Code: input.Esc})
+	if c.scr != scrHome || c.paneFocus || !strings.Contains(c.flash, "L80 onboard") {
+		t.Errorf("skip: scr=%v flash=%q", c.scr, c.flash)
+	}
+	if s := config.LoadState(); s.NeedsOnboarding() || !s.OnboardSkipped {
+		t.Errorf("skip must be recorded: %+v", s)
 	}
 }

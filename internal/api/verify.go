@@ -45,6 +45,10 @@ type Verification struct {
 	Note         string `json:"note,omitempty"`
 	DecisionNote string `json:"decision_note,omitempty"`
 	ReviewerID   string `json:"reviewer_id,omitempty"`
+	// The labels name the requesting and reviewing keys for other people;
+	// the server sends them in place of key ids it keeps private.
+	RequesterLabel string `json:"requester_label,omitempty"`
+	ReviewerLabel  string `json:"reviewer_label,omitempty"`
 	// Mine is true when the request was made with the calling key: a key
 	// never sees its own requests in the queue and may not decide on them.
 	Mine         bool          `json:"mine,omitempty"`
@@ -52,6 +56,21 @@ type Verification struct {
 	TrustTier    string        `json:"trust_tier,omitempty"`
 	ClientChecks []ClientCheck `json:"client_checks,omitempty"`
 	ServerChecks []ClientCheck `json:"server_checks,omitempty"`
+}
+
+// Requester names who asked for the review: the key's label, else its id.
+func (v Verification) Requester() string { return firstOf(v.RequesterLabel, v.KeyID) }
+
+// Reviewer names the verifier that decided, once one has.
+func (v Verification) Reviewer() string { return firstOf(v.ReviewerLabel, v.ReviewerID) }
+
+func firstOf(s ...string) string {
+	for _, x := range s {
+		if x != "" {
+			return x
+		}
+	}
+	return ""
 }
 
 func (c *Client) RequestVerification(guid string, req VerificationRequest) (*Verification, *Error) {
