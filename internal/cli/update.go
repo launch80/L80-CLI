@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -212,13 +213,54 @@ func replaceExecutable(target string, bin []byte) error {
 	return nil
 }
 
+// binaryState is the binary half of the update report. The JSON keys predate
+// the tool and skill sync and are kept as they were.
+type binaryState struct {
+	Current         string `json:"current"`
+	Latest          string `json:"latest"`
+	UpdateAvailable bool   `json:"update_available"`
+	Installed       bool   `json:"installed"`
+	Path            string `json:"path,omitempty"`
+}
+
+// reexecUpdate runs the binary that was just installed, so the tools and
+// skills it ships (not this process's) are what get synced. Swapped in tests.
+var reexecUpdate = func(path string, args []string, e env) (int, error) {
+	cmd := exec.Command(path, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, e.stdout, e.stderr
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return 0, nil
+}
+
+// runUpdate brings everything L80 manages up to date in one command: the
+// binary, the pinned tools (fetched now, and a uv-installed copy on PATH
+// upgraded), and the skills installed from it. It exits 0 when nothing is
+// left to do and ExitActionNeeded when something needs a person, each item
+// spelled out in `actions`.
 func runUpdate(e env, args []string) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(e.stderr)
 	asJSON := fs.Bool("json", false, "emit machine-readable JSON")
-	checkOnly := fs.Bool("check", false, "report whether an update is available without installing it")
+	checkOnly := fs.Bool("check", false, "report what is out of date without changing anything")
+	noPrefetch := fs.Bool("no-prefetch", false, "do not download pinned tools now; each downloads on first use")
+	resumedFrom := fs.String("resumed-from", "", "set by the binary that just installed this one (internal)")
 	if err := fs.Parse(args); err != nil {
 		return api.ExitUsage
+	}
+	opts := syncOpts{apply: !*checkOnly, prefetch: !*noPrefetch}
+
+	if *resumedFrom != "" {
+		target, _ := currentExecutable()
+		return finishUpdate(e, binaryState{
+			Current: *resumedFrom, Latest: Version, UpdateAvailable: true, Installed: true, Path: target,
+		}, opts, *asJSON)
 	}
 
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
@@ -231,22 +273,9 @@ func runUpdate(e env, args []string) int {
 	if apiErr != nil {
 		return fail(e, apiErr)
 	}
-	available := newerThan(latest, Version)
-
-	if *checkOnly || !available {
-		if *asJSON {
-			return emitJSON(e, map[string]any{
-				"current": Version, "latest": strings.TrimPrefix(latest, "v"),
-				"update_available": available, "installed": false,
-			})
-		}
-		if available {
-			output.Successf(e.stdout, "update available: %s -> %s", Version, strings.TrimPrefix(latest, "v"))
-			output.Detailf(e.stdout, "run `L80 update` to install it")
-		} else {
-			output.Successf(e.stdout, "L80 %s is up to date", Version)
-		}
-		return api.ExitOK
+	bin := binaryState{Current: Version, Latest: strings.TrimPrefix(latest, "v"), UpdateAvailable: newerThan(latest, Version)}
+	if *checkOnly || !bin.UpdateAvailable {
+		return finishUpdate(e, bin, opts, *asJSON)
 	}
 
 	target, err := currentExecutable()
@@ -278,24 +307,79 @@ func runUpdate(e env, args []string) int {
 			"checksum mismatch for %s", asset))
 	}
 
-	bin, err := extractBinary(tgz)
+	binData, err := extractBinary(tgz)
 	if err != nil {
 		return fail(e, api.Newf("E_UPDATE_FAILED", "Retry once.", "bad release archive: %v", err))
 	}
-	if err := replaceExecutable(target, bin); err != nil {
+	if err := replaceExecutable(target, binData); err != nil {
 		return fail(e, api.Newf("E_UPDATE_FAILED",
 			fmt.Sprintf("Cannot write to %s. Rerun with permission to write there, or reinstall with "+
 				"`curl -fsSL https://launch80.com/install.sh | sh -s -- --prefix <writable dir>`.", filepath.Dir(target)),
 			"could not replace %s: %v", target, err))
 	}
+	bin.Installed, bin.Path = true, target
 
+	child := []string{"update", "--resumed-from", Version}
 	if *asJSON {
-		return emitJSON(e, map[string]any{
-			"current": Version, "latest": strings.TrimPrefix(latest, "v"),
-			"update_available": true, "installed": true, "path": target,
-		})
+		child = append(child, "--json")
 	}
-	output.Successf(e.stdout, "updated L80 %s -> %s", Version, strings.TrimPrefix(latest, "v"))
-	output.Detailf(e.stdout, "installed to %s", target)
-	return api.ExitOK
+	if *noPrefetch {
+		child = append(child, "--no-prefetch")
+	}
+	code, err := reexecUpdate(target, child, e)
+	if err == nil {
+		return code
+	}
+	// The new binary is in place but would not start here; report the
+	// binary and leave the sync to the next run rather than doing it with
+	// this release's stale manifest.
+	return emitUpdate(e, bin, syncResult{Actions: []string{
+		fmt.Sprintf("Run `L80 update` again to bring tools and skills current; the new binary did not start in this process: %v", err),
+	}}, *asJSON, false)
+}
+
+// finishUpdate syncs tools and skills and reports the whole state.
+func finishUpdate(e env, bin binaryState, opts syncOpts, asJSON bool) int {
+	return emitUpdate(e, bin, syncEverything(e, opts), asJSON, !opts.apply)
+}
+
+func emitUpdate(e env, bin binaryState, res syncResult, asJSON, checkOnly bool) int {
+	actions := res.Actions
+	if checkOnly && (bin.UpdateAvailable || res.Pending) {
+		actions = append([]string{"Run `L80 update`: it installs what --check found and reports anything left."}, actions...)
+	}
+	if actions == nil {
+		actions = []string{}
+	}
+	upToDate := len(actions) == 0
+	code := api.ExitOK
+	if !upToDate && !checkOnly {
+		code = api.ExitActionNeeded
+	}
+
+	if asJSON {
+		emitJSON(e, map[string]any{
+			"current": bin.Current, "latest": bin.Latest,
+			"update_available": bin.UpdateAvailable, "installed": bin.Installed, "path": bin.Path,
+			"tools": res.Tools, "skills": res.Skills, "actions": actions, "up_to_date": upToDate,
+		})
+		return code
+	}
+
+	switch {
+	case bin.Installed:
+		output.Successf(e.stdout, "updated L80 %s -> %s", bin.Current, bin.Latest)
+		output.Detailf(e.stdout, "installed to %s", bin.Path)
+	case bin.UpdateAvailable:
+		output.Successf(e.stdout, "update available: %s -> %s", bin.Current, bin.Latest)
+	default:
+		output.Successf(e.stdout, "L80 %s is up to date", bin.Current)
+	}
+	printSync(e, syncResult{Tools: res.Tools, Skills: res.Skills, Actions: actions})
+	if upToDate {
+		output.Successf(e.stdout, "everything is current")
+	} else if !checkOnly {
+		output.Detailf(e.stdout, "%d action(s) left that L80 cannot do itself", len(actions))
+	}
+	return code
 }

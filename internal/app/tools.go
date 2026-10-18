@@ -27,6 +27,13 @@ type ToolStatus struct {
 // the uvx bootstrap) is asked for its version too; for a uvx runner that
 // downloads and builds the pinned commit on first use.
 func ToolsCheck(names []string, probe bool) ([]ToolStatus, error) {
+	return ToolsCheckSelective(names, func(pytool.Runner) bool { return probe })
+}
+
+// ToolsCheckSelective is ToolsCheck with the probe decided per runner, so a
+// caller can ask an env override for its version without making a uvx
+// bootstrap download the pinned commit.
+func ToolsCheckSelective(names []string, probe func(pytool.Runner) bool) ([]ToolStatus, error) {
 	if len(names) == 0 {
 		names = pytool.Names()
 	}
@@ -48,7 +55,7 @@ func ToolsCheck(names []string, probe bool) ([]ToolStatus, error) {
 			out = append(out, st)
 			continue
 		}
-		if probe && r.Version == "" && len(t.VersionCmd) > 0 {
+		if r.Version == "" && len(t.VersionCmd) > 0 && probe(r) {
 			if perr := r.Probe(); perr != nil {
 				r.Notes = append(r.Notes, "version probe failed: "+perr.Error())
 			}

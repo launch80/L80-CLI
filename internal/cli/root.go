@@ -128,7 +128,7 @@ Usage:
   L80 skills link --target claude-code [--dev]   Install a skill for an agent
   L80 auth status                                Show the resolved endpoint and key
   L80 doctor                                     Check connectivity, config and tools
-  L80 update [--check] [--json]                  Install the latest release in place
+  L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
   L80 version                                    Print the version
 
 Environment:

@@ -186,6 +186,18 @@ Rules specific to this template:
   "Self-reported — not verified by launch80" badge. Tell the user this.
 - Pages are immutable. To change something, publish again and share the new URL.
 
+## Keeping L80 current
+
+`L80 update --json` brings everything up to date in one command: the L80
+binary, the pinned tools (BetterBench, bbvastl80, pwdet, the dashboard) and
+the installed L80 skills. Exit 0 with `"up_to_date": true` means done. Exit 12
+means it did what it could: each `actions[]` entry is one exact instruction it
+could not carry out itself, most often an old override variable in a shell
+profile. Show those to the user and ask before editing their profile. If the
+output has no `actions` key, the old L80 just replaced itself: run
+`L80 update --json` once more. `L80 update --check --json` reports the same
+thing without changing anything.
+
 ## If the command fails
 
 Read the `error:` code and the `remedy:` line, then act on them.
@@ -205,7 +217,8 @@ Read the `error:` code and the `remedy:` line, then act on them.
   the sections and retry.
 - `E_NETWORK` — run `L80 doctor`, then report the failure to the user.
 - Any error whose remedy seems wrong for the situation, or a code this list does
-  not mention — the CLI may be out of date. Run `L80 update`, then retry once.
+  not mention — the CLI may be out of date. Run `L80 update --json`, act on its
+  `actions`, then retry once.
 
 To find a page published earlier, run `L80 history` (newest first; `--all`
 for everything, `--json` for machine-readable output). Never ask the user to

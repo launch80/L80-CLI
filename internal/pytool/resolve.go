@@ -148,6 +148,10 @@ func defaultProbeVersion(argv []string) (string, error) {
 	return v, nil
 }
 
+// ProbeVersion runs argv (an executable plus its version arguments) and
+// returns the version it prints.
+func ProbeVersion(argv []string) (string, error) { return probeVersion(argv) }
+
 // Probe runs the resolved tool's version command and fills Runner.Version.
 // Used by `L80 tools check` for runners that were not probed during Resolve
 // (the env override and the uvx bootstrap).

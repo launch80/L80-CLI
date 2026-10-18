@@ -5,6 +5,17 @@
 First stable release. It ships everything listed under 0.5.0 to 0.8.0 below;
 those were development milestones and were never released on their own.
 
+- **`L80 update` updates everything**, not just the binary: after replacing
+  itself it hands over to the new binary, which builds the pinned tools now,
+  upgrades a uv-installed tool on PATH that is older than its pin, and
+  refreshes the installed L80 skills. What it cannot change (an override such
+  as `L80_BETTERBENCH` pointing at an old copy) comes back as an action that
+  names the profile line setting it. `--json` gives the whole report;
+  `--check` reports without changing anything; `--no-prefetch` skips the
+  downloads. New exit code 12: finished, with actions left for a person.
+  From 0.4.0, run `L80 update` twice: the first run installs 1.0.0, the
+  second syncs.
+
 - `L80 vast`, `L80 pwdet` and `L80 dashboard` work out of the box: bbvastl80,
   pwdet and the AI command dashboard are public under github.com/launch80 and
   pinned at v0.1.0 (`L80 tools list`).

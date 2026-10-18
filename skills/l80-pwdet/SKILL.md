@@ -51,3 +51,15 @@ Exit 11 means L80 could not start pwdet (`L80 tools check pwdet`).
 - A published page never carries the hostname, local paths or private endpoints.
   L80 removes them and refuses to publish if any remain.
 - Findings the publisher disclosed are downgraded one severity step, never hidden.
+
+## Keeping L80 current
+
+`L80 update --json` brings everything up to date in one command: the L80
+binary, the pinned tools (BetterBench, bbvastl80, pwdet, the dashboard) and
+the installed L80 skills. Exit 0 with `"up_to_date": true` means done. Exit 12
+means it did what it could: each `actions[]` entry is one exact instruction it
+could not carry out itself, most often an old override variable in a shell
+profile. Show those to the user and ask before editing their profile. If the
+output has no `actions` key, the old L80 just replaced itself: run
+`L80 update --json` once more. `L80 update --check --json` reports the same
+thing without changing anything.

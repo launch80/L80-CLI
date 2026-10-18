@@ -24,6 +24,10 @@ const (
 	// pwdet, the dashboard) cannot be run here. A wrapped tool's own non-zero
 	// exit status is passed through unchanged and never maps to this.
 	ExitToolUnavailable = 11
+	// ExitActionNeeded means `L80 update` did what it could and something is
+	// left that only a person can change (e.g. a stale override in a shell
+	// profile); the report's actions say exactly what.
+	ExitActionNeeded = 12
 )
 
 // Detail is one field-level validation problem.

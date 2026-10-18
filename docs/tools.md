@@ -58,7 +58,8 @@ Otherwise the command fails with `E_TOOL_UNAVAILABLE` (exit 11) and a remedy.
 4. Bump `VERSION` in the Makefile and `Version` in `internal/cli/version.go`, add a
    CHANGELOG entry, commit, and push a `v*` tag. The release workflow runs the tests and
    the manifest check before it builds anything.
-5. Users run `L80 update`. The next invocation of the tool bootstraps the new pin.
+5. Users run `L80 update`. It hands over to the new binary, which builds the new pins
+   through uvx and upgrades a uv-installed copy on PATH that is older than its pin.
 
 BetterBench is upstream, not ours: bump its pin by hand (tag and commit from
 https://github.com/GGZ14/BetterBench/tags), read its CHANGELOG for results.json

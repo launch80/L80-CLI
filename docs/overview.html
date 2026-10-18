@@ -206,7 +206,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       <li><b>4</b><span>Python tools behind one CLI</span></li>
       <li><b>3</b><span>launch80 page templates</span></li>
       <li><b>4</b><span>release builds: macOS and Linux, amd64 and arm64</span></li>
-      <li><b>12</b><span>exit codes, each with a remedy line</span></li>
+      <li><b>13</b><span>exit codes, each with a remedy line</span></li>
     </ul>
   </div>
 </div>
@@ -304,10 +304,11 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
       <article id="install">
         <h3>Install and update</h3>
         <div class="cmd"><pre>curl -fsSL https://launch80.com/install.sh | sh</pre><button class="copy" type="button">Copy</button></div>
-        <div class="cmd"><pre class="multi">L80 update            # download the latest release, verify its checksum, replace the binary
-L80 update --check    # only report whether a newer release exists
+        <div class="cmd"><pre class="multi">L80 update                 # the binary, the pinned tools and the installed skills
+L80 update --check         # report what is out of date; change nothing
+L80 update --json          # the same report, for an agent
 L80 version</pre><button class="copy" type="button">Copy</button></div>
-        <p>Release builds exist for macOS and Linux on amd64 and arm64. Anywhere else, clone <a href="https://github.com/launch80/L80-CLI">launch80/L80-CLI</a> and run <code>make install</code>. Each release also pins new tool versions, so <code>L80 update</code> is how you get a newer BetterBench, bbvastl80, pwdet or dashboard.</p>
+        <p>Release builds exist for macOS and Linux on amd64 and arm64. Anywhere else, clone <a href="https://github.com/launch80/L80-CLI">launch80/L80-CLI</a> and run <code>make install</code>. One command brings the whole setup current. <code>L80 update</code> replaces the binary after checking its checksum, builds the newly pinned tools, upgrades an older uv-installed copy on your PATH, and refreshes the skills you installed. Anything it cannot change itself, such as an override variable in your shell profile pointing at an old tool, comes back as an exact instruction naming the file and line. Coming from 0.4.0, run it twice: the first run installs 1.0.0 and the second syncs.</p>
       </article>
 
       <article id="config">
@@ -524,7 +525,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td><code>L80 skills print|link</code></td><td>Agent skills</td></tr>
             <tr><td><code>L80 auth status</code></td><td>The server and a masked token</td></tr>
             <tr><td><code>L80 doctor</code></td><td>Check connectivity, config and tools</td></tr>
-            <tr><td><code>L80 update</code></td><td>Install the latest release in place</td></tr>
+            <tr><td><code>L80 update</code></td><td>Update L80, its pinned tools and installed skills</td></tr>
             <tr><td><code>L80 version</code></td><td>Print the version</td></tr>
           </tbody>
         </table></div>
@@ -549,6 +550,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td class="num">9</td><td>Payload too large</td></tr>
             <tr><td class="num">10</td><td>Unknown or missing template</td></tr>
             <tr><td class="num">11</td><td>A tool L80 runs is not available here (<code>E_TOOL_UNAVAILABLE</code>)</td></tr>
+            <tr><td class="num">12</td><td><code>L80 update</code> finished, and its report lists something only a person can change</td></tr>
           </tbody>
         </table></div>
         <p>Wrapped tools keep their own exit codes once they start. When <code>L80 pwdet scan</code> exits 2, that is pwdet reporting a tampered model, not an L80 usage error.</p>
