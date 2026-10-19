@@ -231,7 +231,7 @@ func (s *histScreen) load(c *Console) Cmd {
 		if apiErr == nil {
 			var out []history.Entry
 			for _, a := range page.Artifacts {
-				out = append(out, history.Entry{GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, Title: a.Title, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier})
+				out = append(out, history.Entry{GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, Title: a.Title, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier, RunClass: a.RunClass})
 			}
 			return histLoaded{entries: out, source: "server"}
 		}
@@ -254,13 +254,13 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 		}
 	case histLoaded:
 		s.loading, s.entries, s.source, s.err = false, v.entries, v.source, v.err
-		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Title"}}}
+		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Class", Width: 6}, {Title: "Title"}}}
 		for _, e := range v.entries {
 			when := strings.Replace(e.CreatedAt, "T", " ", 1)
 			if len(when) > 16 {
 				when = when[:16]
 			}
-			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.Title)})
+			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.RunClass), orDash(e.Title)})
 		}
 	case KeyMsg:
 		if v.Code == input.Rune && v.Rune == 'v' && s.table.Cursor < len(s.entries) {
@@ -300,7 +300,7 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 		e := s.entries[s.table.Cursor]
 		lines := []string{head, "", t.R(t.Title, style.Sanitize(orDash(e.Title))), "",
 			kv(t, "url", style.Sanitize(e.URL)), kv(t, "template", e.TemplateID), kv(t, "tier", orDash(e.TrustTier)),
-			kv(t, "published", e.CreatedAt), kv(t, "guid", e.GUID)}
+			kv(t, "class", orDash(e.RunClass)), kv(t, "published", e.CreatedAt), kv(t, "guid", e.GUID)}
 		if e.SourcePath != "" {
 			lines = append(lines, kv(t, "from file", style.Sanitize(e.SourcePath)))
 		}

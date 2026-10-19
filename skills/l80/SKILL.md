@@ -34,7 +34,7 @@ drive L80 themselves unless they want to.
 | Goal | Command |
 |---|---|
 | Is everything set up? | `L80 doctor`, `L80 auth status`, `L80 tools check --json` |
-| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> [--quick] [--note k=v]` |
+| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> [--quick] [--note k=v]` (quick: 5 passes, verifiable only with a reproduction) |
 | Publish an existing BetterBench file | `L80 betterbench --results results.json` |
 | Publish any other report | `L80 publish report.json --template <id> [--dry-run] [--json]` (see `l80-test-report`) |
 | List templates | `L80 templates list --json` |

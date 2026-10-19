@@ -111,6 +111,7 @@ func runVerify(e env, args []string) int {
 				output.Successf(e.stdout, "not verifiable yet: fix the failed checks and publish a new run")
 			} else {
 				output.Successf(e.stdout, "ready to request verification")
+				explainClass(e, t.Class, t.Passes)
 				if t.GUID != "" {
 					output.Detailf(e.stdout, "L80 verify request %s --note \"how to reproduce it\"", t.URL)
 				} else {
@@ -145,6 +146,7 @@ func runVerify(e env, args []string) int {
 		return emitJSON(e, v)
 	}
 	output.Successf(e.stdout, "verification requested for %s", orNone(t.URL))
+	explainClass(e, t.Class, t.Passes)
 	printVerification(e, v)
 	return api.ExitOK
 }
@@ -226,7 +228,7 @@ func verifyList(e env, cfg config.Config, scope, status string, asJSON bool) int
 		}
 	}
 	for _, it := range items {
-		output.Successf(e.stdout, "%s  %-10s %s", it.ID, it.Status, orNone(it.URL))
+		output.Successf(e.stdout, "%s  %-10s %-5s %s", it.ID, it.Status, orDash(it.RunClass), orNone(it.URL))
 		if it.Title != "" {
 			output.Detailf(e.stdout, "%s", it.Title)
 		}
@@ -297,6 +299,10 @@ func verifyShow(e env, cfg config.Config, id string, asJSON bool) int {
 		}
 	}
 	output.Detailf(e.stdout, "betterbench %s, %d passes per category, %d warmup, phases %s", plan.Version, plan.RunsPerCategory, plan.Warmup, strings.Join(plan.Phases, ", "))
+	output.Detailf(e.stdout, "class       %s", plan.Class)
+	if plan.Class == betterbench.ClassQuick {
+		output.Detailf(e.stdout, "a quick run is stamped only after a reproduction within quick tolerances, on medians")
+	}
 	output.Successf(e.stdout, "published figures")
 	for _, m := range plan.Headline {
 		output.Detailf(e.stdout, "%-22s %s %s", m.Label, m.Value, m.Unit)
@@ -379,10 +385,22 @@ func verifyDecide(e env, cfg config.Config, sub, id, note, reason string, accept
 	}
 	d := api.Decision{Decision: "rejected", Note: reason}
 	if sub == "approve" {
+		quick := runClass(client, v) == betterbench.ClassQuick
 		rep, err := app.LoadReproduction(id)
 		if err != nil {
 			rep = nil
+			if quick {
+				return fail(e, api.Newf("E_REPRODUCTION_REQUIRED", fmt.Sprintf("Run `L80 verify reproduce %s --endpoint <url>` first; a quick run is stamped only against a reproduction.", id),
+					"%s is a quick run and there is no reproduction of it on this machine", id))
+			}
 			output.Detailf(e.stderr, "stamping on review alone: no reproduction of %s on this machine (L80 verify reproduce %s --endpoint <url> adds one)", id, id)
+		}
+		if rep != nil && !rep.WithinTolerance && quick {
+			for _, l := range app.FormatDeltas(rep.Metrics) {
+				output.Detailf(e.stderr, "%s", l)
+			}
+			return fail(e, api.Newf("E_OUTSIDE_TOLERANCE", "Reject it, or reproduce again; a quick run cannot be stamped with --accept-differences.",
+				"your reproduction of this quick run differs from the published figures"))
 		}
 		if rep != nil && !rep.WithinTolerance && !accept {
 			for _, l := range app.FormatDeltas(rep.Metrics) {
@@ -402,4 +420,35 @@ func verifyDecide(e env, cfg config.Config, sub, id, note, reason string, accept
 	}
 	output.Successf(e.stdout, "%s: %s", d.Decision, orNone(out.URL))
 	return api.ExitOK
+}
+
+// explainClass says what kind of stamp a run can get.
+func explainClass(e env, class string, passes int) {
+	if class == betterbench.ClassQuick {
+		output.Detailf(e.stdout, "quick run (%d passes): a verifier must reproduce it before stamping; the badge reads \"Verified by Launch80 · quick run (%d passes)\" and compares medians only", passes, passes)
+	}
+}
+
+// runClass is the request's class: the server's, or derived from the page
+// when an older server leaves it out. "" when neither is available.
+func runClass(client *api.Client, v *api.Verification) string {
+	if v.RunClass != "" {
+		return v.RunClass
+	}
+	payload, apiErr := client.ArtifactPayload(v.ArtifactGUID)
+	if apiErr != nil {
+		return ""
+	}
+	plan, err := app.PlanFrom(payload)
+	if err != nil {
+		return ""
+	}
+	return plan.Class
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }

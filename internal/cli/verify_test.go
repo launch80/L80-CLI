@@ -297,3 +297,62 @@ func slowedCopy(t *testing.T, path string, f float64) string {
 	os.WriteFile(out, b, 0o644)
 	return out
 }
+
+// quickFixture is the verifiable fixture recorded as a 5-pass quick run.
+func quickFixture(t *testing.T) string {
+	t.Helper()
+	path := verifiableFixture(t)
+	data, _ := os.ReadFile(path)
+	var d map[string]any
+	json.Unmarshal(data, &d)
+	cfg := d["config"].(map[string]any)
+	cfg["runs_per_category"], cfg["warmup"] = 5, 1
+	b, _ := json.Marshal(d)
+	os.WriteFile(path, b, 0o644)
+	return path
+}
+
+func TestQuickRunNeedsAReproduction(t *testing.T) {
+	published := quickFixture(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if code, out, _ := runCmd(t, runVerify, "check", published); code != 0 || !strings.Contains(out, "quick run (5 passes)") {
+		t.Errorf("check on a quick run: %d\n%s", code, out)
+	}
+	raw, _ := os.ReadFile(published)
+	payload, err := betterbench.PrepareRaw(raw, betterbench.Prose{Title: "Qwen3-8B run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeVerificationServer{payload: payload}
+	srv := httptest.NewServer(f.handler(t))
+	defer srv.Close()
+	wd, _ := os.Getwd()
+	os.Chdir(t.TempDir())
+	defer os.Chdir(wd)
+	t.Setenv("L80_TOKEN", "L80_k2_secret")
+	base := []string{"--api-base", srv.URL}
+
+	// No stamp on review alone: the class comes from the page, not a claim.
+	if code, _, errOut := runCmd(t, runVerify, append([]string{"approve", "v1"}, base...)...); code == 0 || !strings.Contains(errOut, "E_REPRODUCTION_REQUIRED") || f.decision != nil {
+		t.Fatalf("approve an unreproduced quick run: %d %s", code, errOut)
+	}
+	// A reproduction outside tolerance cannot be overridden.
+	fakeReproducer(t, slowedCopy(t, published, 0.7))
+	runCmd(t, runVerify, append([]string{"reproduce", "v1", "--endpoint", "http://h/v1"}, base...)...)
+	if code, _, errOut := runCmd(t, runVerify, append([]string{"approve", "v1", "--accept-differences", "--note", "x"}, base...)...); code == 0 || !strings.Contains(errOut, "cannot be stamped with --accept-differences") {
+		t.Errorf("accept-differences on a quick run: %d %s", code, errOut)
+	}
+	// A matching reproduction stamps it, and says it was a quick comparison.
+	fakeReproducer(t, published)
+	code, out, errOut := runCmd(t, runVerify, append([]string{"reproduce", "v1", "--endpoint", "http://h/v1"}, base...)...)
+	if code != 0 || strings.Contains(out, "p99") || strings.Contains(out, "1% low") {
+		t.Fatalf("quick reproduce compares medians only: %d\n%s\n%s", code, out, errOut)
+	}
+	if code, _, errOut := runCmd(t, runVerify, append([]string{"approve", "v1"}, base...)...); code != 0 {
+		t.Fatalf("approve: %d %s", code, errOut)
+	}
+	rep, _ := f.decision["reproduction"].(map[string]any)
+	if rep == nil || rep["run_class"] != "quick" {
+		t.Errorf("decision sent = %v", f.decision)
+	}
+}

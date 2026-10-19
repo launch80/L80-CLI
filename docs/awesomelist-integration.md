@@ -1,6 +1,7 @@
 # Future: "best setup for my machine" via the Launch80 AwesomeList
 
-Analysis only; nothing here is implemented yet.
+Analysis only; nothing here is implemented yet. The implementation plan,
+deferred past 1.1.0, is [setup-intelligence-plan.md](setup-intelligence-plan.md).
 
 ## What the AwesomeList already provides
 

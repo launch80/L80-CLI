@@ -31,6 +31,7 @@ type Plan struct {
 	Warmup          int
 	Phases          []string // the phases the published run has data for
 	Version         string   // BetterBench version it was measured with
+	Class           string   // betterbench.RunClass of the published run
 	Headline        []betterbench.Metric
 }
 
@@ -40,7 +41,8 @@ func PlanFrom(payload []byte) (Plan, error) {
 	if err != nil {
 		return Plan{}, fmt.Errorf("the published page is not a BetterBench run: %w", err)
 	}
-	p := Plan{Model: r.Env.Model, Notes: r.Env.Notes, RunsPerCategory: r.Config.RunsPerCategory, Warmup: r.Config.Warmup, Version: r.BetterBenchVersion}
+	p := Plan{Model: r.Env.Model, Notes: r.Env.Notes, RunsPerCategory: r.Config.RunsPerCategory, Warmup: r.Config.Warmup, Version: r.BetterBenchVersion,
+		Class: betterbench.RunClass(r.Config)}
 	if len(r.SingleStream) > 0 {
 		p.Phases = append(p.Phases, "decode")
 	}
@@ -71,23 +73,36 @@ func (p Plan) Options(endpoint, model, apiKey, out string) betterbench.RunOption
 	return o
 }
 
-// tolerances are how far a reproduced headline figure may drift from the
-// published one and still count as the same result. Latency varies more
-// than throughput between runs, so it gets more room.
-var tolerances = []struct {
+type tol struct {
 	prefix string
 	pct    float64
-}{
-	{"Combined decode", 10}, {"Combined ITL", 15}, {"Combined TTFT", 25}, {"Peak aggregate", 15}, {"Prefill", 20},
 }
 
-func tolerance(label string) float64 {
-	for _, t := range tolerances {
+// tolerances are how far a reproduced headline figure may drift from the
+// published one and still count as the same result. Latency varies more
+// than throughput between runs, so it gets more room; a quick run's few
+// passes vary more again.
+var tolerances = map[string][]tol{
+	betterbench.ClassFull:  {{"Combined decode", 10}, {"Combined ITL", 15}, {"Combined TTFT", 25}, {"Peak aggregate", 15}, {"Prefill", 20}},
+	betterbench.ClassQuick: {{"Combined decode", 15}, {"Combined ITL", 25}, {"Combined TTFT", 40}, {"Peak aggregate", 25}, {"Prefill", 30}},
+}
+
+func tolerance(class, label string) float64 {
+	for _, t := range tolerances[class] {
 		if strings.HasPrefix(label, t.prefix) {
 			return t.pct
 		}
 	}
+	if class == betterbench.ClassQuick {
+		return 25
+	}
 	return 15
+}
+
+// percentile reports a tail figure (p95, p99, a 1% low). A quick run's few
+// passes cannot hold one, so a quick reproduction compares medians only.
+func percentile(label string) bool {
+	return strings.Contains(label, " p9") || strings.Contains(label, "% low")
 }
 
 func number(s string) (float64, bool) {
@@ -115,10 +130,10 @@ func Compare(published, reproduced []byte) ([]api.MetricDelta, bool, error) {
 		r, ok := mine[m.Label]
 		a, okA := number(m.Value)
 		b, okB := number(r.Value)
-		if !ok || !okA || !okB || a == 0 {
+		if !ok || !okA || !okB || a == 0 || (pp.Class != betterbench.ClassFull && percentile(m.Label)) {
 			continue
 		}
-		d := api.MetricDelta{Label: m.Label, Unit: m.Unit, Published: a, Reproduced: b, TolerancePct: tolerance(m.Label)}
+		d := api.MetricDelta{Label: m.Label, Unit: m.Unit, Published: a, Reproduced: b, TolerancePct: tolerance(pp.Class, m.Label)}
 		d.DeltaPct = math.Round((b-a)/a*1000) / 10
 		d.Within = math.Abs(d.DeltaPct) <= d.TolerancePct
 		all = all && d.Within
@@ -146,7 +161,7 @@ func Reproduce(ctx context.Context, published []byte, o betterbench.RunOptions, 
 	}
 	sum := sha256.Sum256(res.Data)
 	rr, _ := betterbench.Parse(res.Data)
-	rep := &api.Reproduction{BetterBenchVersion: res.Version, Model: o.Model, RunsPerCategory: plan.RunsPerCategory, Phases: plan.Phases,
+	rep := &api.Reproduction{BetterBenchVersion: res.Version, Model: o.Model, RunsPerCategory: plan.RunsPerCategory, RunClass: plan.Class, Phases: plan.Phases,
 		Metrics: deltas, WithinTolerance: within, ResultsSHA256: hex.EncodeToString(sum[:]), RanAt: time.Now().UTC().Format(time.RFC3339), L80Version: version}
 	if rr != nil {
 		rep.Notes = rr.Env.Notes

@@ -200,7 +200,7 @@ func Build(r *Results, opt Options) (*Payload, error) {
 	conc := r.ConcurrencyRows()
 	pre := r.PrefillRows()
 	gate := r.SampleGate()
-	quick := len(r.SingleStream) > 0 && r.Config.RunsPerCategory > 0 && r.Config.RunsPerCategory <= 5
+	quick := len(r.SingleStream) > 0 && r.Config.RunsPerCategory > 0 && RunClass(r.Config) != ClassFull
 
 	// --- system ------------------------------------------------------------
 	notes := map[string]string{}
@@ -412,7 +412,11 @@ func defaultSubtitle(r *Results, hardware string, quick bool) string {
 		parts = append(parts, "temp "+strconv.FormatFloat(*r.Config.Temperature, 'f', -1, 64))
 	}
 	if quick {
-		parts = append(parts, "quick smoke run")
+		if RunClass(r.Config) == ClassQuick {
+			parts = append(parts, "quick run")
+		} else {
+			parts = append(parts, "quick smoke run")
+		}
 	}
 	return strings.Join(parts, " · ")
 }
@@ -421,7 +425,11 @@ func defaultSummary(r *Results, rows []CategoryRow, comb *Combined, batched bool
 	conc []ConcurrencyRow, pre []PrefillRow, quick bool) string {
 	var b strings.Builder
 	if quick {
-		b.WriteString("Quick smoke run, not a publishable measurement. ")
+		if RunClass(r.Config) == ClassQuick {
+			b.WriteString("Quick run, verifiable as a quick run (with a reproduction, on medians). ")
+		} else {
+			b.WriteString("Quick smoke run, not a publishable measurement. ")
+		}
 	}
 	fmt.Fprintf(&b, "%s measured with BetterBench %s", r.Env.Model, r.BetterBenchVersion)
 	if len(rows) > 0 {
@@ -556,8 +564,13 @@ func buildCaveats(r *Results, rows []CategoryRow, conc []ConcurrencyRow, pre []P
 	}
 
 	if quick {
-		add(fmt.Sprintf("Quick smoke run: %d passes per category after %d warmup. Too few passes for any percentile to hold; treat every figure as indicative, not as a result.",
-			r.Config.RunsPerCategory, r.Config.Warmup))
+		if RunClass(r.Config) == ClassQuick {
+			add(fmt.Sprintf("Quick run: %d passes per category after %d warmup. Medians are comparable and the run is verifiable as a quick run against a reproduction; p95, p99 and 1%% lows need a full %d-pass run.",
+				r.Config.RunsPerCategory, r.Config.Warmup, MinFullPasses))
+		} else {
+			add(fmt.Sprintf("Quick smoke run: %d passes per category after %d warmup. Too few passes for any percentile to hold; treat every figure as indicative, not as a result.",
+				r.Config.RunsPerCategory, r.Config.Warmup))
+		}
 	}
 	if hits := r.CacheHits(); hits > 0 && r.Config.UniqueNonce {
 		add(fmt.Sprintf("%d request(s) were served partly from the server's prefix cache although the run asked for a cold cache. Those timings measure a cache lookup, not prompt processing.", hits))

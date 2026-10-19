@@ -123,7 +123,7 @@ Owner key only. Body (what `L80 verify request` sends):
 ```json
 {
   "note": "vLLM 0.9.3 on 2x R9700, launch command in the README of …",
-  "client_checks": [{ "name": "full_run", "status": "pass", "detail": "20 passes per category after 3 warmup" }],
+  "client_checks": [{ "name": "run_class", "status": "pass", "detail": "full run: 20 passes per category after 3 warmup" }],
   "source_sha256": "hex", "body_sha256": "hex", "content_hash": "as returned at publish",
   "l80_version": "1.0.0"
 }
@@ -180,7 +180,7 @@ caller may not be the request's key (`E_OWN_REQUEST`, HTTP 403). Body:
   "reproduction": {
     "betterbench_version": "0.6.1", "model": "Qwen3-8B",
     "notes": { "engine": "vLLM 0.9.3", "hardware": "1x RTX 4090", "reproduces": "Qwen3-8B" },
-    "runs_per_category": 20, "phases": ["decode", "prefill", "concurrency"],
+    "runs_per_category": 20, "run_class": "full", "phases": ["decode", "prefill", "concurrency"],
     "metrics": [
       { "label": "Combined decode", "unit": "t/s", "published": 142.4, "reproduced": 139.8,
         "delta_pct": -1.8, "tolerance_pct": 10, "within": true }
@@ -198,6 +198,14 @@ tier (`verified` + `verified_at`, or `rejected`). The request must be open
 Tolerances the CLI applies before it lets a verifier stamp a reproduction that
 disagrees (it then needs `--accept-differences` and a note): combined decode
 ±10%, ITL 1% low ±15%, TTFT p50 ±25%, peak aggregate ±15%, prefill ±20%.
+
+**Quick runs (L80 1.1).** A quick run (see Run classes) is stamped only with a
+reproduction that is within its own, wider tolerances: combined decode ±15%,
+ITL ±25%, TTFT p50 ±40%, peak aggregate ±25%, prefill ±30%, everything else
+±25%. Tail figures (p95, p99, 1% lows) are left out of the comparison, since a
+few passes cannot hold them. `--accept-differences` does not apply. The server
+refuses `verified` on a quick run unless `reproduction.within_tolerance` is
+true (`E_REPRODUCTION_REQUIRED`, HTTP 422).
 
 ### Existing endpoints
 
@@ -220,6 +228,17 @@ disagrees (it then needs `--accept-differences` and a note): combined decode
 
 `E_OUTSIDE_TOLERANCE` (exit 4) is client-side only.
 
+## Run classes
+
+A BetterBench page's class is derived from its stored `config`, never taken
+from the client (`betterbench.RunClass` in the CLI):
+
+| Class | Rule | Verifiable |
+|---|---|---|
+| `full` | `runs_per_category >= 20` and `warmup >= 1` | yes; a reproduction is optional |
+| `quick` | `5 <= runs_per_category < 20` and `warmup >= 1` (BetterBench `--quick` is 5 passes after 1 warmup) | yes, only with a reproduction within quick tolerances; medians only |
+| `smoke` | fewer than 5 passes, or no warmup | no |
+
 ## Server checks
 
 The same checks the CLI runs (`internal/betterbench/precheck.go`), recomputed
@@ -228,7 +247,7 @@ A `fail` makes the page ineligible; a `warn` is shown to the reviewer.
 
 | Check | Fails when | Warns when |
 |---|---|---|
-| `full_run` | `config.runs_per_category < 20` or `config.warmup < 1` (any `--quick` run) | |
+| `run_class` (was `full_run` before 1.1) | the class is `smoke` (Run classes) | |
 | `phases` | `single_stream`, `prefill` or `concurrency` is empty | |
 | `cold_cache` | `config.unique_nonce` is false, or any `cached_tokens` entry > 0 (single-stream runs, prefill rows, concurrency rows), the count `report.cache_hits()` computes | no request reported `cached_tokens` |
 | `requests` | more than 2% of single-stream requests failed | any single-stream or concurrency request failed |
@@ -320,6 +339,24 @@ is announced. The sections above give the detail for each item.
 - [ ] `https://www.launch80.com/install.sh` downloads releases from
       `launch80/L80-CLI` (the repo was renamed from L80-Skills).
 
+## Server work for L80 1.1: quick runs (checklist)
+
+- [ ] `run_class` column on `verification_requests` and `artifacts`, computed
+      from the stored payload with the Run classes rule; never from the client.
+- [ ] Server check `run_class` replaces `full_run`: fail only for `smoke`.
+      Accept both names in stored `client_checks`.
+- [ ] Decision: `verified` on a `quick` request requires a `reproduction` with
+      `within_tolerance: true`, else `E_REPRODUCTION_REQUIRED` (HTTP 422).
+      Store `reproduction.run_class` as sent.
+- [ ] Return `run_class` in `GET /api/v1/verifications`, `…/verifications/{id}`,
+      `…/artifacts/{guid}/verification` and the history list.
+- [ ] Badge in `bench.betterbench.v1`: "Verified by Launch80 · quick run
+      (N passes)", always linking to the reproduction; a full run keeps the
+      plain badge. The page hides p95/p99 and 1% low cells on quick runs, or
+      marks them indicative.
+- [ ] Older CLIs (1.0.x) refuse quick runs locally; they still get the
+      server's decision, so nothing else changes for them.
+
 ## Client behaviour (implemented)
 
 ```sh
@@ -331,9 +368,10 @@ L80 verify mine                                    # your requests and their dec
 L80 verify queue [--status requested|…|all]        # other keys' requests (any key)
 L80 verify show <id>                               # what to reproduce, published figures
 L80 verify reproduce <id> --endpoint <url> [--model m] [--api-key k]
-L80 verify approve <id> [--note …] [--accept-differences]   # verifier keys
+L80 verify approve <id> [--note …] [--accept-differences]   # verifier keys; quick runs need a reproduction
 L80 verify reject <id> --reason …                            # verifier keys
 L80 history [--tier verified]      # TIER column
+L80 verify queue | mine             # CLASS column (full | quick), from the server
 ```
 
 The ledger (`~/.config/L80/history.jsonl`) records, for every publish since

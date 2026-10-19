@@ -34,6 +34,8 @@ type Entry struct {
 	ContentHash  string `json:"content_hash,omitempty"`
 	// TrustTier is the server's tier for the page (e.g. "unverified").
 	TrustTier string `json:"trust_tier,omitempty"`
+	// RunClass is full or quick for a BetterBench page, as the server reports it.
+	RunClass string `json:"run_class,omitempty"`
 }
 
 // Path is ~/.config/L80/history.jsonl, honouring XDG_CONFIG_HOME, beside the

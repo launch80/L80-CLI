@@ -53,6 +53,9 @@ type Verification struct {
 	// never sees its own requests in the queue and may not decide on them.
 	Mine         bool          `json:"mine,omitempty"`
 	Reproduction *Reproduction `json:"reproduction,omitempty"`
+	// RunClass is full or quick, derived by the server from the stored page
+	// (servers before 1.1 leave it out).
+	RunClass     string        `json:"run_class,omitempty"`
 	TrustTier    string        `json:"trust_tier,omitempty"`
 	ClientChecks []ClientCheck `json:"client_checks,omitempty"`
 	ServerChecks []ClientCheck `json:"server_checks,omitempty"`
@@ -154,6 +157,7 @@ type Reproduction struct {
 	Model              string            `json:"model"`
 	Notes              map[string]string `json:"notes,omitempty"`
 	RunsPerCategory    int               `json:"runs_per_category"`
+	RunClass           string            `json:"run_class,omitempty"` // full | quick
 	Phases             []string          `json:"phases"`
 	Metrics            []MetricDelta     `json:"metrics"`
 	WithinTolerance    bool              `json:"within_tolerance"`

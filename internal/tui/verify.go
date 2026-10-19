@@ -10,6 +10,7 @@ import (
 
 	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/app"
+	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
@@ -82,7 +83,7 @@ func (s *verifyScreen) rows() []api.Verification {
 
 func (s *verifyScreen) fillTable() {
 	s.table = widgets.Table{Cursor: min(s.table.Cursor, max(0, len(s.rows())-1)), Columns: []widgets.Column{
-		{Title: "Requested", Width: 16}, {Title: "Status", Width: 10}, {Title: "By", Width: 14}, {Title: "Page"}}}
+		{Title: "Requested", Width: 16}, {Title: "Status", Width: 10}, {Title: "Class", Width: 6}, {Title: "By", Width: 14}, {Title: "Page"}}}
 	for _, v := range s.rows() {
 		when := v.RequestedAt
 		if len(when) >= 16 {
@@ -92,7 +93,7 @@ func (s *verifyScreen) fillTable() {
 		if v.Mine {
 			by = "you"
 		}
-		s.table.Rows = append(s.table.Rows, []string{orDash(when), v.Status, style.Sanitize(orDash(by)), style.Sanitize(orDash(v.Title))})
+		s.table.Rows = append(s.table.Rows, []string{orDash(when), v.Status, orDash(v.RunClass), style.Sanitize(orDash(by)), style.Sanitize(orDash(v.Title))})
 	}
 }
 
@@ -177,6 +178,18 @@ func (s *verifyScreen) approve(c *Console) Cmd {
 	if why := s.canStamp(); why != "" {
 		c.setFlash(why, true)
 		return nil
+	}
+	if s.payload != nil && s.plan.Class == betterbench.ClassQuick {
+		// A quick run is stamped only against a reproduction within tolerance.
+		if s.rep == nil {
+			c.setFlash("a quick run needs a reproduction before it can be verified: run it on your endpoint", true)
+			s.startForm(c)
+			return nil
+		}
+		if !s.rep.WithinTolerance {
+			c.setFlash("your reproduction of this quick run is outside tolerance: reject it or reproduce again", true)
+			return nil
+		}
 	}
 	title, danger := "Verify", false
 	body := "Stamp this run Verified by Launch80 on your review alone?\n\nYou have not reproduced it. Press p first to run it yourself and attach the comparison."
@@ -400,6 +413,9 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 			}
 		}
 		out = append(out, kv(t, "settings", fmt.Sprintf("BetterBench %s, %d passes, %d warmup, %s", p.Version, p.RunsPerCategory, p.Warmup, strings.Join(p.Phases, " + "))))
+		if p.Class == betterbench.ClassQuick {
+			out = append(out, kv(t, "class", "quick run")+t.R(t.Muted, "   verified only against a reproduction, on medians"))
+		}
 		if s.rep == nil {
 			out = append(out, "", t.R(t.Title, "Published figures"))
 			for _, m := range p.Headline {

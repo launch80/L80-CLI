@@ -334,14 +334,14 @@ L80 version</pre><button class="copy" type="button">Copy</button></div>
         <h3>Benchmark an endpoint <span class="chip free">Free to run</span><span class="chip gate">Token to publish</span></h3>
         <p><code>L80 betterbench</code> runs <a href="https://github.com/GGZ14/BetterBench">BetterBench</a> against any OpenAI-compatible endpoint and publishes its <code>results.json</code> as written. The launch80 page computes every table and figure from the raw samples, so it matches BetterBench's own HTML report.</p>
         <div class="cmd"><pre class="multi">L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --note engine="vLLM 0.9.3"
-L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --quick        # 5-pass smoke run
+L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --quick        # 5-pass quick run
 L80 betterbench --results results.json                                        # publish an existing file
 L80 betterbench --results results.json --dry-run --payload-out payload.json   # inspect first</pre><button class="copy" type="button">Copy</button></div>
         <div class="tbl"><table>
           <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
           <tbody>
             <tr><td><code>--endpoint</code>, <code>--model</code></td><td>The base URL to benchmark and the model name to request.</td></tr>
-            <tr><td><code>--quick</code></td><td>Short smoke run. The page says so, and it cannot be verified.</td></tr>
+            <tr><td><code>--quick</code></td><td>Quick run: 5 passes after 1 warmup. The page says so; it can be verified as a quick run, against a reproduction.</td></tr>
             <tr><td><code>--passes N</code>, <code>--warmup N</code></td><td>Measured and warmup passes per category. Defaults are BetterBench's: 20 measured.</td></tr>
             <tr><td><code>--note KEY=VALUE</code></td><td>Recorded in the run and shown as a chip. Repeat it. Use <code>engine=</code> and <code>hardware=</code>.</td></tr>
             <tr><td><code>--decode</code>, <code>--prefill</code>, <code>--concurrency</code></td><td>Run only these phases. <code>--no-prefill</code> and <code>--no-concurrency</code> skip one.</td></tr>
@@ -390,7 +390,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
         <div class="tbl"><table>
           <thead><tr><th>Check</th><th>Passes when</th></tr></thead>
           <tbody>
-            <tr><td>Full run</td><td>At least 20 measured passes per category and one warmup, so not <code>--quick</code>.</td></tr>
+            <tr><td>Run class</td><td>A full run (20+ passes) or a quick run (5 to 19 passes, <code>--quick</code> included), each after at least one warmup.</td></tr>
             <tr><td>Phases</td><td>Single-stream, prefill and concurrency results are all present.</td></tr>
             <tr><td>Cold cache</td><td>No request was served from the server's prefix cache.</td></tr>
             <tr><td>Requests</td><td>Every request completed and none was truncated.</td></tr>
@@ -399,7 +399,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td>Provenance</td><td>This machine published the page, from a file that has not changed since.</td></tr>
           </tbody>
         </table></div>
-        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. A reproduction compares the headline figures with tolerances: decode ±10%, ITL 1% low ±15%, TTFT ±25%. One that disagrees needs <code>--accept-differences</code> and a note to stamp. The console's Verify screen does all of this with <kbd>p</kbd>, <kbd>a</kbd> and <kbd>x</kbd>.</p>
+        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. A reproduction compares the headline figures with tolerances: decode ±10%, ITL 1% low ±15%, TTFT ±25%. One that disagrees needs <code>--accept-differences</code> and a note to stamp. <strong>Quick runs</strong> are stamped only against a reproduction within wider tolerances (decode ±15%, ITL ±25%, TTFT ±40%), on medians, with no override; their badge reads "Verified by Launch80 · quick run (N passes)". The console's Verify screen does all of this with <kbd>p</kbd>, <kbd>a</kbd> and <kbd>x</kbd>.</p>
         <div class="note">Verification is rolling out on launch80. Until the server accepts requests, <code>verify request</code> says it is not supported (exit 8), and <code>verify check</code> still works.</div>
       </article>
 
@@ -601,7 +601,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
 <section class="band soon" id="soon">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">Coming soon · planned, not in 1.0.1</div>
+      <div class="eyebrow">Later · planned, not in 1.1.0</div>
       <h2>Setup intelligence: the best setup for your machine</h2>
       <p>L80 will read your hardware, check it against the <a href="https://github.com/launch80/AwesomeList">Launch80 AwesomeList</a> catalog, and shortlist the community projects that actually fit. It then benchmarks the result and contributes it back. Commands and flags below are proposals and may change.</p>
     </div>

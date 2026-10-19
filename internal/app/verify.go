@@ -21,6 +21,8 @@ type Target struct {
 	File   string         // the results file to check
 	Data   []byte
 	Checks []betterbench.Check
+	Class  string // betterbench.RunClass of the results, once checked
+	Passes int
 }
 
 // ResolveTarget accepts a results.json path, a page URL or a guid. For a URL
@@ -69,6 +71,7 @@ func (t *Target) RunChecks() {
 	if t.Data != nil {
 		if r, err := betterbench.Parse(t.Data); err == nil {
 			checks = betterbench.Prechecks(r)
+			t.Class, t.Passes = betterbench.RunClass(r.Config), r.Config.RunsPerCategory
 		} else {
 			checks = append(checks, betterbench.Check{Name: "results", Status: "fail", Detail: err.Error()})
 		}

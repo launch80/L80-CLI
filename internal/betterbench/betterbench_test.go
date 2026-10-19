@@ -276,11 +276,18 @@ func TestQuickRunIsFlaggedFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Caveats) == 0 || !strings.HasPrefix(p.Caveats[0], "Quick smoke run: 5 passes per category after 1 warmup") {
+	if len(p.Caveats) == 0 || !strings.HasPrefix(p.Caveats[0], "Quick run: 5 passes per category after 1 warmup") {
 		t.Errorf("first caveat = %v", p.Caveats)
 	}
-	if !strings.HasPrefix(p.Summary, "Quick smoke run, not a publishable measurement.") {
+	if !strings.HasPrefix(p.Summary, "Quick run, verifiable as a quick run") {
 		t.Errorf("summary = %q", p.Summary)
+	}
+	// Below the quick floor it is only a smoke test.
+	r.Config.RunsPerCategory, r.Config.Warmup = 3, 0
+	p, _ = Build(r, Options{})
+	if !strings.HasPrefix(p.Caveats[0], "Quick smoke run: 3 passes per category after 0 warmup") ||
+		!strings.HasPrefix(p.Summary, "Quick smoke run, not a publishable measurement.") {
+		t.Errorf("smoke run: %q / %v", p.Summary, p.Caveats)
 	}
 }
 

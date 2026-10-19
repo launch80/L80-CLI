@@ -278,6 +278,48 @@ func TestVerifyScreenQueueAndStamp(t *testing.T) {
 	}
 }
 
+func TestVerifyScreenQuickRunNeedsAReproduction(t *testing.T) {
+	raw, _ := os.ReadFile("../betterbench/testdata/results_schema2_v061.json")
+	raw = []byte(strings.Replace(string(raw), `"runs_per_category": 20,`, `"runs_per_category": 5,`, 1))
+	fixture, _ := betterbench.PrepareRaw(raw, betterbench.Prose{})
+	if r, err := betterbench.ParsePublished(fixture); err != nil || betterbench.RunClass(r.Config) != betterbench.ClassQuick {
+		t.Fatalf("fixture should be a quick run: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/keys/me":
+			fmt.Fprint(w, `{"ok":true,"data":{"key_id":"k2","is_verifier":true}}`)
+		case r.URL.Path == "/api/v1/verifications" && r.URL.Query().Get("scope") == "queue":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":"v1","artifact_guid":"g1","title":"Qwen3-8B quick","status":"requested","run_class":"quick"}]}`)
+		case r.URL.Path == "/api/v1/verifications":
+			fmt.Fprint(w, `{"ok":true,"data":[]}`)
+		case r.URL.Path == "/api/v1/artifacts/g1/payload":
+			fmt.Fprintf(w, `{"ok":true,"data":%s}`, fixture)
+		default:
+			fmt.Fprint(w, `{"ok":true,"data":{"service":"x","templates":[]}}`)
+		}
+	}))
+	defer srv.Close()
+	c := newTestConsole(t)
+	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
+	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
+	feed(c, SizeMsg{120, 36})
+	feed(c, input.Key{Code: input.End})
+	feed(c, input.Key{Code: input.Enter})
+	if view := checkFrame(t, c.View(120, 36), 120, 36); !strings.Contains(view, "Class") || !strings.Contains(view, "quick") {
+		t.Fatalf("queue should show the class:\n%s", view)
+	}
+	feed(c, input.Key{Code: input.Enter})
+	if view := checkFrame(t, c.View(120, 36), 120, 36); !strings.Contains(view, "quick run") {
+		t.Errorf("detail should name the class:\n%s", view)
+	}
+	// No stamp on review alone: 'a' explains and opens the reproduce form.
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	if c.dialog != nil || c.verify.phase != 2 || !strings.Contains(c.flash, "needs a reproduction") {
+		t.Errorf("quick approve: dialog=%v phase=%d flash=%q", c.dialog, c.verify.phase, c.flash)
+	}
+}
+
 func TestSidebarIsAlphabetical(t *testing.T) {
 	if sidebar[0] != scrHome {
 		t.Fatal("Home stays on top")

@@ -107,7 +107,7 @@ report code, so the page shows what the local HTML report shows.
 
 ```sh
 L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --note engine="vLLM 0.9.3"
-L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --quick        # 5-pass smoke run
+L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --quick        # 5-pass quick run
 L80 betterbench --results results.json                                        # publish an existing file
 L80 betterbench --results results.json --dry-run --payload-out payload.json   # inspect first
 L80 betterbench --results results.json --template bench.report.v1             # summary mapping instead
@@ -232,12 +232,21 @@ Every key sees the queue of other keys' requests and can reproduce them;
 `reproduce` reruns BetterBench with the published settings against your own
 endpoint and compares the headline figures (decode ±10%, ITL 1% low ±15%,
 TTFT ±25%). Only keys Launch80 marks as verifiers can stamp. A verifier may
-stamp on review alone; when they reproduced the run, the comparison goes with
-the stamp, and a reproduction that disagrees needs `--accept-differences`. The
+stamp a full run on review alone; when they reproduced the run, the comparison
+goes with the stamp, and a reproduction that disagrees needs
+`--accept-differences`. The
 console's Verify screen does the same with `p` (reproduce), `a` (verify) and
 `x` (reject).
 
-A run must be a full run (not `--quick`) with all three phases, from
+**Quick runs can be verified too** (new in 1.1). A run with 5 to 19 passes
+and a warmup (`--quick` is 5 passes after 1) is its own class. A verifier must
+reproduce it before stamping, the comparison uses medians only with wider
+tolerances (decode ±15%, ITL ±25%, TTFT ±40%), and `--accept-differences` does
+not apply. The page's badge reads "Verified by Launch80 · quick run (N
+passes)". `verify queue`, `verify mine` and History show each run's class.
+Fewer than 5 passes, or no warmup, is a smoke test and cannot be verified.
+
+A run must have at least 5 passes and a warmup, all three phases, from
 BetterBench 0.6.1 or later, with no request served from the server's prefix
 cache, and with `--note engine=…` and the hardware recorded. L80 also checks
 that the page was published from this machine from a file that has not
@@ -261,11 +270,11 @@ configured key from any machine. Each successful publish is also appended to
 there is no token or no network, and the only record of which file each page
 came from.
 
-## Coming soon: setup intelligence
+## Later: setup intelligence
 
 ![Coming soon: detect, match, plan, measure, give back](docs/media/07-horizon.gif)
 
-L80 will read this machine's hardware (read-only), match it against the
+Planned for a release after 1.1.0: L80 will read this machine's hardware (read-only), match it against the
 [Launch80 AwesomeList](https://github.com/launch80/AwesomeList) catalog pinned
 to a commit, and shortlist the community projects that fit, ranked by maturity,
 verification, fit and setup friction, never by tokens per second. It hands the
@@ -279,7 +288,8 @@ L80 skills link --target claude-code --name l80-setup
 L80 verify export <page> --awesomelist
 ```
 
-See [docs/awesomelist-integration.md](docs/awesomelist-integration.md).
+See [docs/awesomelist-integration.md](docs/awesomelist-integration.md) and the
+plan in [docs/setup-intelligence-plan.md](docs/setup-intelligence-plan.md).
 
 ## Update
 

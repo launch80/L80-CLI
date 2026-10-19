@@ -31,7 +31,7 @@ func (s *benchScreen) init() {
 		{Key: "endpoint", Label: "Endpoint", Help: "OpenAI-compatible base URL, e.g. http://127.0.0.1:8000/v1. It never leaves this machine.",
 			Input: widgets.TextInput{Placeholder: "http://127.0.0.1:8000/v1"}},
 		{Key: "model", Label: "Model", Help: "The model name the server answers to (see GET /v1/models).", Input: widgets.TextInput{Placeholder: "Qwen3-8B"}},
-		{Key: "quick", Label: "Quick run", Kind: widgets.ToggleField, Help: "5 passes per category: a smoke test, not a publishable result. A full run takes a while."},
+		{Key: "quick", Label: "Quick run", Kind: widgets.ToggleField, Help: "5 passes per category: verifiable as a quick run (needs a reproduction; medians only). A full 20-pass run takes a while and carries p95/p99."},
 		{Key: "phases", Label: "Phases", Kind: widgets.ChoiceField, Choices: []string{"all", "decode", "prefill", "concurrency"},
 			Help: "Which measurements to run. All three is what the launch80 page shows best."},
 		{Key: "notes", Label: "Notes", Help: "Comma-separated KEY=VALUE recorded with the run and shown as chips, e.g. engine=vLLM 0.9.3, quant=mxfp4, hardware=2x R9700.",

@@ -103,6 +103,7 @@ type HistoryEntry struct {
 	TemplateID      string `json:"template_id"`
 	TemplateVersion int    `json:"template_version"`
 	TrustTier       string `json:"trust_tier"`
+	RunClass        string `json:"run_class,omitempty"` // full | quick, BetterBench pages (server 1.1+)
 	Title           string `json:"title"`
 	ByteSize        int    `json:"byte_size"`
 	CreatedAt       string `json:"created_at"`
