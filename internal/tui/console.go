@@ -436,7 +436,7 @@ func (c *Console) open(s screenID) Cmd {
 
 // labels name each screen in the sidebar and at the top of the pane.
 var labels = map[screenID]string{
-	scrHome: "Home", scrBench: "Benchmark", scrVast: "Rent (vast)", scrPwdet: "pwdet",
+	scrHome: "Home", scrBench: "Benchmark", scrVast: "Rent (vast)", scrPwdet: "Poison Detector",
 	scrDash: "Dashboard", scrHistory: "History", scrVerify: "Verify", scrTools: "Tools", scrHelp: "Help",
 	scrAbout: "About", scrOnboard: "Onboarding", scrRecs: "Recommendations", scrTrain: "Train & Tune",
 }

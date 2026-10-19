@@ -23,9 +23,18 @@ makes, not one you make.
    into the chat.
 2. Get a spec. A YAML file names the GPU filter and price ceiling (`gpu.max_dph`),
    the model, the serving engine (vLLM or llama.cpp), the benchmark and the publish
-   step. `L80 vast init` writes a starter; the repository's `run.example.yaml`
-   documents every field. Show the user the `gpu`, `budget` and `model` sections
-   before going on.
+   step. Write one with flags rather than by hand:
+
+   ```sh
+   L80 vast spec --model Qwen/Qwen3-8B --gpu "RTX 4090,RTX 3090" --max-dph 0.6 --budget 3
+   ```
+
+   It prints the path (under `~/.local/state/L80/vast/specs`; `-o` writes elsewhere,
+   `--print` only prints). Other flags: `--engine vllm|llamacpp`, `--gpus N`,
+   `--min-vram GB`, `--context N`, `--disk GB`, `--quick`, `--name`, `--force`.
+   GPU names are Vast's own (`RTX 4090`, `H100 SXM`); `L80 vast search` shows them.
+   The repository's `run.example.yaml` documents every other field. Show the user
+   the `gpu`, `budget` and `model` sections before going on.
 3. Look before renting: `L80 vast search --spec run.yaml` lists matching offers and
    prices. It does not bill.
 4. Dry run: `L80 vast run --spec run.yaml --dry-run`.

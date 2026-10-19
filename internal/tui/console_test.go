@@ -402,3 +402,43 @@ func TestOnboardingSkip(t *testing.T) {
 		t.Errorf("skip must be recorded: %+v", s)
 	}
 }
+
+func TestVastSpecBuilder(t *testing.T) {
+	c := newTestConsole(t)
+	feed(c, SizeMsg{110, 34})
+	feed(c, input.Key{Code: input.Rune, Rune: '9'})
+	if c.scr != scrVast {
+		t.Fatalf("screen %v", c.scr)
+	}
+	// Starting with no spec opens the builder instead of failing.
+	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
+	c.vast.form.Focus = len(c.vast.form.Fields)
+	feed(c, input.Key{Code: input.Enter})
+	if c.vast.tab != 2 {
+		t.Fatalf("tab %d, want the builder", c.vast.tab)
+	}
+	checkFrame(t, c.View(110, 34), 110, 34)
+	// A bad repo is refused, naming the problem.
+	c.vast.build.Focus = len(c.vast.build.Fields)
+	feed(c, input.Key{Code: input.Enter})
+	if c.vast.tab != 2 || !strings.Contains(c.flash, "Hugging Face repo") {
+		t.Fatalf("empty model accepted: tab %d flash %q", c.vast.tab, c.flash)
+	}
+	c.vast.build.Fields[0].Input.Set("Qwen/Qwen3-8B")
+	c.vast.build.Fields[3].Input.Set("RTX_4090")
+	feed(c, input.Key{Code: input.Enter})
+	want := filepath.Join(filepath.Dir(c.d.RunsDir), "specs", "qwen3-8b.yaml")
+	if c.vast.tab != 1 || c.vast.form.Get("spec") != want {
+		t.Fatalf("tab %d spec %q flash %q", c.vast.tab, c.vast.form.Get("spec"), c.flash)
+	}
+	data, err := os.ReadFile(want)
+	if err != nil || !strings.Contains(string(data), `names: ["RTX 4090"]`) {
+		t.Fatalf("spec: %v\n%s", err, data)
+	}
+	// Writing it again asks before replacing.
+	c.vast.tab = 2
+	feed(c, input.Key{Code: input.Enter})
+	if c.dialog == nil || !strings.Contains(c.dialog.Body, "already exists") {
+		t.Fatal("overwrite must ask")
+	}
+}

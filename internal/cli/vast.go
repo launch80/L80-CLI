@@ -22,6 +22,9 @@ import (
 // names any instance that may still be billing. It never answers a
 // confirmation prompt for the user.
 func runVast(e env, args []string) int {
+	if len(args) > 0 && args[0] == "spec" {
+		return runVastSpec(e, args[1:])
+	}
 	r, apiErr := resolveTool("vast")
 	if apiErr != nil {
 		return fail(e, apiErr)
@@ -33,6 +36,7 @@ func runVast(e env, args []string) int {
 			"L80 vast — rent a Vast.ai GPU, serve a model, benchmark it, publish, tear down (bbvastl80)",
 			"",
 			"  L80 vast <bbvastl80 command> [args...]   every bbvastl80 command, passed through",
+			"  L80 vast spec --model <hf repo> [--gpu NAMES] [--max-dph N]   write a run spec (no YAML by hand)",
 			"  L80 vast run --spec run.yaml [--max-hours N] [--json]",
 			"  L80 vast status --json                    runs L80 knows about, from their state files",
 			"",

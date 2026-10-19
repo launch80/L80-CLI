@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.1
+
+- The console's pwdet screen is now labelled **Poison Detector** in the
+  sidebar. The command is still `L80 pwdet`.
+- **L80 builds the rental spec for you.** `L80 vast spec --model <hf repo>`
+  writes a run spec from a few flags (engine, GPU types, count, memory, price
+  ceiling, budget, context, disk) to `~/.local/state/L80/vast/specs`, checked
+  before it is written. On the console's Rent screen, `b` (or ctrl+b on New
+  run) opens the same thing as a form, and starting a run with no spec opens
+  it instead of failing. The newest spec is filled in for you. GPU names are
+  written the way Vast matches them (`RTX_4090` becomes `RTX 4090`). The old
+  hint pointed at `L80 vast init`, which only writes a `.env` for the Vast key.
+
 ## 1.0.0
 
 First stable release. It ships everything listed under 0.5.0 to 0.8.0 below;

@@ -120,6 +120,7 @@ Usage:
 
   Tools (free, no token):
   L80 vast <command> [args]                      Rent a Vast.ai GPU, serve, benchmark, publish (bbvastl80)
+  L80 vast spec --model <hf repo> [--max-dph N]  Write a run spec: model, GPUs, price ceiling, budget
   L80 vast run --spec run.yaml [--max-hours N]   The whole pipeline, with an optional cost watchdog
   L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering (Poisoned Weights Detector)
   L80 dashboard [tui|serve]                      GPU and inference telemetry for this machine

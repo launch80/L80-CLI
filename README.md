@@ -78,9 +78,9 @@ L80 tui
 ```
 
 A full-screen console over everything below. A sidebar lists Home, then A to Z:
-About, Benchmark, Dashboard, History, Onboarding, pwdet, Recommendations
-(coming soon), Rent (vast), Tools, Train & Tune (coming soon: train, tune and
-quantize models) and Verify. Moving through it previews each screen live,
+About, Benchmark, Dashboard, History, Onboarding, Poison Detector (pwdet),
+Recommendations (coming soon), Rent (vast), Tools, Train & Tune (coming soon:
+train, tune and quantize models) and Verify. Moving through it previews each screen live,
 enter opens it and esc comes back; `1`-`9` jump. About has our story, the
 [Discord](https://discord.gg/launch80), the
 [Supporter](https://www.launch80.com/supporter) page and every command. From it you can benchmark an
@@ -114,7 +114,7 @@ L80 betterbench --results results.json --template bench.report.v1             # 
 ```
 
 Each L80 release pins the BetterBench it was validated against (0.6.1 in
-1.0.0; `L80 tools list` shows the pin). A `betterbench` on PATH is used when
+1.0.1; `L80 tools list` shows the pin). A `betterbench` on PATH is used when
 it is at least that version; otherwise L80 bootstraps the pinned commit with
 `uvx` (uv caches the build). `L80_BETTERBENCH=/path/to/betterbench` overrides
 both, unchecked. An endpoint behind a gateway takes `--api-key <key>` or
@@ -161,6 +161,7 @@ works through it.
 
 ```sh
 L80 vast doctor                                   # Vast key, SSH key, the L80 and BetterBench it will call
+L80 vast spec --model Qwen/Qwen3-8B --gpu "RTX 4090" --max-dph 0.6   # write run.yaml for you
 L80 vast search --spec run.yaml                   # matching offers and prices; does not bill
 L80 vast run --spec run.yaml --max-hours 2        # rent, serve, benchmark, publish, tear down
 L80 vast status --json                            # every run L80 knows about, and which may be billing
@@ -357,6 +358,7 @@ L80 skills agents-md                           An AGENTS.md snippet for agents w
 L80 history [--limit N] [--json] [--local]     List the share URLs this key has published
 L80 auth status                                Show the resolved endpoint and key
 L80 vast <command> [args]                      Rent a GPU, serve, benchmark, publish (bbvastl80)
+L80 vast spec --model <hf repo> [--max-dph N]  Write a run spec: model, GPUs, price ceiling, budget
 L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering
 L80 dashboard [tui|serve]                      GPU and inference telemetry
 L80 tools list|check|prefetch|path|run         Show, check, fetch and run the pinned Python tools

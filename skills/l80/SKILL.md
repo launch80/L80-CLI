@@ -38,6 +38,7 @@ drive L80 themselves unless they want to.
 | Publish an existing BetterBench file | `L80 betterbench --results results.json` |
 | Publish any other report | `L80 publish report.json --template <id> [--dry-run] [--json]` (see `l80-test-report`) |
 | List templates | `L80 templates list --json` |
+| Write a rental spec (model, GPUs, price ceiling) | `L80 vast spec --model <hf repo> --max-dph N` |
 | Rent a GPU, serve, bench, publish, tear down | `L80 vast run --spec run.yaml --max-hours 2` (see `l80-vast`) |
 | Scan weights for tampering | `L80 pwdet scan <dir\|org/name\|url#model> --json [--publish]` (see `l80-pwdet`) |
 | GPU / inference telemetry | `L80 dashboard serve` (web page on :8787), `L80 dashboard tui` |

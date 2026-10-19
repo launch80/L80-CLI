@@ -169,7 +169,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <div class="eyebrow">Launch80 · L80 CLI · version 1.0.0</div>
+      <div class="eyebrow">Launch80 · L80 CLI · version 1.0.1</div>
       <h1>Benchmark, rent, check and publish <span class="mark">from one command.</span></h1>
       <p class="lede">L80 is a single binary that runs the Launch80 toolset on your machine and turns a benchmark into a shareable launch80 page. Publishing needs a token. Everything else is free.</p>
       <div class="wwh">
@@ -407,11 +407,13 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
         <h3>Rent a GPU and benchmark it <span class="chip free">Free</span></h3>
         <p><code>L80 vast</code> runs <a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a>. It rents a Vast.ai GPU, serves a model on it with vLLM or llama.cpp, runs BetterBench from your machine, publishes, and destroys the box. Every bbvastl80 command works through it.</p>
         <div class="cmd"><pre class="multi">L80 vast doctor                              # Vast key, SSH key, and the L80 and BetterBench it will call
+L80 vast spec --model Qwen/Qwen3-8B --gpu "RTX 4090" --max-dph 0.6   # write the spec for you
 L80 vast search --spec run.yaml              # matching offers and prices; does not bill
 L80 vast run --spec run.yaml --max-hours 2   # rent, serve, benchmark, publish, tear down
 L80 vast status --json                       # every run, and which may still be billing
 L80 vast destroy --run &lt;id&gt;                  # asks before destroying</pre><button class="copy" type="button">Copy</button></div>
         <ul class="plain">
+          <li><code>L80 vast spec</code> writes the run spec (model, engine, GPU types, price ceiling, budget) to <code>~/.local/state/L80/vast/specs</code>, so you never start from blank YAML. In the console, press <kbd>b</kbd> on the Rent screen for the same thing as a form.</li>
           <li><code>--max-hours N</code> is a watchdog. When time runs out, L80 stops the run and destroys its instance.</li>
           <li>After any run that fails or is interrupted, L80 names each instance that may still be billing and the command that stops it.</li>
           <li>The first Ctrl-C stops the run cleanly. A second one cancels it.</li>
@@ -459,9 +461,9 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
             <tr><td>Dashboard</td><td>Attach to the telemetry view or start the sampler.</td></tr>
             <tr><td>History</td><td>Every page you published, with its trust tier. Press <kbd>v</kbd> to request verification.</td></tr>
             <tr><td>Onboarding</td><td>Check the tools, save a publish token, pick where to start, and install skills for the AI agents found.</td></tr>
-            <tr><td>pwdet</td><td>Scan a model, read the verdict and findings, publish the result.</td></tr>
+            <tr><td>Poison Detector</td><td>Scan a model, read the verdict and findings, publish the result.</td></tr>
             <tr><td>Recommendations</td><td><span class="chip pend">Coming soon</span> What to run a model on, from the community's published results.</td></tr>
-            <tr><td>Rent (vast)</td><td>Pick a spec, see cost caps before renting, follow runs, destroy boxes.</td></tr>
+            <tr><td>Rent (vast)</td><td>Build a spec from a form (<kbd>b</kbd>), see cost caps before renting, follow runs, destroy boxes.</td></tr>
             <tr><td>Tools</td><td>How each tool resolves, and prefetch it.</td></tr>
             <tr><td>Train &amp; Tune</td><td><span class="chip pend">Coming soon</span> Train, fine-tune and quantize models, then benchmark the result.</td></tr>
             <tr><td>Verify</td><td>Other keys' requests to review, by key label: reproduce them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
@@ -480,7 +482,7 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
           <li>An older copy on your PATH, with a warning</li>
         </ul>
         <div class="tbl"><table>
-          <thead><tr><th>Tool</th><th>Runs</th><th>Pinned in 1.0.0</th><th>Override</th></tr></thead>
+          <thead><tr><th>Tool</th><th>Runs</th><th>Pinned in 1.0.1</th><th>Override</th></tr></thead>
           <tbody>
             <tr><td><a href="https://github.com/GGZ14/BetterBench">BetterBench</a></td><td><code>betterbench</code></td><td><code>v0.6.1</code> · <code>f72bb90</code></td><td><code>L80_BETTERBENCH</code></td></tr>
             <tr><td><a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a></td><td><code>bbvastl80</code></td><td><code>v0.1.0</code> · <code>d8ed73f</code></td><td><code>L80_VAST</code></td></tr>
@@ -599,7 +601,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
 <section class="band soon" id="soon">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">Coming soon · planned, not in 1.0.0</div>
+      <div class="eyebrow">Coming soon · planned, not in 1.0.1</div>
       <h2>Setup intelligence: the best setup for your machine</h2>
       <p>L80 will read your hardware, check it against the <a href="https://github.com/launch80/AwesomeList">Launch80 AwesomeList</a> catalog, and shortlist the community projects that actually fit. It then benchmarks the result and contributes it back. Commands and flags below are proposals and may change.</p>
     </div>
@@ -637,7 +639,7 @@ L80 verify export &lt;page&gt; --awesomelist        # a verified run as a catalo
 
 <footer>
   <div class="wrap">
-    <span>L80 CLI 1.0.0 · documentation updated 18 October 2026</span>
+    <span>L80 CLI 1.0.1 · documentation updated 18 October 2026</span>
     <span><a href="https://github.com/launch80/L80-CLI">github.com/launch80/L80-CLI</a> · <a href="https://www.launch80.com">launch80.com</a></span>
   </div>
 </footer>
