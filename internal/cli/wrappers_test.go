@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/launch80/L80-CLI/internal/history"
 )
 
 func TestSplitOwned(t *testing.T) {
@@ -213,6 +215,21 @@ func TestPwdetPublishAnEarlierReport(t *testing.T) {
 	code, out, errOut = runCmd(t, runPwdet, "publish", newest, "--api-base", srv.URL)
 	if code != 0 || !strings.Contains(out, "published: https://l80.test/a/1111") || len(*auth) != 1 {
 		t.Errorf("publish: %d %s %s", code, out, errOut)
+	}
+
+	// A relative path is recorded absolute, so `L80 verify` finds the file
+	// from any directory.
+	t.Chdir(reports)
+	if code, _, errOut := runCmd(t, runPwdet, "publish", "20261018-205947-a/report.json", "--api-base", srv.URL); code != 0 {
+		t.Fatalf("relative publish: %d %s", code, errOut)
+	}
+	got, _ := history.Read()
+	found := false
+	for _, e := range got {
+		found = found || e.SourcePath == filepath.Join(reports, "20261018-205947-a", "report.json")
+	}
+	if !found {
+		t.Errorf("ledger source_path must be absolute: %+v", got)
 	}
 
 	if code, _, errOut := runCmd(t, runPwdet, "publish", t.TempDir()); code != 3 || !strings.Contains(errOut, "no report.json") {
