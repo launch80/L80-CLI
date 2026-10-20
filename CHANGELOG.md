@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.1.0
+
+- **Quick runs can be verified.** A BetterBench run with 5 to 19 passes and
+  at least one warmup (`--quick` is 5 after 1) is now its own run class,
+  derived from the page's stored config. A quick run can reach verified, but
+  only against a reproduction within wider tolerances (decode 15%, ITL 25%,
+  TTFT 40%, peak aggregate 25%, prefill 30%), compared on medians; p99 and
+  1% low figures are skipped. `--accept-differences` does not apply. The badge
+  reads "Verified by Launch80 · quick run (N passes)". Under 5 passes, or with
+  no warmup, stays a smoke run that cannot be verified.
+- `L80 verify approve` refuses a quick run that has no reproduction
+  (`E_REPRODUCTION_REQUIRED`). `check`, `request` and `show` explain what a
+  quick stamp means; `queue`, `mine`, `show` and History gain a CLASS column,
+  and JSON outputs gain `run_class`. On the console's Verify screen, `a` on an
+  unreproduced quick run opens the reproduce form.
+- Pages made from quick runs say "verifiable as a quick run" instead of "not a
+  publishable measurement".
+- The precheck formerly called `full_run` is now `run_class`.
+- Server side: the verification service needs the 1.1 changes listed in
+  `docs/verification-contract.md` before it stamps quick runs; until then it
+  keeps refusing them and L80 reports its decision.
+
 ## 1.0.1
 
 - The console's pwdet screen is now labelled **Poison Detector** in the
