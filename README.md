@@ -79,8 +79,7 @@ L80 tui
 
 A full-screen console over everything below. A sidebar lists Home, then A to Z:
 About, Benchmark, Dashboard, History, Onboarding, Poison Detector (pwdet),
-Recommendations (coming soon), Rent (vast), Tools, Train & Tune (coming soon:
-train, tune and quantize models) and Verify. Moving through it previews each screen live,
+Rent (vast), Tools and Verify. Moving through it previews each screen live,
 enter opens it and esc comes back; `1`-`9` jump. About has our story, the
 [Discord](https://discord.gg/launch80), the
 [Supporter](https://www.launch80.com/supporter) page and every command. From it you can benchmark an

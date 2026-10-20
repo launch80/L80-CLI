@@ -108,7 +108,7 @@ func TestNavigationAndDialog(t *testing.T) {
 	// Vast: starting a real run asks first, quoting the spec's cost caps.
 	spec := filepath.Join(t.TempDir(), "run.yaml")
 	os.WriteFile(spec, []byte("name: t\ngpu:\n  names: [H100]\n  count: 2\n  max_dph: 6.5\nbudget:\n  max_total_usd: 20\n"), 0o644)
-	feed(c, input.Key{Code: input.Rune, Rune: '9'})
+	feed(c, input.Key{Code: input.Rune, Rune: '8'})
 	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
 	c.vast.form.Fields[0].Input.Set(spec)
 	c.vast.form.Fields[3].On = false // not a dry run
@@ -185,7 +185,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	feed(c, SizeMsg{100, 30})
 	drain(c, c.Init(), 0)
 	// Moving the sidebar previews each screen without taking the keyboard.
-	for range 8 {
+	for range 7 {
 		feed(c, input.Key{Code: input.Down})
 	}
 	if c.scr != scrVast || c.paneFocus {
@@ -203,7 +203,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 		t.Fatal("enter focuses the pane")
 	}
 	feed(c, input.Key{Code: input.Esc})
-	if c.paneFocus || c.scr != scrVast || c.sel != 8 {
+	if c.paneFocus || c.scr != scrVast || c.sel != 7 {
 		t.Fatalf("esc: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
 	}
 	// Up from the top wraps to the bottom; enter on Home keeps the sidebar.
@@ -333,7 +333,7 @@ func TestSidebarIsAlphabetical(t *testing.T) {
 	}
 }
 
-func TestAboutAndComingSoon(t *testing.T) {
+func TestAboutAndDeferredPages(t *testing.T) {
 	c := newTestConsole(t)
 	c.side = sidebar
 	feed(c, SizeMsg{80, 24})
@@ -358,19 +358,11 @@ func TestAboutAndComingSoon(t *testing.T) {
 			t.Errorf("about end missing %q:\n%s", want, view)
 		}
 	}
+	// Deferred pages are not in the sidebar.
 	feed(c, input.Key{Code: input.Esc})
-	feed(c, input.Key{Code: input.Rune, Rune: '8'})
 	view = checkFrame(t, c.View(80, 24), 80, 24)
-	if c.scr != scrRecs || !strings.Contains(view, "Coming soon") {
-		t.Errorf("recommendations:\n%s", view)
-	}
-	feed(c, input.Key{Code: input.Esc})
-	for c.scr != scrTrain {
-		feed(c, input.Key{Code: input.Down})
-	}
-	view = checkFrame(t, c.View(80, 24), 80, 24)
-	if !strings.Contains(view, "Train, Tune, Quantize") || !strings.Contains(view, "Train & Tune") || !strings.Contains(view, "Recommendations") {
-		t.Errorf("train:\n%s", view)
+	if strings.Contains(view, "Recommendations") || strings.Contains(view, "Train & Tune") {
+		t.Errorf("deferred pages in the sidebar:\n%s", view)
 	}
 }
 
@@ -448,7 +440,7 @@ func TestOnboardingSkip(t *testing.T) {
 func TestVastSpecBuilder(t *testing.T) {
 	c := newTestConsole(t)
 	feed(c, SizeMsg{110, 34})
-	feed(c, input.Key{Code: input.Rune, Rune: '9'})
+	feed(c, input.Key{Code: input.Rune, Rune: '8'})
 	if c.scr != scrVast {
 		t.Fatalf("screen %v", c.scr)
 	}

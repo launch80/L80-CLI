@@ -299,7 +299,9 @@ func (c *Console) cancelAll() {
 
 // sidebar is the console's navigation: Home, then the rest A to Z by label
 // (a test keeps it that way). The number keys jump to the first nine.
-var sidebar = []screenID{scrHome, scrAbout, scrBench, scrDash, scrHistory, scrOnboard, scrPwdet, scrRecs, scrVast, scrTools, scrTrain, scrVerify}
+// Recommendations (scrRecs) and Train & Tune (scrTrain) are deferred, so
+// they stay out of the sidebar until they ship.
+var sidebar = []screenID{scrHome, scrAbout, scrBench, scrDash, scrHistory, scrOnboard, scrPwdet, scrVast, scrTools, scrVerify}
 
 // route sends input to the sidebar or the focused pane, and everything else
 // (load results, finished jobs) to every screen, since a result can arrive
