@@ -259,7 +259,7 @@ func (s *pwdetScreen) reportView(c *Console, out []string, w, h int) ([]string, 
 	}
 	subject := r.Subject.Label()
 	if rev := r.Subject.Revision; rev != "" {
-		subject += " @ " + clip(rev, 12)
+		subject += " @ " + rev[:min(12, len(rev))]
 	}
 	verdict := strings.ToUpper(strings.ReplaceAll(label, "_", " "))
 	out = append(out, "", "  Verdict: "+t.R(st, verdict)+
