@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/launch80/L80-CLI/internal/api"
@@ -25,6 +27,8 @@ type pwdetScreen struct {
 	report *pwdet.Report
 	path   string
 	table  widgets.Table
+	shown  []pwdet.Finding // the table's rows
+	review bool            // only the findings to review
 	url    string
 	phase  int
 }
@@ -62,13 +66,8 @@ func (s *pwdetScreen) update(c *Console, m Msg) Cmd {
 			if r.err != nil {
 				c.setFlash(r.err.Error(), true)
 			}
-			s.report, s.path = r.report, r.path
-			s.table = widgets.Table{Columns: []widgets.Column{{Title: "Status", Width: 6}, {Title: "Severity", Width: 8}, {Title: "Check", Width: 26}, {Title: "Observation"}}}
-			if r.report != nil {
-				for _, f := range r.report.ToReview() {
-					s.table.Rows = append(s.table.Rows, []string{f.Status, f.EffectiveSeverity(), f.CheckID, f.Title})
-				}
-			}
+			s.report, s.path, s.review = r.report, r.path, false
+			s.fill()
 		}
 	case pwdetPublished:
 		if v.err != nil {
@@ -110,6 +109,9 @@ func (s *pwdetScreen) update(c *Console, m Msg) Cmd {
 		switch {
 		case v.Code == input.Rune && v.Rune == 'p' && s.report != nil && s.url == "":
 			return s.publish(c, false)
+		case v.Code == input.Rune && v.Rune == 'a' && s.report != nil:
+			s.review = !s.review
+			s.fill()
 		case v.Code == input.Rune && v.Rune == 'n':
 			s.phase, s.report, s.url = 0, nil, ""
 		case isBack(v):
@@ -118,6 +120,26 @@ func (s *pwdetScreen) update(c *Console, m Msg) Cmd {
 	}
 	return nil
 }
+
+// fill puts the report's checks in the table: every check, the ones to
+// review first, or only those to review.
+func (s *pwdetScreen) fill() {
+	s.table = widgets.Table{Columns: []widgets.Column{{Title: "Status", Width: 7}, {Title: "Severity", Width: 8}, {Title: "Check", Width: 27}, {Title: "Observation"}}}
+	s.shown = nil
+	if s.report == nil {
+		return
+	}
+	if s.review {
+		s.shown = s.report.ToReview()
+	} else {
+		s.shown = s.report.Ordered()
+	}
+	for _, f := range s.shown {
+		s.table.Rows = append(s.table.Rows, []string{statusMark[f.Status] + " " + f.Status, f.EffectiveSeverity(), f.CheckID, f.Title})
+	}
+}
+
+var statusMark = map[string]string{"pass": "✓", "warn": "!", "fail": "✗", "skipped": "–", "error": "?"}
 
 func (s *pwdetScreen) scan(c *Console) Cmd {
 	vals := s.form.Values()
@@ -207,38 +229,7 @@ func (s *pwdetScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	}
 	out := []string{jobHeader(c, s.job, w)}
 	if s.report != nil {
-		label := "no verdict"
-		var rationale []string
-		if s.report.Verdict != nil {
-			label, rationale = s.report.Verdict.Label, s.report.Verdict.Rationale
-		}
-		st := t.OK
-		switch label {
-		case "suspicious", "inconclusive":
-			st = t.Warn
-		case "likely_tampered", "malicious":
-			st = t.Bad
-		}
-		out = append(out, "", "  Verdict: "+t.R(st, strings.ToUpper(strings.ReplaceAll(label, "_", " ")))+t.R(t.Muted, "   "+s.report.Subject.Label()+" · profile "+s.report.Profile))
-		for _, r := range rationale {
-			out = append(out, t.R(t.Muted, "  "+clip(style.Sanitize(r), w-2)))
-		}
-		out = append(out, t.R(t.Muted, "  report "+clip(s.path, w-10)), t.R(t.Muted, "  "+strings.TrimSuffix(clip(s.path, w-10), ".json")+".html for the full detail"))
-		if s.url != "" {
-			out = append(out, t.R(t.OK, "  published: "+s.url))
-		}
-		out = append(out, "")
-		if len(s.table.Rows) == 0 {
-			out = append(out, t.R(t.OK, "  No check reported a warning or a failure."))
-		} else {
-			out = append(out, t.R(t.Title, fmt.Sprintf("  Findings to review (%d)", len(s.table.Rows))))
-			out = append(out, s.table.View(t, w, max(3, h-len(out)-1), true)...)
-		}
-		keys := []widgets.Binding{{Keys: "↑↓", Desc: "findings"}}
-		if s.url == "" {
-			keys = append(keys, widgets.Binding{Keys: "p", Desc: "publish"})
-		}
-		return out, append(keys, widgets.Binding{Keys: "n", Desc: "new scan"}, widgets.Binding{Keys: "esc", Desc: "back to form"})
+		return s.reportView(c, out, w, h)
 	}
 	out = append(out, s.job.log.View(t, w, max(3, h-len(out)))...)
 	keys := []widgets.Binding{{Keys: "pgup/pgdn", Desc: "scroll"}}
@@ -248,4 +239,155 @@ func (s *pwdetScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 		keys = append(keys, widgets.Binding{Keys: "n", Desc: "new scan"}, widgets.Binding{Keys: "esc", Desc: "back"})
 	}
 	return out, keys
+}
+
+// reportView shows the whole report inline: verdict, coverage by layer,
+// every check, and the selected check's evidence and remediation.
+func (s *pwdetScreen) reportView(c *Console, out []string, w, h int) ([]string, []widgets.Binding) {
+	t, r := c.th, s.report
+	label := "no verdict"
+	var rationale []string
+	if r.Verdict != nil {
+		label, rationale = r.Verdict.Label, r.Verdict.Rationale
+	}
+	st := t.OK
+	switch label {
+	case "suspicious", "inconclusive":
+		st = t.Warn
+	case "likely_tampered", "malicious":
+		st = t.Bad
+	}
+	subject := r.Subject.Label()
+	if rev := r.Subject.Revision; rev != "" {
+		subject += " @ " + clip(rev, 12)
+	}
+	verdict := strings.ToUpper(strings.ReplaceAll(label, "_", " "))
+	out = append(out, "", "  Verdict: "+t.R(st, verdict)+
+		t.R(t.Muted, clip("   "+subject+" · profile "+r.Profile+" · pwdet "+r.ToolVersion, w-11-len(verdict))))
+	for _, l := range rationale {
+		out = append(out, t.R(t.Muted, "  "+clip(style.Sanitize(l), w-2)))
+	}
+	if s.url != "" {
+		out = append(out, t.R(t.OK, "  published: "+s.url))
+	}
+	out = append(out, "")
+	out = append(out, coverageLines(c, r, w)...)
+
+	title := fmt.Sprintf("  Checks (%d)", len(r.Findings))
+	if s.review {
+		title = fmt.Sprintf("  Findings to review (%d of %d checks)", len(s.shown), len(r.Findings))
+	}
+	out = append(out, "", t.R(t.Title, title))
+	detail := s.detail(c, w)
+	foot := []string{t.R(t.Muted, "  report "+clip(relPath(s.path), w-10))}
+	if len(s.shown) == 0 {
+		out = append(out, t.R(t.OK, "  No check reported a warning or a failure."))
+	} else {
+		rows := max(3, h-len(out)-len(detail)-len(foot)-1)
+		out = append(out, s.table.View(t, w, rows, true)...)
+	}
+	out = append(out, "")
+	out = append(out, detail...)
+	out = append(out, foot...)
+
+	keys := []widgets.Binding{{Keys: "↑↓", Desc: "checks"}}
+	if s.review {
+		keys = append(keys, widgets.Binding{Keys: "a", Desc: "all checks"})
+	} else {
+		keys = append(keys, widgets.Binding{Keys: "a", Desc: "only to review"})
+	}
+	if s.url == "" {
+		keys = append(keys, widgets.Binding{Keys: "p", Desc: "publish"})
+	}
+	return style.Fit(out, w, h), append(keys, widgets.Binding{Keys: "n", Desc: "new scan"}, widgets.Binding{Keys: "esc", Desc: "back to form"})
+}
+
+// coverageLines is a small table of how many checks each layer ran, and how
+// they came out.
+func coverageLines(c *Console, r *pwdet.Report, w int) []string {
+	t := c.th
+	if r.Verdict == nil || len(r.Verdict.Coverage) == 0 {
+		return nil
+	}
+	cols := []string{"run", "pass", "warn", "fail", "skipped"}
+	layers := make([]string, 0, len(r.Verdict.Coverage))
+	for l, m := range r.Verdict.Coverage {
+		layers = append(layers, l)
+		if m["error"] > 0 && cols[len(cols)-1] != "error" {
+			cols = append(cols, "error")
+		}
+	}
+	sort.Strings(layers)
+	head := "  " + style.PadRight("Coverage", 14)
+	for _, k := range cols {
+		head += style.PadLeft(k, 9)
+	}
+	out := []string{t.R(t.Muted, clip(head, w))}
+	for _, l := range layers {
+		line := "  " + style.PadRight(l, 14)
+		for _, k := range cols {
+			n := r.Verdict.Coverage[l][k]
+			cell := style.PadLeft(strconv.Itoa(n), 9)
+			switch {
+			case n > 0 && k == "fail":
+				cell = t.R(t.Bad, cell)
+			case n > 0 && k == "warn":
+				cell = t.R(t.Warn, cell)
+			case n > 0 && k == "pass":
+				cell = t.R(t.OK, cell)
+			}
+			line += cell
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// detail is the selected check in full: what it observed, its evidence and
+// what to do about it.
+func (s *pwdetScreen) detail(c *Console, w int) []string {
+	t := c.th
+	if s.table.Cursor < 0 || s.table.Cursor >= len(s.shown) {
+		return nil
+	}
+	f := s.shown[s.table.Cursor]
+	head := fmt.Sprintf("  %s · %s · %s · confidence %.2f", f.CheckID, f.Status, f.EffectiveSeverity(), f.Confidence)
+	if f.Declared {
+		head += " · disclosed"
+	}
+	out := []string{t.R(t.Title, clip(head, w))}
+	for _, l := range style.Wrap(style.Sanitize(f.Title), w-4) {
+		out = append(out, "    "+l)
+	}
+	for i, e := range f.Evidence {
+		if i == 2 {
+			out = append(out, t.R(t.Muted, fmt.Sprintf("    … %d more in the report", len(f.Evidence)-2)))
+			break
+		}
+		line := e.Kind + " " + relPath(e.Locator)
+		if e.Summary != "" {
+			line += " — " + e.Summary
+		}
+		out = append(out, t.R(t.Muted, "    "+clip(style.Sanitize(line), w-4)))
+	}
+	if f.Remediation != "" {
+		out = append(out, t.R(t.Warn, "    "+clip(style.Sanitize(f.Remediation), w-4)))
+	}
+	return out
+}
+
+// relPath shortens a path under the working directory or home for display.
+func relPath(p string) string {
+	if !filepath.IsAbs(p) {
+		return p
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(cwd, p); err == nil && !strings.HasPrefix(rel, "..") {
+			return rel
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home+"/") {
+		return "~" + p[len(home):]
+	}
+	return p
 }

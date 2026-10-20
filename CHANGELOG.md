@@ -21,6 +21,12 @@
   earlier scan as the same generic.report.v1 page `scan --publish` makes,
   without running pwdet again. A reports folder publishes its newest scan.
   Takes `--dry-run`, `--payload-out`, `--title`, `--summary` and `--json`.
+- **The console's Poison Detector shows the whole report.** After a scan:
+  the verdict with the model revision and pwdet version, a coverage table
+  (run, pass, warn, fail, skipped per layer), every check with the ones to
+  review first, and the selected check's full observation, evidence and
+  remediation. `a` switches to only the checks to review. Before, it listed
+  only warnings and failures and pointed at the HTML report.
 - The console sidebar no longer lists the deferred Recommendations and
   Train & Tune pages.
 - The precheck formerly called `full_run` is now `run_class`.

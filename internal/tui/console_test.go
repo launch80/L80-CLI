@@ -15,6 +15,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
@@ -474,5 +475,46 @@ func TestVastSpecBuilder(t *testing.T) {
 	feed(c, input.Key{Code: input.Enter})
 	if c.dialog == nil || !strings.Contains(c.dialog.Body, "already exists") {
 		t.Fatal("overwrite must ask")
+	}
+}
+
+// The Poison Detector shows the whole report inline: verdict, coverage, every
+// check, and the selected check's evidence.
+func TestPwdetReportInline(t *testing.T) {
+	c := newTestConsole(t)
+	data, _ := os.ReadFile("../pwdet/testdata/report_v1.json")
+	rep, err := pwdet.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.scr, c.paneFocus = scrPwdet, true
+	c.pw.job, c.pw.phase = newJob("pwdet scan Wrapzii/x"), 2
+	c.pw.report, c.pw.path = rep, "/nowhere/reports/x/report.json"
+	c.pw.fill()
+	for _, sz := range [][2]int{{120, 34}, {80, 24}} {
+		feed(c, SizeMsg{sz[0], sz[1]})
+		view := checkFrame(t, c.View(sz[0], sz[1]), sz[0], sz[1])
+		for _, want := range []string{"Verdict: CLEAN", "Coverage", "provenance", "static", "Checks (37)", "a only to review"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("%v missing %q:\n%s", sz, want, view)
+			}
+		}
+	}
+	feed(c, SizeMsg{120, 34})
+	first := c.pw.shown[0]
+	if first.Status != "warn" || !strings.Contains(strings.Join(c.View(120, 34), "\n"), first.CheckID+" · warn") {
+		t.Errorf("the worst check comes first, with its detail: %+v", first)
+	}
+	// Moving the cursor changes the detail; passes follow the warnings.
+	for range 7 {
+		feed(c, input.Key{Code: input.Down})
+	}
+	if f := c.pw.shown[c.pw.table.Cursor]; f.Status != "pass" || !strings.Contains(strings.Join(c.View(120, 34), "\n"), f.CheckID+" · pass") {
+		t.Errorf("after 7 warnings, a pass: %+v", f)
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	view := strings.Join(c.View(120, 34), "\n")
+	if !strings.Contains(view, "Findings to review (7 of 37 checks)") || !strings.Contains(view, "a all checks") {
+		t.Errorf("review only:\n%s", view)
 	}
 }
