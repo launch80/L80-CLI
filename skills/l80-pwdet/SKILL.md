@@ -30,7 +30,10 @@ pwdet command works through it. Scanning is free and needs no token; only
    the detail. Explain the warn and fail findings to the user.
 5. Only if the user wants a shareable page:
    `L80 pwdet scan <model> --publish [--title …] [--summary …]`. Add `--dry-run
-   --payload-out p.json` to show them the exact page content first.
+   --payload-out p.json` to show them the exact page content first. For a scan
+   that already ran, `L80 pwdet publish <report.json|its folder|reports/>` builds
+   the same page without scanning again (same flags; a reports folder means its
+   newest scan).
 
 ## Verdicts and exit status
 

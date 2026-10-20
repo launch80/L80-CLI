@@ -123,6 +123,7 @@ Usage:
   L80 vast spec --model <hf repo> [--max-dph N]  Write a run spec: model, GPUs, price ceiling, budget
   L80 vast run --spec run.yaml [--max-hours N]   The whole pipeline, with an optional cost watchdog
   L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering (Poisoned Weights Detector)
+  L80 pwdet publish <report.json|dir>            Publish a report from an earlier scan
   L80 dashboard [tui|serve]                      GPU and inference telemetry for this machine
   L80 tools list [--json]                        Show the tools and the versions this release pins
   L80 tools check [name...] [--json]             Show how each tool resolves on this machine

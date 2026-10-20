@@ -185,6 +185,7 @@ L80 pwdet scan Qwen/Qwen3-0.6B --json                  # {"verdict": ..., "repor
 L80 pwdet scan ./model --profile full-static
 L80 pwdet scan org/model --publish --dry-run --payload-out page.json   # inspect the page first
 L80 pwdet scan org/model --publish                     # generic.report.v1 page (needs a token)
+L80 pwdet publish reports/ --dry-run                   # an earlier scan: a report.json, its folder, or ./reports (newest)
 L80 pwdet checks list
 ```
 
@@ -369,6 +370,7 @@ L80 auth status                                Show the resolved endpoint and ke
 L80 vast <command> [args]                      Rent a GPU, serve, benchmark, publish (bbvastl80)
 L80 vast spec --model <hf repo> [--max-dph N]  Write a run spec: model, GPUs, price ceiling, budget
 L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering
+L80 pwdet publish <report.json|dir>            Publish a report from an earlier scan
 L80 dashboard [tui|serve]                      GPU and inference telemetry
 L80 tools list|check|prefetch|path|run         Show, check, fetch and run the pinned Python tools
 L80 tui [--onboarding]                         Full-screen console for all of the above

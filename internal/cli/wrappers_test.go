@@ -182,3 +182,43 @@ func TestDashboardRefusesSecondSampler(t *testing.T) {
 		t.Errorf("default verb: %s", out)
 	}
 }
+
+func TestPwdetPublishAnEarlierReport(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("L80_PWDET", "/nonexistent/pwdet") // never run
+	src, _ := os.ReadFile("../pwdet/testdata/report_v1.json")
+	reports := t.TempDir()
+	for _, d := range []string{"20261018-205947-a", "20261018-210005-b"} {
+		os.MkdirAll(filepath.Join(reports, d), 0o755)
+		os.WriteFile(filepath.Join(reports, d, "report.json"), src, 0o644)
+	}
+	newest := filepath.Join(reports, "20261018-210005-b", "report.json")
+
+	payload := filepath.Join(t.TempDir(), "p.json")
+	code, out, errOut := runCmd(t, runPwdet, "publish", reports, "--dry-run", "--json", "--payload-out", payload)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if !strings.Contains(out, newest) || !strings.Contains(out, `"template": "generic.report.v1"`) || strings.Contains(out, `"url"`) {
+		t.Errorf("a reports folder publishes its newest scan, dry: %s", out)
+	}
+	if b, _ := os.ReadFile(payload); strings.Contains(string(b), "rig01-test") || strings.Contains(string(b), "/home/tester") {
+		t.Error("payload leaks host or paths")
+	}
+
+	srv, auth := fakeAPI(t, nil)
+	t.Setenv("L80_TOKEN", "L80_k1_secret")
+	code, out, errOut = runCmd(t, runPwdet, "publish", newest, "--api-base", srv.URL)
+	if code != 0 || !strings.Contains(out, "published: https://l80.test/a/1111") || len(*auth) != 1 {
+		t.Errorf("publish: %d %s %s", code, out, errOut)
+	}
+
+	if code, _, errOut := runCmd(t, runPwdet, "publish", t.TempDir()); code != 3 || !strings.Contains(errOut, "no report.json") {
+		t.Errorf("empty folder: %d %s", code, errOut)
+	}
+	notReport := filepath.Join(t.TempDir(), "x.json")
+	os.WriteFile(notReport, []byte(`{"hello":1}`), 0o644)
+	if code, _, _ := runCmd(t, runPwdet, "publish", notReport); code != 3 {
+		t.Errorf("not a report: %d", code)
+	}
+}

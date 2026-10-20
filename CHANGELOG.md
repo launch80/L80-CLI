@@ -17,6 +17,12 @@
   unreproduced quick run opens the reproduce form.
 - Pages made from quick runs say "verifiable as a quick run" instead of "not a
   publishable measurement".
+- **`L80 pwdet publish <report.json|folder>`** publishes a report from an
+  earlier scan as the same generic.report.v1 page `scan --publish` makes,
+  without running pwdet again. A reports folder publishes its newest scan.
+  Takes `--dry-run`, `--payload-out`, `--title`, `--summary` and `--json`.
+- The console sidebar no longer lists the deferred Recommendations and
+  Train & Tune pages.
 - The precheck formerly called `full_run` is now `run_class`.
 - Server side: the verification service needs the 1.1 changes listed in
   `docs/verification-contract.md` before it stamps quick runs; until then it

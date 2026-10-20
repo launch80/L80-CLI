@@ -293,7 +293,7 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
           <div><span class="chip gate">Needs a token</span><ul>
             <li>Publishing a BetterBench run</li>
             <li><code>L80 publish</code></li>
-            <li><code>L80 pwdet scan --publish</code></li>
+            <li><code>L80 pwdet scan --publish</code>, <code>L80 pwdet publish</code></li>
             <li><code>L80 verify request</code>, <code>status</code></li>
             <li><code>L80 verify queue</code>, <code>reproduce</code> (any key)</li>
             <li><code>L80 verify approve</code>, <code>reject</code> (verifier keys)</li>
@@ -428,6 +428,7 @@ L80 vast destroy --run &lt;id&gt;                  # asks before destroying</pre
 L80 pwdet scan ./model --profile full-static
 L80 pwdet scan org/model --publish --dry-run --payload-out page.json
 L80 pwdet scan org/model --publish           # a generic.report.v1 page
+L80 pwdet publish reports/ --dry-run         # an earlier scan, without scanning again
 L80 pwdet checks list</pre><button class="copy" type="button">Copy</button></div>
         <div class="tbl"><table>
           <thead><tr><th>Exit</th><th>Verdict</th></tr></thead>

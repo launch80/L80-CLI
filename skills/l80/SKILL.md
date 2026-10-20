@@ -41,6 +41,7 @@ drive L80 themselves unless they want to.
 | Write a rental spec (model, GPUs, price ceiling) | `L80 vast spec --model <hf repo> --max-dph N` |
 | Rent a GPU, serve, bench, publish, tear down | `L80 vast run --spec run.yaml --max-hours 2` (see `l80-vast`) |
 | Scan weights for tampering | `L80 pwdet scan <dir\|org/name\|url#model> --json [--publish]` (see `l80-pwdet`) |
+| Publish an earlier scan | `L80 pwdet publish <report.json\|dir> [--dry-run] --json` |
 | GPU / inference telemetry | `L80 dashboard serve` (web page on :8787), `L80 dashboard tui` |
 | What has this key published | `L80 history --json [--local]` |
 | Verification | `L80 verify check <results.json\|url>`, `L80 verify request <url>`, `L80 verify status <url>` |
