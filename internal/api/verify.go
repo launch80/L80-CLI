@@ -164,6 +164,31 @@ type Reproduction struct {
 	ResultsSHA256      string            `json:"results_sha256"`
 	RanAt              string            `json:"ran_at"`
 	L80Version         string            `json:"l80_version"`
+	// Template is the page's template; empty means bench.betterbench.v1.
+	Template string `json:"template,omitempty"`
+	// Scan is set for a scan.pwdet.v1 page: pwdet reproduce's comparison of
+	// the verifier's re-run with the published report. ResultsSHA256 is then
+	// the hash of the re-run's report.json.
+	Scan *ScanComparison `json:"scan,omitempty"`
+}
+
+// ScanComparison is `pwdet reproduce --json`: a re-run is within tolerance
+// when the files hash the same, the deterministic findings match the
+// published digest, and the same behavioural findings are significant.
+// Pairs are [published, re-run].
+type ScanComparison struct {
+	WithinTolerance   bool                  `json:"within_tolerance"`
+	Subject           string                `json:"subject,omitempty"` // repo@revision re-scanned
+	Profile           string                `json:"profile,omitempty"`
+	Verdict           [2]*string            `json:"verdict"`
+	Level             [2]*string            `json:"level"`
+	FilesMatch        bool                  `json:"files_match"`
+	FileDifferences   []string              `json:"file_differences,omitempty"`
+	DigestMatch       bool                  `json:"digest_match"`
+	CheckDifferences  map[string][2]*string `json:"check_differences,omitempty"`
+	Behaviour         map[string][]string   `json:"behaviour,omitempty"`
+	ToolVersion       [2]*string            `json:"tool_version"`
+	InputsHashesMatch bool                  `json:"inputs_hashes_match"`
 }
 
 // MetricDelta compares one headline figure.

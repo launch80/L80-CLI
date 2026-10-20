@@ -9,6 +9,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/history"
+	"github.com/launch80/L80-CLI/internal/pwdet"
 )
 
 var guidRE = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
@@ -23,11 +24,20 @@ type Target struct {
 	Checks []betterbench.Check
 	Class  string // betterbench.RunClass of the results, once checked
 	Passes int
+	// Scan is set when the target is a pwdet report or a scan.pwdet.v1 page;
+	// Level is then the scan's assurance level.
+	Scan  bool
+	Level string
 }
 
-// ResolveTarget accepts a results.json path, a page URL or a guid. For a URL
-// or guid it finds the ledger entry this machine wrote when publishing, and
-// through it the results file.
+// Verifiable is whether a template's pages can be verified.
+func Verifiable(template string) bool {
+	return template == betterbench.RawTemplateID || template == pwdet.ScanTemplateID
+}
+
+// ResolveTarget accepts a results.json or pwdet report.json path, a page URL
+// or a guid. For a URL or guid it finds the ledger entry this machine wrote
+// when publishing, and through it the source file.
 func ResolveTarget(arg string) (*Target, *api.Error) {
 	if st, err := os.Stat(arg); err == nil && !st.IsDir() {
 		data, rerr := os.ReadFile(arg)
@@ -35,10 +45,13 @@ func ResolveTarget(arg string) (*Target, *api.Error) {
 			return nil, api.Newf("E_INPUT_INVALID", "Check the file's permissions.", "could not read %s: %v", arg, rerr)
 		}
 		t := &Target{File: arg, Data: data}
+		if _, perr := pwdet.Parse(data); perr == nil {
+			t.Scan = true
+		}
 		entries, _ := history.Read()
 		sum := sha256Hex(data)
 		for i := range entries {
-			if entries[i].SourceSHA256 == sum && entries[i].TemplateID == betterbench.RawTemplateID {
+			if entries[i].SourceSHA256 == sum && Verifiable(entries[i].TemplateID) {
 				t.Entry, t.GUID, t.URL = &entries[i], entries[i].GUID, entries[i].URL
 				break
 			}
@@ -50,7 +63,7 @@ func ResolveTarget(arg string) (*Target, *api.Error) {
 	for i := range entries {
 		e := &entries[i]
 		if (guid != "" && strings.EqualFold(e.GUID, guid)) || (arg != "" && e.URL == arg) {
-			t := &Target{GUID: e.GUID, URL: e.URL, Entry: e, File: e.SourcePath}
+			t := &Target{GUID: e.GUID, URL: e.URL, Entry: e, File: e.SourcePath, Scan: e.TemplateID == pwdet.ScanTemplateID || e.TemplateID == pwdet.TemplateID}
 			if e.SourcePath != "" {
 				t.Data, _ = os.ReadFile(e.SourcePath)
 			}
@@ -68,7 +81,16 @@ func ResolveTarget(arg string) (*Target, *api.Error) {
 // the provenance check that ties the page to that file.
 func (t *Target) RunChecks() {
 	var checks []betterbench.Check
-	if t.Data != nil {
+	if t.Scan && t.Data != nil {
+		if r, err := pwdet.Parse(t.Data); err == nil {
+			for _, c := range pwdet.Prechecks(r) {
+				checks = append(checks, betterbench.Check{Name: c.Name, Status: c.Status, Detail: c.Detail})
+			}
+			t.Level = r.Level()
+		} else {
+			checks = append(checks, betterbench.Check{Name: "report", Status: "fail", Detail: err.Error()})
+		}
+	} else if t.Data != nil {
 		if r, err := betterbench.Parse(t.Data); err == nil {
 			checks = betterbench.Prechecks(r)
 			t.Class, t.Passes = betterbench.RunClass(r.Config), r.Config.RunsPerCategory
@@ -77,7 +99,7 @@ func (t *Target) RunChecks() {
 		}
 	} else {
 		checks = append(checks, betterbench.Check{Name: "results", Status: "warn",
-			Detail: "the results file is not on this machine, so only launch80 can check the content"})
+			Detail: "the source file is not on this machine, so only launch80 can check the content"})
 	}
 	switch {
 	case t.Entry == nil && t.GUID == "":
@@ -85,9 +107,12 @@ func (t *Target) RunChecks() {
 	case t.Entry == nil:
 		checks = append(checks, betterbench.Check{Name: "provenance", Status: "warn",
 			Detail: "this machine has no record of publishing that page; the reviewer will rely on the page alone"})
-	case t.Entry.TemplateID != betterbench.RawTemplateID:
+	case t.Entry.TemplateID == pwdet.TemplateID:
 		checks = append(checks, betterbench.Check{Name: "provenance", Status: "fail",
-			Detail: fmt.Sprintf("only bench.betterbench.v1 pages can be verified; this is %s", t.Entry.TemplateID)})
+			Detail: fmt.Sprintf("this scan was published as %s, which carries no report to re-run; publish it again (`L80 pwdet publish`) to get a %s page", pwdet.TemplateID, pwdet.ScanTemplateID)})
+	case !Verifiable(t.Entry.TemplateID):
+		checks = append(checks, betterbench.Check{Name: "provenance", Status: "fail",
+			Detail: fmt.Sprintf("only %s and %s pages can be verified; this is %s", betterbench.RawTemplateID, pwdet.ScanTemplateID, t.Entry.TemplateID)})
 	case t.Entry.SourceSHA256 == "":
 		checks = append(checks, betterbench.Check{Name: "provenance", Status: "warn",
 			Detail: "published by an L80 older than 0.5.0, which did not record the file's hash"})

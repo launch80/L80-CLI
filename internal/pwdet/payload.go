@@ -75,9 +75,14 @@ func Build(r *Report, opt Options) (*Payload, error) {
 	}
 
 	p := &Payload{Template: TemplateID}
+	level := r.Level()
 	p.Title = opt.Title
 	if p.Title == "" {
-		p.Title = clip("pwdet: "+label+" — "+verdict, maxTitle)
+		t := "pwdet: " + label + " — " + verdict
+		if level != "" {
+			t += " · " + level
+		}
+		p.Title = clip(t, maxTitle)
 	}
 	date := r.Finished
 	if date == "" {
@@ -90,6 +95,9 @@ func Build(r *Report, opt Options) (*Payload, error) {
 	p.Summary = opt.Summary
 	if p.Summary == "" {
 		s := fmt.Sprintf("Automated scan verdict: %s.", verdict)
+		if level != "" {
+			s = fmt.Sprintf("Automated %s scan verdict: %s.", level, verdict)
+		}
 		if len(rationale) > 0 {
 			s += " " + strings.Join(rationale, "; ") + "."
 		}
@@ -114,6 +122,7 @@ func Build(r *Report, opt Options) (*Payload, error) {
 		p.Metrics = append(p.Metrics, Metric{Label: clip(label, maxLabel), Value: clip(value, maxValue), Note: clip(note, maxNote)})
 	}
 	add("Verdict", verdict, "")
+	add("Assurance", level, "basic, standard, thorough or deep: what the scan could test")
 	add("Observations", fmt.Sprint(run), "pass, warn, fail, skipped and error findings")
 	add("Pass", fmt.Sprint(counts["pass"]), "")
 	add("Warn", fmt.Sprint(counts["warn"]), "")
@@ -151,6 +160,14 @@ func Build(r *Report, opt Options) (*Payload, error) {
 		p.Sections = append(p.Sections, Section{Heading: "Findings to review", Body: "No check reported a warning or a failure."})
 	}
 
+	if a := r.Assurance; a != nil && len(a.Threats) > 0 {
+		sec := Section{Heading: "Threat coverage", Body: clip(sc.Clean(a.Summary), maxBody)}
+		for _, t := range a.Threats {
+			sec.Bullets = append(sec.Bullets, clip(sc.Clean(ThreatLine(t)), maxBullet))
+		}
+		p.Sections = append(p.Sections, sec)
+	}
+
 	if r.Verdict != nil && len(r.Verdict.Coverage) > 0 {
 		layers := make([]string, 0, len(r.Verdict.Coverage))
 		for l := range r.Verdict.Coverage {
@@ -160,8 +177,14 @@ func Build(r *Report, opt Options) (*Payload, error) {
 		sec := Section{Heading: "Coverage", Body: "Checks run per layer. A layer that is absent was not part of this profile."}
 		for _, l := range layers {
 			c := r.Verdict.Coverage[l]
-			sec.Bullets = append(sec.Bullets, clip(fmt.Sprintf("%s: %d run, %d pass, %d warn, %d fail, %d skipped, %d error",
-				l, c["run"], c["pass"], c["warn"], c["fail"], c["skipped"], c["error"]), maxBullet))
+			line := fmt.Sprintf("%s: %d run, %d pass, %d warn, %d fail, %d skipped, %d error",
+				l, c["run"], c["pass"], c["warn"], c["fail"], c["skipped"], c["error"])
+			if e, ok := c["eligible"]; ok {
+				// schema 2 counts checks, not findings
+				line = fmt.Sprintf("%s: %d of %d checks ran: %d pass, %d warn, %d fail; %d skipped, %d error, %d not applicable",
+					l, c["run"], e, c["pass"], c["warn"], c["fail"], c["skipped"], c["error"], c["not_applicable"])
+			}
+			sec.Bullets = append(sec.Bullets, clip(line, maxBullet))
 		}
 		p.Sections = append(p.Sections, sec)
 	}
@@ -181,11 +204,23 @@ func Build(r *Report, opt Options) (*Payload, error) {
 		p.Sections = append(p.Sections, sec)
 	}
 
-	p.Sections = append(p.Sections, Section{Heading: "Method", Body: "Poisoned Weights Detector " + r.ToolVersion +
-		" checks a checkpoint in up to four layers: static (files, headers, configs, tokenizer, chat template, weight statistics), " +
-		"provenance (Hub metadata, parent hashes, signed manifest), black-box (paired behavioural probes against a served copy) and " +
-		"white-box (activations and per-layer deltas). Findings the publisher disclosed are downgraded one severity step but never hidden. " +
-		"Published from the report.json the tool wrote; the scanning machine's name, paths and endpoints are removed."})
+	if a := r.Assurance; a != nil {
+		if a.AccuracyText != "" {
+			p.Sections = append(p.Sections, Section{Heading: "Measured accuracy", Body: a.AccuracyText})
+		}
+		if len(a.Gaps) > 0 {
+			sec := Section{Heading: "Not tested", Body: "What this scan could not check, and how to close each gap."}
+			for _, g := range a.Gaps {
+				if len(sec.Bullets) == maxBullets {
+					break
+				}
+				sec.Bullets = append(sec.Bullets, clip(sc.Clean(g), maxBullet))
+			}
+			p.Sections = append(p.Sections, sec)
+		}
+	}
+
+	p.Sections = append(p.Sections, Section{Heading: "Method", Body: Method(r)})
 
 	// Scrub the page as a whole, then make sure nothing identifying is left.
 	p.Title, p.Subtitle, p.Summary = sc.Clean(p.Title), sc.Clean(p.Subtitle), sc.Clean(p.Summary)
@@ -204,6 +239,51 @@ func Build(r *Report, opt Options) (*Payload, error) {
 		return nil, fmt.Errorf("refusing to publish: the page would still contain %q", leaks[0])
 	}
 	return p, nil
+}
+
+var stateWords = map[string]string{"tested": "tested", "partial": "partly tested", "not_tested": "not tested"}
+
+// ThreatLine is one row of the threat coverage matrix.
+func ThreatLine(t Threat) string {
+	state := stateWords[t.State]
+	if state == "" {
+		state = t.State
+	}
+	line := t.Title + ": " + state
+	if len(t.Ran) > 0 {
+		line += " (" + strings.Join(t.Ran, ", ") + ")"
+	}
+	if t.State != "tested" && len(t.Missing) > 0 {
+		why := t.Missing[0]
+		if i := strings.Index(why, "; to close it"); i > 0 {
+			why = why[:i]
+		}
+		line += "; missing " + why
+	}
+	return line
+}
+
+// Method describes how the scan works and what its level can and cannot
+// say, from the report rather than from fixed text.
+func Method(r *Report) string {
+	s := "Poisoned Weights Detector " + r.ToolVersion +
+		" checks a checkpoint in up to four layers: static (files, headers, configs, tokenizer, chat template, weight statistics), " +
+		"provenance (Hub metadata, parent hashes, signed manifest), black-box (paired behavioural probes against the base model, both served) and " +
+		"white-box (activations and per-layer deltas). Findings the publisher disclosed are downgraded one severity step but never hidden."
+	switch r.Level() {
+	case "basic":
+		s += " This was a Basic scan: nothing was compared against a reference, so weight implants and trained-in behaviour were not tested."
+	case "standard":
+		s += " This was a Standard scan: weights were compared tensor by tensor against a reference, but behaviour was not tested, so a trained-in trigger would not be found."
+	case "thorough":
+		s += " This was a Thorough scan: behaviour was probed against the reference, with thresholds calibrated on the reference's own sampling noise. A trigger that fires rarely can still be missed; the probe findings state the smallest firing rate each probe could detect."
+	case "deep":
+		s += " This was a Deep scan: behaviour and internal activations were compared against the reference."
+	}
+	if r.Inputs != nil && r.Digest != "" {
+		s += " The report records its inputs and a digest, so `pwdet reproduce` can re-run it."
+	}
+	return s + " Published from the report.json the tool wrote; the scanning machine's name, paths and endpoints are removed."
 }
 
 func clip(s string, max int) string {

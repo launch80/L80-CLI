@@ -11,6 +11,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/betterbench"
+	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
@@ -33,6 +34,7 @@ type verifyScreen struct {
 	cur     *api.Verification
 	payload []byte
 	plan    app.Plan
+	scan    *app.ScanPlan // set when the page is a pwdet scan
 	detErr  string
 	form    widgets.Form
 	reason  widgets.Form
@@ -50,6 +52,7 @@ type verifyDetail struct {
 	v       *api.Verification
 	payload []byte
 	plan    app.Plan
+	scan    *app.ScanPlan
 	err     string
 }
 
@@ -98,7 +101,7 @@ func (s *verifyScreen) fillTable() {
 }
 
 func (s *verifyScreen) open(c *Console, v api.Verification) Cmd {
-	s.phase, s.cur, s.payload, s.detErr, s.rep, s.job = 1, &v, nil, "", nil, nil
+	s.phase, s.cur, s.payload, s.scan, s.detErr, s.rep, s.job = 1, &v, nil, nil, "", nil, nil
 	if r, err := app.LoadReproduction(v.ID); err == nil {
 		s.rep = r
 	}
@@ -106,6 +109,13 @@ func (s *verifyScreen) open(c *Console, v api.Verification) Cmd {
 		payload, apiErr := c.d.Client.ArtifactPayload(v.ArtifactGUID)
 		if apiErr != nil {
 			return verifyDetail{v: &v, err: apiErr.Message}
+		}
+		if pwdet.IsScanPayload(payload) {
+			sp, err := app.ScanPlanFrom(payload)
+			if err != nil {
+				return verifyDetail{v: &v, err: err.Error()}
+			}
+			return verifyDetail{v: &v, payload: payload, scan: &sp}
 		}
 		plan, err := app.PlanFrom(payload)
 		if err != nil {
@@ -116,6 +126,16 @@ func (s *verifyScreen) open(c *Console, v api.Verification) Cmd {
 }
 
 func (s *verifyScreen) startForm(c *Console) {
+	if s.scan != nil {
+		s.form = widgets.Form{Submit: "Re-scan", Fields: []*widgets.Field{
+			{Key: "model", Label: "Model files", Help: "Optional: a local folder with " + s.scan.Subject + ". Empty: pwdet downloads the pinned revision.",
+				Input: widgets.TextInput{Placeholder: "(download)"}},
+			{Key: "base", Label: "Reference files", Help: "Optional: a local folder with the reference. Empty: pwdet downloads it.",
+				Input: widgets.TextInput{Placeholder: "(download)"}},
+		}}
+		s.phase = 2
+		return
+	}
 	s.form = widgets.Form{Submit: "Reproduce", Fields: []*widgets.Field{
 		{Key: "endpoint", Label: "Endpoint", Help: "Your OpenAI-compatible server running the same model, on your hardware. It never leaves this machine.",
 			Input: widgets.TextInput{Placeholder: "http://127.0.0.1:8000/v1"}},
@@ -131,6 +151,23 @@ func (s *verifyScreen) startForm(c *Console) {
 
 func (s *verifyScreen) reproduce(c *Console) Cmd {
 	vals := s.form.Values()
+	if s.scan != nil {
+		id, payload := s.cur.ID, s.payload
+		o := app.ScanOptions{Model: vals["model"], Base: vals["base"]}
+		s.phase, s.rep = 1, nil
+		s.job = newJob("re-scan " + id)
+		return c.start(s.job, func(ctx context.Context, out io.Writer) (any, int, error) {
+			rep, apiErr := app.ReproduceScan(ctx, id, payload, o, c.d.Version, app.WriterSink{W: out})
+			if apiErr != nil {
+				fmt.Fprintf(out, "%s: %s\n%s\n", apiErr.Code, apiErr.Message, apiErr.Remedy)
+				return nil, 1, nil
+			}
+			if err := app.SaveReproduction(id, rep); err != nil {
+				fmt.Fprintf(out, "warning: could not save the re-scan: %v\n", err)
+			}
+			return rep, 0, nil
+		})
+	}
 	if vals["endpoint"] == "" {
 		c.setFlash("your endpoint is required", true)
 		return nil
@@ -179,7 +216,17 @@ func (s *verifyScreen) approve(c *Console) Cmd {
 		c.setFlash(why, true)
 		return nil
 	}
-	if s.payload != nil && s.plan.Class == betterbench.ClassQuick {
+	if s.scan != nil {
+		// A scan is stamped only against a re-run within tolerance.
+		if s.rep == nil || s.rep.Scan == nil {
+			c.setFlash("a scan needs a re-scan before it can be verified: press p", true)
+			return nil
+		}
+		if !s.rep.WithinTolerance {
+			c.setFlash("your re-scan differs from the published report: reject it or re-scan", true)
+			return nil
+		}
+	} else if s.payload != nil && s.plan.Class == betterbench.ClassQuick {
 		// A quick run is stamped only against a reproduction within tolerance.
 		if s.rep == nil {
 			c.setFlash("a quick run needs a reproduction before it can be verified: run it on your endpoint", true)
@@ -193,7 +240,9 @@ func (s *verifyScreen) approve(c *Console) Cmd {
 	}
 	title, danger := "Verify", false
 	body := "Stamp this run Verified by Launch80 on your review alone?\n\nYou have not reproduced it. Press p first to run it yourself and attach the comparison."
-	if s.rep != nil {
+	if s.rep != nil && s.rep.Scan != nil {
+		body = "Stamp this scan Verified by Launch80 · " + scanLevel(s.scan) + "scan reproduced?\n\nYour re-scan goes with the stamp:\n" + strings.Join(app.FormatScan(s.rep.Scan), "\n")
+	} else if s.rep != nil {
 		body = "Stamp this run Verified by Launch80?\n\nYour reproduction goes with the stamp:\n" + strings.Join(app.FormatDeltas(s.rep.Metrics), "\n")
 	}
 	if s.rep != nil && !s.rep.WithinTolerance {
@@ -224,7 +273,7 @@ func (s *verifyScreen) update(c *Console, m Msg) Cmd {
 		s.fillTable()
 	case verifyDetail:
 		if s.cur != nil && v.v.ID == s.cur.ID {
-			s.cur, s.payload, s.plan, s.detErr = v.v, v.payload, v.plan, v.err
+			s.cur, s.payload, s.plan, s.scan, s.detErr = v.v, v.payload, v.plan, v.scan, v.err
 		}
 	case verifyDecided:
 		if v.err != nil {
@@ -361,7 +410,7 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 			if s.tab == 0 {
 				out = append(out, t.R(t.Muted, "Nothing is waiting for review."))
 			} else {
-				out = append(out, t.R(t.Muted, "You have not requested verification. Open History, select a BetterBench page and press v."))
+				out = append(out, t.R(t.Muted, "You have not requested verification. Open History, select a BetterBench run or pwdet scan and press v."))
 			}
 		} else {
 			out = append(out, s.table.View(t, w, min(len(s.rows())+2, h-4), true)...)
@@ -370,6 +419,9 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 	}
 	if s.phase == 2 || s.phase == 3 {
 		f, what := &s.form, "Reproduce "+s.cur.ID+" on your hardware"
+		if s.scan != nil {
+			what = "Re-scan " + s.cur.ID + " with pwdet on this machine"
+		}
 		if s.phase == 3 {
 			f, what = &s.reason, "Reject "+s.cur.ID
 		}
@@ -404,6 +456,27 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 		out = append(out, t.R(t.Bad, "could not load the published run: "+s.detErr))
 	case s.payload == nil:
 		out = append(out, t.R(t.Muted, widgets.Spin(c.tick)+" loading the published run…"))
+	case s.scan != nil:
+		sp := s.scan
+		out = append(out, t.R(t.Title, "To re-scan"), kv(t, "model", orDash(sp.Subject)))
+		for _, r := range sp.References {
+			out = append(out, kv(t, "reference", r))
+		}
+		prof := orDash(sp.Profile)
+		if sp.Level != "" && sp.Level != sp.Profile {
+			prof += " (" + sp.Level + " level)"
+		}
+		out = append(out, kv(t, "profile", prof+", pwdet "+sp.ToolVersion),
+			kv(t, "published", orDash(sp.Verdict)+t.R(t.Muted, "   digest "+clip(sp.Digest, 12))),
+			t.R(t.Muted, "Stamped only after a re-run within tolerance: same file hashes, same deterministic findings, same significant probe findings."))
+		if sp.Serve {
+			out = append(out, t.R(t.Muted, "This scan probed behaviour: the re-run serves both models on this machine's GPU."))
+		}
+		for _, ck := range sp.Checks {
+			if ck.Status != "pass" {
+				out = append(out, t.R(t.Warn, ck.Status+" "+ck.Name+": ")+t.R(t.Muted, ck.Detail))
+			}
+		}
 	default:
 		p := s.plan
 		out = append(out, t.R(t.Title, "To reproduce"), kv(t, "model", p.Model))
@@ -423,7 +496,16 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 			}
 		}
 	}
-	if s.rep != nil {
+	if s.rep != nil && s.rep.Scan != nil {
+		verdict := t.R(t.OK, "your re-scan matches the published report")
+		if !s.rep.WithinTolerance {
+			verdict = t.R(t.Warn, "your re-scan differs from the published report")
+		}
+		out = append(out, "", t.R(t.Title, "Your re-scan")+"  "+verdict)
+		for _, l := range app.FormatScan(s.rep.Scan) {
+			out = append(out, "  "+t.R(t.Text, style.Sanitize(l)))
+		}
+	} else if s.rep != nil {
 		verdict := t.R(t.OK, "your run matches the published figures")
 		if !s.rep.WithinTolerance {
 			verdict = t.R(t.Warn, "some figures differ by more than the tolerance")
@@ -444,11 +526,23 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 		out = append(out, "", jobHeader(c, s.job, w))
 		out = append(out, s.job.log.View(t, w, max(3, h-len(out)))...)
 	}
-	keys := []widgets.Binding{{Keys: "p", Desc: "reproduce"}, {Keys: "a", Desc: "verify"}, {Keys: "x", Desc: "reject"}, {Keys: "esc", Desc: "back"}}
+	pk := "reproduce"
+	if s.scan != nil {
+		pk = "re-scan"
+	}
+	keys := []widgets.Binding{{Keys: "p", Desc: pk}, {Keys: "a", Desc: "verify"}, {Keys: "x", Desc: "reject"}, {Keys: "esc", Desc: "back"}}
 	if v.Mine {
 		keys = []widgets.Binding{{Keys: "esc", Desc: "back"}}
 	}
 	return fitW(out, w), keys
+}
+
+// scanLevel is "Standard " for a Standard scan, "" when unknown.
+func scanLevel(sp *app.ScanPlan) string {
+	if sp == nil || sp.Level == "" {
+		return ""
+	}
+	return strings.ToUpper(sp.Level[:1]) + sp.Level[1:] + " "
 }
 
 func fitW(lines []string, w int) []string {

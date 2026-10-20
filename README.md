@@ -181,19 +181,41 @@ Detector](https://github.com/launch80/poisoned-weights-detector) on a local
 checkpoint, a Hugging Face repo, or a served endpoint.
 
 ```sh
-L80 pwdet scan Qwen/Qwen3-0.6B --json                  # {"verdict": ..., "report": ...}
-L80 pwdet scan ./model --profile full-static
-L80 pwdet scan org/model --publish --dry-run --payload-out page.json   # inspect the page first
-L80 pwdet scan org/model --publish                     # generic.report.v1 page (needs a token)
-L80 pwdet publish reports/ --dry-run                   # an earlier scan: a report.json, its folder, or ./reports (newest)
+L80 pwdet scan Qwen/Qwen3-0.6B --profile basic --json                     # seconds: files and metadata
+L80 pwdet scan org/model --base Qwen/Qwen3-0.6B --profile standard --json # weights vs the base
+L80 pwdet scan org/model --base Qwen/Qwen3-0.6B --profile thorough        # also behaviour, served on this GPU
+L80 pwdet scan org/model --publish --dry-run --payload-out page.json      # inspect the page first
+L80 pwdet scan org/model --publish                                        # publish it (needs a token)
+L80 pwdet publish reports/ --dry-run      # an earlier scan: a report.json, its folder, or ./reports (newest)
 L80 pwdet checks list
 ```
 
+Every verdict carries an **assurance level** that says what the scan could
+see. Read "clean · basic" as "nothing found in what ran":
+
+| Level | Tests | Takes |
+|---|---|---|
+| `basic` | files, headers, configs, tokenizer, chat template, Hub provenance. Cannot see weight implants or trained-in behaviour | seconds |
+| `standard` | plus every tensor compared with the base model (`--base`, or the one the model card names), fetched from the Hub and hash-checked | minutes |
+| `thorough` | plus behaviour: the model and its base answer the same paraphrased prompts, with and without candidate triggers; pwdet serves both on this machine's Intel or NVIDIA GPU, or uses `--endpoint` | minutes per model |
+| `deep` | plus white-box activations | longer |
+
+The report also gives each threat (code on load, prompt injection, weight
+implants, trained-in behaviour, supply chain) as tested or not, what would
+close each gap, and how scans at that level fared on pwdet's evaluation
+corpus. In the console, the Poison Detector shows all of it, and `m` opens a
+Method tab: how pwdet works, what this scan tested, and its limits.
+
 `scan` exits 0 for clean or inconclusive, 1 for suspicious (or a pwdet
 failure), and 2 for likely tampered or malicious. The published page carries
-the verdict, the findings to review and the coverage. It never carries the
-hostname, local paths or private endpoints: L80 removes them and refuses to
-publish if any remain.
+the verdict and level, the threat coverage, the findings to review, the
+coverage and the measured accuracy. It never carries the hostname, local
+paths or private endpoints: L80 removes them and refuses to publish if any
+remain.
+
+When the launch80 server offers it, a scan is published as `scan.pwdet.v1`,
+which carries the scrubbed report and can be verified (below). Otherwise it is
+a `generic.report.v1` page, and L80 says why it is not verifiable.
 
 ## Telemetry dashboard: `L80 dashboard`
 
@@ -253,6 +275,16 @@ that the page was published from this machine from a file that has not
 changed since. The server side is specified in
 [docs/verification-contract.md](docs/verification-contract.md); until
 launch80 enables it, `verify request` says so and `verify check` still works.
+
+**pwdet scans can be verified** (new in 1.2). A scan published as
+`scan.pwdet.v1` at Standard or above, of a Hugging Face repo pinned to a
+commit, is verified by re-running it: `L80 verify reproduce <id>` runs
+`pwdet reproduce`, which fetches the same files and runs the same checks. It
+is within tolerance when the files hash the same, the deterministic findings
+match the published digest, and the same behavioural findings are
+significant. A scan is stamped only against such a re-run; the badge reads
+"Verified by Launch80 · Standard scan reproduced". A Basic scan, or one of a
+local folder, cannot be verified: `L80 verify check report.json` says why.
 
 ## History
 

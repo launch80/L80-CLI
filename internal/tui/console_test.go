@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/pwdet"
@@ -73,6 +74,9 @@ func checkFrame(t *testing.T, frame []string, w, h int) string {
 	for i, l := range frame {
 		if style.Width(l) > w {
 			t.Errorf("line %d is %d wide (> %d): %q", i, style.Width(l), w, l)
+		}
+		if strings.Contains(l, "\n") {
+			t.Errorf("line %d holds a newline, which breaks the frame: %q", i, l)
 		}
 	}
 	return strings.Join(frame, "\n")
@@ -321,6 +325,72 @@ func TestVerifyScreenQuickRunNeedsAReproduction(t *testing.T) {
 	}
 }
 
+func TestVerifyScreenScanNeedsAReScan(t *testing.T) {
+	raw, _ := os.ReadFile("../pwdet/testdata/report_v2.json")
+	pg, err := app.BuildPwdetPage(raw, pwdet.Options{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decided string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/keys/me":
+			fmt.Fprint(w, `{"ok":true,"data":{"key_id":"k2","is_verifier":true}}`)
+		case r.URL.Path == "/api/v1/verifications" && r.URL.Query().Get("scope") == "queue":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":"v9","artifact_guid":"g9","title":"pwdet: unsloth/Qwen3-0.6B","status":"requested","run_class":"scan"}]}`)
+		case r.URL.Path == "/api/v1/verifications":
+			fmt.Fprint(w, `{"ok":true,"data":[]}`)
+		case r.URL.Path == "/api/v1/artifacts/g9/payload":
+			fmt.Fprintf(w, `{"ok":true,"data":%s}`, pg.Body)
+		case r.URL.Path == "/api/v1/verifications/v9/decision":
+			b, _ := io.ReadAll(r.Body)
+			decided = string(b)
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"v9","status":"verified","url":"https://l80.test/a/g9"}}`)
+		default:
+			fmt.Fprint(w, `{"ok":true,"data":{"service":"x","templates":[]}}`)
+		}
+	}))
+	defer srv.Close()
+	c := newTestConsole(t)
+	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
+	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
+	feed(c, SizeMsg{120, 36})
+	feed(c, input.Key{Code: input.End})
+	feed(c, input.Key{Code: input.Enter})
+	feed(c, input.Key{Code: input.Enter})
+	view := checkFrame(t, c.View(120, 36), 120, 36)
+	for _, want := range []string{"To re-scan", "unsloth/Qwen3-0.6B@", "standard", "p re-scan"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("scan detail missing %q:\n%s", want, view)
+		}
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	if c.dialog != nil || !strings.Contains(c.flash, "needs a re-scan") {
+		t.Fatalf("approve before a re-scan: dialog=%v flash=%q", c.dialog, c.flash)
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'p'})
+	if view := checkFrame(t, c.View(120, 36), 120, 36); c.verify.phase != 2 || !strings.Contains(view, "Re-scan v9") || strings.Contains(view, "Endpoint") {
+		t.Errorf("re-scan form:\n%s", view)
+	}
+	feed(c, input.Key{Code: input.Esc})
+	clean, std := "clean", "standard"
+	c.verify.rep = &api.Reproduction{Template: pwdet.ScanTemplateID, WithinTolerance: true,
+		Scan: &api.ScanComparison{WithinTolerance: true, FilesMatch: true, DigestMatch: true, InputsHashesMatch: true,
+			Verdict: [2]*string{&clean, &clean}, Level: [2]*string{&std, &std}}}
+	if view := checkFrame(t, c.View(120, 36), 120, 36); !strings.Contains(view, "Your re-scan") || !strings.Contains(view, "deterministic findings match") {
+		t.Errorf("re-scan result:\n%s", view)
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	if c.dialog == nil || !strings.Contains(c.dialog.Body, "scan reproduced") {
+		t.Fatalf("stamp dialog: %+v", c.dialog)
+	}
+	feed(c, input.Key{Code: input.Left})
+	feed(c, input.Key{Code: input.Enter})
+	if !strings.Contains(decided, `"template":"scan.pwdet.v1"`) || !strings.Contains(decided, `"digest_match":true`) {
+		t.Errorf("decision sent = %s", decided)
+	}
+}
+
 func TestSidebarIsAlphabetical(t *testing.T) {
 	if sidebar[0] != scrHome {
 		t.Fatal("Home stays on top")
@@ -516,5 +586,59 @@ func TestPwdetReportInline(t *testing.T) {
 	view := strings.Join(c.View(120, 34), "\n")
 	if !strings.Contains(view, "Findings to review (7 of 37 checks)") || !strings.Contains(view, "a all checks") {
 		t.Errorf("review only:\n%s", view)
+	}
+}
+
+func TestPwdetV2AssuranceAndMethod(t *testing.T) {
+	c := newTestConsole(t)
+	data, _ := os.ReadFile("../pwdet/testdata/report_v2.json")
+	rep, err := pwdet.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.scr, c.paneFocus = scrPwdet, true
+	c.pw.job, c.pw.phase = newJob("pwdet scan unsloth/Qwen3-0.6B"), 2
+	c.pw.report, c.pw.path = rep, "/nowhere/reports/x/report.json"
+	c.pw.fill()
+	for _, sz := range [][2]int{{120, 34}, {80, 24}} {
+		feed(c, SizeMsg{sz[0], sz[1]})
+		view := checkFrame(t, c.View(sz[0], sz[1]), sz[0], sz[1])
+		// checkFrame catches a multi-line evidence summary breaking the frame
+		for _, want := range []string{"CLEAN · STANDARD", "Tested:", "✗ Trained-in covert behaviour", "m method"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("%v missing %q:\n%s", sz, want, view)
+			}
+		}
+	}
+	feed(c, SizeMsg{120, 34})
+	feed(c, input.Key{Code: input.Rune, Rune: 'm'})
+	view := checkFrame(t, c.View(120, 34), 120, 34)
+	for _, want := range []string{"How pwdet works", "Standard scan", "m checks"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("method tab missing %q:\n%s", want, view)
+		}
+	}
+	// Scrolling reaches the limits, which say what Basic cannot see.
+	all := ""
+	for range 80 {
+		feed(c, input.Key{Code: input.Down})
+		all += strings.Join(c.View(120, 34), "\n")
+	}
+	for _, want := range []string{"What this scan tested", "Measured accuracy", "Strengths and limits", "cannot see weight implants", "English-first"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("method tab never shows %q", want)
+		}
+	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.pw.method || !strings.Contains(strings.Join(c.View(120, 34), "\n"), "Checks (") {
+		t.Error("esc returns to the checks")
+	}
+	// The form offers the assurance levels, Standard first.
+	c.pw.phase = 0
+	view = strings.Join(c.View(120, 34), "\n")
+	for _, want := range []string{"Level", "standard", "Base", "Endpoint"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("form missing %q:\n%s", want, view)
+		}
 	}
 }

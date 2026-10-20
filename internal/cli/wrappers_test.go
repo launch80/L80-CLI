@@ -131,6 +131,7 @@ while :; do sleep 0.05; done
 }
 
 func TestPwdetScanJSONAndDryRunPublish(t *testing.T) {
+	t.Setenv("L80_API_BASE", "http://127.0.0.1:1") // never the real server
 	report, _ := filepath.Abs("../pwdet/testdata/report_v1.json")
 	fakeTool(t, "L80_PWDET", `echo "progress" >&2; echo "{\"verdict\": \"clean\", \"report\": \"`+report+`\"}"; exit 0`+"\n")
 	payload := filepath.Join(t.TempDir(), "p.json")
@@ -186,6 +187,7 @@ func TestDashboardRefusesSecondSampler(t *testing.T) {
 func TestPwdetPublishAnEarlierReport(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("L80_PWDET", "/nonexistent/pwdet") // never run
+	t.Setenv("L80_API_BASE", "http://127.0.0.1:1")
 	src, _ := os.ReadFile("../pwdet/testdata/report_v1.json")
 	reports := t.TempDir()
 	for _, d := range []string{"20261018-205947-a", "20261018-210005-b"} {

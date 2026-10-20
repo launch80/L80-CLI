@@ -24,7 +24,8 @@ The workflow has three roles, all ordinary publish keys:
    verifier did, their reproduction goes with the decision as evidence. A key
    never sees its own requests in the queue and may never decide on them.
 
-- Only `bench.betterbench.v1` pages are eligible in this version.
+- `bench.betterbench.v1` pages are eligible, and from L80 1.2 `scan.pwdet.v1`
+  pages (Poisoned Weights Detector scans, see "pwdet scans" below).
 - **Pages stay immutable.** Verification changes the page's *tier*
   (metadata the template renders as a badge), never the stored payload. A run
   that needs fixing is published again and the new page is verified.
@@ -357,10 +358,123 @@ is announced. The sections above give the detail for each item.
 - [ ] Older CLIs (1.0.x) refuse quick runs locally; they still get the
       server's decision, so nothing else changes for them.
 
+## pwdet scans: `scan.pwdet.v1` (L80 1.2)
+
+A pwdet scan is verified by **re-running it**: a verifier's `pwdet reproduce`
+fetches the same Hub files at the same commits, runs the same checks with the
+same pwdet suites, thresholds and calibration, and compares. There are no
+percentage tolerances: the comparison is exact where the scan is
+deterministic and significance-based where it samples.
+
+### The template
+
+`scan.pwdet.v1` is `generic.report.v1` (title, subtitle, summary, metrics,
+sections; same limits) plus one field:
+
+```json
+{
+  "$template": "scan.pwdet.v1",
+  "title": "pwdet: unsloth/Qwen3-0.6B — clean · standard",
+  "summary": "…", "metrics": [ … ], "sections": [ … ],
+  "report": { "schema_version": "2", "tool_version": "0.2.0", "profile": "standard",
+              "subject": {…}, "references": [ … ], "lineage": [ … ], "findings": [ … ],
+              "verdict": {…}, "assurance": {…}, "inputs": {…}, "digest": "hex" }
+}
+```
+
+- `report` is pwdet's report.json (schema `report.v2.json` in the pwdet
+  repository) as L80 scrubbed it: `host` emptied, `manifest_path` removed,
+  every `path` and `endpoint` nulled, evidence `data` dropped, and local
+  paths, private URLs and the hostname replaced in every string. pwdet can
+  still load it; `pwdet reproduce` reads repo and revision from `inputs`.
+- Size limit: **256 KB** (`262144` bytes), like the CLI's
+  `pwdet.ScanMaxPayloadBytes`. L80 falls back to `generic.report.v1` when a
+  report does not fit, and says so.
+- L80 publishes `scan.pwdet.v1` only when `GET /api/v1/templates` lists it;
+  otherwise `generic.report.v1`, which carries no report and is never
+  verifiable. Schema 1 reports (pwdet before 0.2) always go out as
+  `generic.report.v1`.
+- Render it like `generic.report.v1`, with the verdict badge qualified by
+  `report.assurance.level` ("CLEAN · Standard"), never the bare verdict.
+
+### Run class
+
+`run_class` is `scan` for every `scan.pwdet.v1` request. Return it wherever
+the 1.1 checklist returns `run_class`.
+
+### Server checks for `scan.pwdet.v1`
+
+Recomputed from the stored `report` (`pwdet.Prechecks` in the CLI). A `fail`
+makes the page ineligible.
+
+| Check | Fails when | Warns when |
+|---|---|---|
+| `report` | `schema_version` is not `"2"`, or `inputs` or `digest` is missing | |
+| `level` | `assurance.level` is missing or `basic` (Basic compares nothing against a reference) | |
+| `subject` | `inputs.subject` has no `repo` or `revision`, or its `kind` is `local` or `endpoint` (a verifier cannot get the same files) | |
+| `references` | an `inputs.references` entry for `parent` or `base` has no `repo`/`revision`, or is `local` | |
+| `files` | | a file in `inputs.subject.files` has no `sha256` |
+| `verdict` | `verdict` is missing | the label is `inconclusive` |
+
+Client-only check: `provenance`, as for BetterBench pages (the local
+report.json still hashes to what was published).
+
+### Decision
+
+A `verified` decision on a `scan` request requires a `reproduction` with
+`template: "scan.pwdet.v1"`, a `scan` object and `within_tolerance: true`;
+otherwise `E_REPRODUCTION_REQUIRED` (HTTP 422). There is no
+`--accept-differences` for scans. The reproduction (`api.Reproduction` in the
+CLI):
+
+```json
+{
+  "template": "scan.pwdet.v1",
+  "model": "unsloth/Qwen3-0.6B@db4e90b8…",
+  "within_tolerance": true,
+  "results_sha256": "sha256 of the re-run's report.json",
+  "ran_at": "2026-10-19T22:40:00Z", "l80_version": "1.2.0",
+  "scan": {
+    "within_tolerance": true, "subject": "unsloth/Qwen3-0.6B@db4e90b8…", "profile": "standard",
+    "verdict": ["clean", "clean"], "level": ["standard", "standard"],
+    "files_match": true, "file_differences": [],
+    "digest_match": true, "check_differences": {},
+    "behaviour": {"only_in_report": [], "only_in_rerun": [], "both": []},
+    "tool_version": ["0.2.0", "0.2.0"], "inputs_hashes_match": true
+  }
+}
+```
+
+`within_tolerance` is pwdet's: the files hash the same, the deterministic
+(static and provenance) findings hash to the published `digest`, and the same
+behavioural findings are significant. Store the reproduction with the
+decision and link it from the badge.
+
+### Badge
+
+"Verified by Launch80 · scan reproduced", qualified by the level
+("Verified by Launch80 · Standard scan reproduced"), linking to the
+reproduction.
+
+## Server work for L80 1.2: pwdet scans (checklist)
+
+- [ ] Register `scan.pwdet.v1` (generic fields plus `report`, 256 KB) and list
+      it in `GET /api/v1/templates`. Render it as above.
+- [ ] Accept `POST …/verification` for `scan.pwdet.v1` pages; recompute the
+      server checks above from the stored `report`.
+- [ ] `run_class: "scan"` on these requests and pages.
+- [ ] Decision: `verified` requires a scan reproduction within tolerance
+      (`E_REPRODUCTION_REQUIRED` otherwise). Store it.
+- [ ] Badge "Verified by Launch80 · <Level> scan reproduced", linking to the
+      reproduction.
+- [ ] `generic.report.v1` pwdet pages stay ineligible (`E_VERIFY_INELIGIBLE`);
+      the CLI tells their owners to publish again.
+
 ## Client behaviour (implemented)
 
 ```sh
 L80 verify check results.json      # local pre-checks; exit 0 verifiable, 4 not
+L80 verify check report.json       # the same for a pwdet report (scan pre-checks)
 L80 verify check <url | guid>      # same, plus provenance via the local ledger
 L80 verify request <url | guid> [--note "how to reproduce"] [--skip-checks]
 L80 verify status <url | guid>
@@ -368,10 +482,12 @@ L80 verify mine                                    # your requests and their dec
 L80 verify queue [--status requested|…|all]        # other keys' requests (any key)
 L80 verify show <id>                               # what to reproduce, published figures
 L80 verify reproduce <id> --endpoint <url> [--model m] [--api-key k]
-L80 verify approve <id> [--note …] [--accept-differences]   # verifier keys; quick runs need a reproduction
+L80 verify reproduce <id> [--model dir] [--base dir]   # a pwdet scan: re-run with pwdet reproduce
+L80 verify approve <id> [--note …] [--accept-differences]   # verifier keys; quick runs and scans need a reproduction
 L80 verify reject <id> --reason …                            # verifier keys
 L80 history [--tier verified]      # TIER column
-L80 verify queue | mine             # CLASS column (full | quick), from the server
+L80 verify queue | mine             # CLASS column (full | quick | scan), from the server
+L80 pwdet publish report.json       # scan.pwdet.v1 when the server lists it
 ```
 
 The ledger (`~/.config/L80/history.jsonl`) records, for every publish since

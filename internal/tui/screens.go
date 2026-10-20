@@ -12,6 +12,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/history"
+	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/pytool"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
@@ -175,8 +176,8 @@ type verifyResult struct {
 // verify runs the pre-checks for the selected page, shows them, and on
 // confirmation asks launch80 to review it.
 func (s *histScreen) verify(c *Console, e history.Entry) Cmd {
-	if e.TemplateID != betterbench.RawTemplateID {
-		c.setFlash("only BetterBench pages (bench.betterbench.v1) can be verified", true)
+	if !app.Verifiable(e.TemplateID) && e.TemplateID != pwdet.TemplateID {
+		c.setFlash("only BetterBench runs and pwdet scans can be verified", true)
 		return nil
 	}
 	t, apiErr := app.ResolveTarget(e.GUID)
@@ -192,14 +193,14 @@ func (s *histScreen) verify(c *Console, e history.Entry) Cmd {
 	blocked := betterbench.Blocking(t.Checks)
 	body := strings.Join(lines, "\n")
 	if blocked {
-		c.confirm(&widgets.Dialog{Title: "Not verifiable yet", Body: body + "\n\nFix the failed checks and publish a new run.", Buttons: []string{"OK"}}, nil)
+		c.confirm(&widgets.Dialog{Title: "Not verifiable yet", Body: body + "\n\nFix the failed checks and publish again.", Buttons: []string{"OK"}}, nil)
 		return nil
 	}
 	if !c.d.Config.HasToken() {
 		c.setFlash("requesting verification needs the key that published the page", true)
 		return nil
 	}
-	c.confirm(&widgets.Dialog{Title: "Request verification", Body: body + "\n\nA launch80 reviewer checks the run; if it holds up the page is marked verified.",
+	c.confirm(&widgets.Dialog{Title: "Request verification", Body: body + "\n\nA launch80 reviewer checks it; if it holds up the page is marked verified.",
 		Buttons: []string{"Request", "Cancel"}, Choice: 1}, func(ch int) Cmd {
 		if ch != 0 {
 			return nil

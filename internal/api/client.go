@@ -19,11 +19,18 @@ const MaxPayloadBytes = 65536
 // bench.betterbench.v1, which stores a harness's results file as written.
 const rawResultsMaxBytes = 4 * 1024 * 1024
 
+// scanMaxBytes mirrors the server's limit for scan.pwdet.v1, whose body
+// carries the scrubbed pwdet report (pwdet.ScanMaxPayloadBytes).
+const scanMaxBytes = 262144
+
 // MaxPayloadBytesFor is the client-side limit for a template. The server is
 // the authority; this only lets the CLI fail fast with the right number.
 func MaxPayloadBytesFor(template string) int {
 	if template == "bench.betterbench.v1" {
 		return rawResultsMaxBytes
+	}
+	if template == "scan.pwdet.v1" {
+		return scanMaxBytes
 	}
 	return MaxPayloadBytes
 }

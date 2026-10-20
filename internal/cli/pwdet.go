@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/app"
+	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/output"
 	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/pytool"
@@ -25,8 +27,9 @@ const (
 // runPwdet fronts the Poisoned Weights Detector. Every verb is passed
 // through; `scan` additionally takes L80's --json, --publish, --dry-run,
 // --payload-out, --title and --summary, which read the report pwdet wrote
-// and, for --publish, put it on launch80 as a generic.report.v1 page with
-// the machine's name, paths and endpoints removed. `publish` does the same
+// and, for --publish, put it on launch80 with the machine's name, paths and
+// endpoints removed: as scan.pwdet.v1 (verifiable) when the server offers
+// it, else generic.report.v1. `publish` does the same
 // for a report from an earlier scan, without running pwdet. Scanning is
 // free; publishing needs a token like every publish.
 func runPwdet(e env, args []string) int {
@@ -49,6 +52,8 @@ func runPwdet(e env, args []string) int {
 			"                                                        publish a report from an earlier scan",
 			"",
 			"  <model> is a local directory, an HF repo id (org/name[@rev]), or http://host/v1#model.",
+			"  --profile basic|standard|thorough|deep: what the scan can see. basic cannot see weight implants;",
+			"  standard compares weights with --base; thorough also probes behaviour, serving both on this GPU.",
 			"  scan exits 0 clean or inconclusive, 1 suspicious (or pwdet failed), 2 likely tampered or malicious.",
 			"  The published page never carries the hostname, local paths or private endpoints.")
 		res, err := runChild(e, r, []string{"--help"}, nil, nil)
@@ -114,7 +119,7 @@ func pwdetScan(e env, r pytool.Runner, rest []string, mine map[string]string) in
 	if u, ok := result["url"].(string); ok {
 		output.Successf(e.stdout, "published: %s", u)
 	} else if dry {
-		output.Detailf(e.stdout, "dry run: would publish %d bytes as %s", result["byte_size"], pwdet.TemplateID)
+		output.Detailf(e.stdout, "dry run: would publish %d bytes as %s", result["byte_size"], result["template"])
 	}
 	return res.code
 }
@@ -129,9 +134,11 @@ func pwdetPublish(e env, args []string) int {
                     [--title t] [--summary s] [--json] [--api-base URL]
 
   A folder may be one scan's folder or a whole reports folder; then the newest
-  scan in it is published. pwdet itself is not run. The page is a
-  generic.report.v1 with the hostname, local paths and private endpoints
-  removed; publishing needs a token, --dry-run does not.
+  scan in it is published. pwdet itself is not run. The hostname, local
+  paths and private endpoints are removed. When the launch80 server offers
+  scan.pwdet.v1 the page carries the scrubbed report and can be verified
+  (L80 verify request); otherwise it is a generic.report.v1. Publishing needs
+  a token, --dry-run does not.
 `)
 		return api.ExitOK
 	}
@@ -158,7 +165,7 @@ func pwdetPublish(e env, args []string) int {
 	if u, ok := result["url"].(string); ok {
 		output.Successf(e.stdout, "published: %s", u)
 	} else {
-		output.Detailf(e.stdout, "dry run: would publish %d bytes as %s", result["byte_size"], pwdet.TemplateID)
+		output.Detailf(e.stdout, "dry run: would publish %d bytes as %s", result["byte_size"], result["template"])
 	}
 	return api.ExitOK
 }
@@ -198,22 +205,25 @@ func pwdetPage(e env, reportPath string, send bool, mine map[string]string, resu
 	if rerr != nil {
 		return fail(e, api.Newf("E_INPUT_INVALID", "Check the report path pwdet printed.", "could not read %s: %v", reportPath, rerr)), false
 	}
-	rep, perr := pwdet.Parse(data)
-	if perr != nil {
+	if _, perr := pwdet.Parse(data); perr != nil {
 		return fail(e, api.Newf("E_INPUT_INVALID", "Pass a pwdet report.json; if it is one, update L80 (`L80 update`), this pwdet may be newer than it.", "%s: %v", reportPath, perr)), false
 	}
-	if _, ok := result["verdict"]; !ok && rep.Verdict != nil {
-		result["verdict"] = rep.Verdict.Label
-	}
-	p, berr := pwdet.Build(rep, pwdet.Options{Title: mine["title"], Summary: mine["summary"]})
+	scan := app.ServerHasTemplate(newClient(config.Load(mine["api-base"])), pwdet.ScanTemplateID)
+	pg, berr := app.BuildPwdetPage(data, pwdet.Options{Title: mine["title"], Summary: mine["summary"]}, scan)
 	if berr != nil {
 		return fail(e, api.Newf("E_INPUT_INVALID", "Shorten --title/--summary, or report this with the report attached.", "%v", berr)), false
 	}
-	body, _ := json.Marshal(p)
-	if len(body) > api.MaxPayloadBytesFor(pwdet.TemplateID) {
-		return fail(e, api.Newf("E_PAYLOAD_TOO_LARGE", "Shorten --summary.", "payload is %d bytes", len(body))), false
+	rep, body := pg.Report, pg.Body
+	if _, ok := result["verdict"]; !ok && rep.Verdict != nil {
+		result["verdict"] = rep.Verdict.Label
 	}
-	result["template"], result["byte_size"] = pwdet.TemplateID, len(body)
+	if pg.Why != "" {
+		output.Detailf(e.stderr, "note: %s", pg.Why)
+	}
+	result["template"], result["byte_size"] = pg.Template, len(body)
+	if l := rep.Level(); l != "" {
+		result["level"] = l
+	}
 	if po := mine["payload-out"]; po != "" {
 		if werr := os.WriteFile(po, append(body, '\n'), 0o644); werr != nil {
 			return fail(e, api.Newf("E_INPUT_INVALID", "Pass a writable path.", "could not write %s: %v", po, werr)), false
@@ -221,7 +231,7 @@ func pwdetPage(e env, reportPath string, send bool, mine map[string]string, resu
 		output.Detailf(e.stderr, "payload written to %s", po)
 	}
 	if send {
-		artifact, code := publishArtifact(e, body, pwdet.TemplateID, reportPath, mine["api-base"])
+		artifact, code := publishArtifact(e, body, pg.Template, reportPath, mine["api-base"])
 		if artifact == nil {
 			return code, false
 		}

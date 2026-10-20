@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.2.0 (unreleased)
+
+- **pwdet scans can be verified.** When the launch80 server lists
+  `scan.pwdet.v1`, `L80 pwdet scan --publish` and `L80 pwdet publish` send the
+  page with the scrubbed pwdet report (no host, paths, endpoints or evidence
+  data) so it can be checked and re-run; otherwise they send
+  `generic.report.v1` as before and say why that page is not verifiable.
+- `L80 verify check|request` accept a pwdet report.json or a `scan.pwdet.v1`
+  page. A scan qualifies at Standard or above, of a Hugging Face repo pinned
+  to a commit, from pwdet 0.2 or later (which records its inputs and a digest).
+- `L80 verify show|reproduce|approve` handle scans: `reproduce` needs no
+  endpoint; it runs `pwdet reproduce` on the published report (`--model` and
+  `--base` point at local copies). A scan is stamped only against a re-run
+  within tolerance: same file hashes, deterministic findings matching the
+  digest, the same significant probe findings. `--accept-differences` does not
+  apply. The console's Verify screen does the same with `p` (re-scan).
+- **Assurance levels.** pwdet 0.2 reports say what a scan could see: Basic,
+  Standard, Thorough or Deep, with each threat tested or not, the gaps and
+  how to close them, and the measured accuracy for that level. Pages show
+  the verdict with its level ("clean · standard") and gain Threat coverage,
+  Measured accuracy and Not tested sections; the Method text describes the
+  level that ran. Reports from pwdet 0.1 (schema 1) still parse.
+- **Console Poison Detector:** the form offers the levels (Standard first),
+  Base and Endpoint; the result shows the level badge, a one-line threat
+  matrix and the accuracy; `m` opens a Method tab (how pwdet works, what this
+  scan tested, gaps, accuracy, strengths and limits, the probe power line). A
+  multi-line evidence summary no longer breaks the frame.
+
 ## 1.1.0
 
 - **Quick runs can be verified.** A BetterBench run with 5 to 19 passes and

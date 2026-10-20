@@ -12,8 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/history"
+	"github.com/launch80/L80-CLI/internal/pwdet"
 )
 
 // verifiableFixture is the 0.6.1 fixture with its cache hit removed and a
@@ -353,6 +355,149 @@ func TestQuickRunNeedsAReproduction(t *testing.T) {
 	}
 	rep, _ := f.decision["reproduction"].(map[string]any)
 	if rep == nil || rep["run_class"] != "quick" {
+		t.Errorf("decision sent = %v", f.decision)
+	}
+}
+
+// templatesServer lists the given templates and accepts publishes.
+func templatesServer(t *testing.T, ids ...string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/templates":
+			var rows []string
+			for _, id := range ids {
+				rows = append(rows, fmt.Sprintf(`{"id":%q,"version":1}`, id))
+			}
+			fmt.Fprintf(w, `{"ok":true,"data":[%s]}`, strings.Join(rows, ","))
+		case "/api/v1/artifacts":
+			var body struct {
+				Template string `json:"$template"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			fmt.Fprintf(w, `{"ok":true,"data":{"guid":"aaaaaaaa-2222-3333-4444-555555555555","url":"https://l80.test/a/aaaa","template_id":%q,"template_version":1,"trust_tier":"unverified","byte_size":42,"created_at":"2026-10-19T01:02:03.000Z"}}`, body.Template)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestPwdetScanPublishesVerifiablePage(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("L80_PWDET", "/nonexistent/pwdet")
+	report, _ := filepath.Abs("../pwdet/testdata/report_v2.json")
+
+	// An older server: generic page, and L80 says why it is not verifiable.
+	old := templatesServer(t, "generic.report.v1")
+	code, out, errOut := runCmd(t, runPwdet, "publish", report, "--dry-run", "--json", "--api-base", old.URL)
+	if code != 0 || !strings.Contains(out, `"template": "generic.report.v1"`) || !strings.Contains(errOut, "did not list scan.pwdet.v1") {
+		t.Errorf("old server: %d %s %s", code, out, errOut)
+	}
+
+	// A server with scan.pwdet.v1 gets the scrubbed report, and the page can
+	// be checked and requested from this machine.
+	srv := templatesServer(t, "generic.report.v1", "scan.pwdet.v1")
+	payload := filepath.Join(t.TempDir(), "p.json")
+	code, out, errOut = runCmd(t, runPwdet, "publish", report, "--dry-run", "--json", "--payload-out", payload, "--api-base", srv.URL)
+	if code != 0 || !strings.Contains(out, `"template": "scan.pwdet.v1"`) || !strings.Contains(out, `"level": "standard"`) {
+		t.Fatalf("scan server: %d %s %s", code, out, errOut)
+	}
+	b, _ := os.ReadFile(payload)
+	for _, leak := range []string{"rig01-test", "/home/tester"} {
+		if strings.Contains(string(b), leak) {
+			t.Errorf("payload leaks %q", leak)
+		}
+	}
+	if code, out, _ := runCmd(t, runVerify, "check", report); code != 0 || !strings.Contains(out, "standard scan") || !strings.Contains(out, "L80 pwdet publish") {
+		t.Errorf("check before publishing: %d\n%s", code, out)
+	}
+	t.Setenv("L80_TOKEN", "L80_k1_secret")
+	if code, out, errOut := runCmd(t, runPwdet, "publish", report, "--api-base", srv.URL); code != 0 || !strings.Contains(out, "published:") {
+		t.Fatalf("publish: %d %s %s", code, out, errOut)
+	}
+	code, out, _ = runCmd(t, runVerify, "check", "https://l80.test/a/aaaa")
+	if code != 0 || !strings.Contains(out, "provenance") || !strings.Contains(out, "L80 verify request") {
+		t.Errorf("check after publishing: %d\n%s", code, out)
+	}
+
+	// A Basic scan of a local folder is not verifiable.
+	var m map[string]any
+	raw, _ := os.ReadFile(report)
+	json.Unmarshal(raw, &m)
+	m["assurance"].(map[string]any)["level"] = "basic"
+	m["inputs"].(map[string]any)["subject"].(map[string]any)["kind"] = "local"
+	basic := filepath.Join(t.TempDir(), "report.json")
+	nb, _ := json.Marshal(m)
+	os.WriteFile(basic, nb, 0o644)
+	if code, out, _ := runCmd(t, runVerify, "check", basic); code != 4 || !strings.Contains(out, "FAIL  level") || !strings.Contains(out, "FAIL  subject") {
+		t.Errorf("basic local scan: %d\n%s", code, out)
+	}
+}
+
+// fakeRescan puts a pwdet on L80_PWDET whose reproduce prints a comparison.
+func fakeRescan(t *testing.T, within bool) {
+	t.Helper()
+	exit, digest := 0, "true"
+	if !within {
+		exit, digest = 1, "false"
+	}
+	cmp := fmt.Sprintf(`{"within_tolerance": %t, "verdict": ["clean", "clean"], "level": ["standard", "standard"], "files_match": true, "file_differences": [],
+ "digest_match": %s, "check_differences": {"static.config_drift": ["pass", "warn:medium"]}, "behaviour": {"only_in_report": [], "only_in_rerun": [], "both": []},
+ "tool_version": ["0.2.0", "0.2.0"], "inputs_hashes_match": true, "rerun_report": "/nonexistent/report.json"}`, within, digest)
+	if within {
+		cmp = strings.Replace(cmp, `{"static.config_drift": ["pass", "warn:medium"]}`, `{}`, 1)
+	}
+	fakeTool(t, "L80_PWDET", `[ "$1" = reproduce ] || exit 9
+echo "re-running: scan"
+cat <<'JSON'
+`+cmp+`
+JSON
+exit `+fmt.Sprint(exit)+"\n")
+}
+
+func TestPwdetScanVerification(t *testing.T) {
+	raw, _ := os.ReadFile("../pwdet/testdata/report_v2.json")
+	pg, err := app.BuildPwdetPage(raw, pwdet.Options{}, true)
+	if err != nil || pg.Template != pwdet.ScanTemplateID {
+		t.Fatalf("page: %v %v", pg, err)
+	}
+	f := &fakeVerificationServer{payload: pg.Body}
+	srv := httptest.NewServer(f.handler(t))
+	defer srv.Close()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("L80_TOKEN", "L80_k2_secret")
+	base := []string{"--api-base", srv.URL}
+
+	code, out, _ := runCmd(t, runVerify, append([]string{"show", "v1"}, base...)...)
+	if code != 0 || !strings.Contains(out, "to re-scan") || !strings.Contains(out, "unsloth/Qwen3-0.6B@") || !strings.Contains(out, "L80 verify reproduce v1") {
+		t.Errorf("show: %d\n%s", code, out)
+	}
+	// No stamp without a re-scan.
+	if code, _, errOut := runCmd(t, runVerify, append([]string{"approve", "v1"}, base...)...); code == 0 || !strings.Contains(errOut, "E_REPRODUCTION_REQUIRED") || f.decision != nil {
+		t.Fatalf("approve without a re-scan: %d %s", code, errOut)
+	}
+	// A re-scan that differs cannot be stamped, even with --accept-differences.
+	fakeRescan(t, false)
+	code, out, errOut := runCmd(t, runVerify, append([]string{"reproduce", "v1"}, base...)...)
+	if code != 4 || !strings.Contains(out, "differs from the published report") || !strings.Contains(out, "static.config_drift: pass -> warn:medium") {
+		t.Fatalf("differing re-scan: %d\n%s\n%s", code, out, errOut)
+	}
+	if code, _, errOut := runCmd(t, runVerify, append([]string{"approve", "v1", "--accept-differences", "--note", "x"}, base...)...); code == 0 || !strings.Contains(errOut, "E_OUTSIDE_TOLERANCE") {
+		t.Errorf("approve a differing re-scan: %d %s", code, errOut)
+	}
+	// A matching re-scan stamps it, with the comparison as evidence.
+	fakeRescan(t, true)
+	if code, out, errOut := runCmd(t, runVerify, append([]string{"reproduce", "v1"}, base...)...); code != 0 || !strings.Contains(out, "matches the published report") {
+		t.Fatalf("matching re-scan: %d\n%s\n%s", code, out, errOut)
+	}
+	if code, _, errOut := runCmd(t, runVerify, append([]string{"approve", "v1"}, base...)...); code != 0 {
+		t.Fatalf("approve: %d %s", code, errOut)
+	}
+	rep, _ := f.decision["reproduction"].(map[string]any)
+	scan, _ := rep["scan"].(map[string]any)
+	if rep["template"] != "scan.pwdet.v1" || scan == nil || scan["within_tolerance"] != true || scan["digest_match"] != true {
 		t.Errorf("decision sent = %v", f.decision)
 	}
 }

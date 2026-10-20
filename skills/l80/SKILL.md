@@ -1,6 +1,6 @@
 ---
 name: l80
-description: Drive the launch80 `L80` CLI for the user — benchmark an LLM endpoint with BetterBench, rent a Vast.ai GPU to benchmark on, scan model weights for tampering, check GPU and inference telemetry, review or verify others' benchmark runs, and publish results as shareable launch80 pages. Use whenever the user mentions L80, launch80, BetterBench, benchmarking a model or inference server, renting a GPU to test on, or vetting a model download. The detailed skills l80-test-report, l80-vast and l80-pwdet cover publishing, renting and scanning step by step.
+description: Drive the launch80 `L80` CLI for the user — benchmark an LLM endpoint with BetterBench, rent a Vast.ai GPU to benchmark on, scan model weights for tampering, check GPU and inference telemetry, review or verify others' benchmark runs and weight scans, and publish results as shareable launch80 pages. Use whenever the user mentions L80, launch80, BetterBench, benchmarking a model or inference server, renting a GPU to test on, or vetting a model download. The detailed skills l80-test-report, l80-vast and l80-pwdet cover publishing, renting and scanning step by step.
 ---
 
 # Use L80 on the user's behalf
@@ -40,12 +40,12 @@ drive L80 themselves unless they want to.
 | List templates | `L80 templates list --json` |
 | Write a rental spec (model, GPUs, price ceiling) | `L80 vast spec --model <hf repo> --max-dph N` |
 | Rent a GPU, serve, bench, publish, tear down | `L80 vast run --spec run.yaml --max-hours 2` (see `l80-vast`) |
-| Scan weights for tampering | `L80 pwdet scan <dir\|org/name\|url#model> --json [--publish]` (see `l80-pwdet`) |
+| Scan weights for tampering | `L80 pwdet scan <dir\|org/name\|url#model> --profile basic\|standard\|thorough\|deep --json [--publish]` (see `l80-pwdet`) |
 | Publish an earlier scan | `L80 pwdet publish <report.json\|dir> [--dry-run] --json` |
 | GPU / inference telemetry | `L80 dashboard serve` (web page on :8787), `L80 dashboard tui` |
 | What has this key published | `L80 history --json [--local]` |
-| Verification | `L80 verify check <results.json\|url>`, `L80 verify request <url>`, `L80 verify status <url>` |
-| Review others' runs | `L80 verify queue`, `L80 verify reproduce <id> --endpoint <url>`, `L80 verify approve\|reject <id>` (verifier keys) |
+| Verification | `L80 verify check <results.json\|report.json\|url>`, `L80 verify request <url>`, `L80 verify status <url>` |
+| Review others' runs | `L80 verify queue`, `L80 verify reproduce <id> --endpoint <url>` (a pwdet scan needs no endpoint), `L80 verify approve\|reject <id>` (verifier keys) |
 | Keep L80 current | `L80 update --check --json`, then `L80 update` |
 | Full command list | `L80 help` |
 
