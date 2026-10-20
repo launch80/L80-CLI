@@ -406,7 +406,6 @@ func verifyReproduce(e env, cfg config.Config, id, endpoint, model, base, apiKey
 	var rep *api.Reproduction
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	if rq.scan != nil {
-		output.Detailf(e.stderr, "re-scanning %s: %s", orNone(v.Title), orNone(rq.scan.Subject))
 		rep, apiErr = app.ReproduceScan(ctx, v.ID, rq.payload, app.ScanOptions{Model: model, Base: base, Dir: out}, Version, app.WriterSink{W: e.stderr})
 	} else {
 		if endpoint == "" {
