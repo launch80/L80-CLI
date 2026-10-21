@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.1 (unreleased)
+## 1.2.1
 
 - The console's About story is reworded.
 
