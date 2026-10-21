@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1 (unreleased)
+
+- The console's About story is reworded.
+
 ## 1.2.0
 
 - **pwdet scans can be verified.** When the launch80 server lists
