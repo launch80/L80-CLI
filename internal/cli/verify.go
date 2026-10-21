@@ -303,7 +303,11 @@ func loadRequest(cfg config.Config, id string) (*request, *api.Error) {
 func printRequestHead(e env, v *api.Verification) {
 	output.Successf(e.stdout, "%s  %s", v.ID, orNone(v.Title))
 	output.Detailf(e.stdout, "page    %s", orNone(v.URL))
-	output.Detailf(e.stdout, "status  %s, requested by %s %s", v.Status, orNone(v.Requester()), v.RequestedAt)
+	if r := v.Requester(); r != "" {
+		output.Detailf(e.stdout, "status  %s, requested by %s %s", v.Status, r, v.RequestedAt)
+	} else {
+		output.Detailf(e.stdout, "status  %s, requested %s", v.Status, v.RequestedAt)
+	}
 	if r := v.Reviewer(); r != "" {
 		output.Detailf(e.stdout, "reviewed by %s %s", r, v.ReviewedAt)
 	}
