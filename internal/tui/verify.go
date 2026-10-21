@@ -430,12 +430,16 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 		return fitW(out, w), []widgets.Binding{{Keys: "tab", Desc: "next field"}, {Keys: "enter", Desc: "next / submit"}, {Keys: "esc", Desc: "back"}}
 	}
 	v := s.cur
-	by := orDash(v.Requester())
+	by := v.Requester()
 	if v.Mine {
 		by = "you"
 	}
+	requested := "   requested " + v.RequestedAt
+	if by != "" {
+		requested = "   requested by " + style.Sanitize(by) + " " + v.RequestedAt
+	}
 	out = append(out, t.R(t.Title, style.Sanitize(orDash(v.Title))), t.R(t.Muted, orDash(v.URL)),
-		kv(t, "status", v.Status)+t.R(t.Muted, "   requested by "+style.Sanitize(by)+" "+v.RequestedAt))
+		kv(t, "status", v.Status)+t.R(t.Muted, requested))
 	if r := v.Reviewer(); r != "" {
 		out = append(out, kv(t, "reviewed by", style.Sanitize(r)+t.R(t.Muted, " "+v.ReviewedAt)))
 	}
