@@ -258,7 +258,7 @@ func verifyList(e env, cfg config.Config, scope, status string, asJSON bool) int
 		}
 	}
 	if scope == "queue" && len(items) > 0 {
-		output.Detailf(e.stdout, "next: L80 verify show <id>, then L80 verify reproduce <id> --endpoint <url>")
+		output.Detailf(e.stdout, "next: L80 verify show <id>, then L80 verify reproduce <id> (a benchmark run also needs --endpoint <url>)")
 	}
 	return api.ExitOK
 }
