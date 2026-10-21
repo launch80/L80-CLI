@@ -25,14 +25,14 @@
     },
     "pwdet": {
       "repo": "https://github.com/launch80/poisoned-weights-detector",
-      "ref": "v0.2.0",
-      "commit": "65e5b69794be34a538dd31ffbb1db1f1ed24ef6d",
+      "ref": "v0.2.1",
+      "commit": "ae662ef428203d0140da66f8380b757d2c840a90",
       "package": "pwdet",
       "exe": "pwdet",
       "env": "L80_PWDET",
       "python": "3.12",
       "extras": ["gguf", "pickle"],
-      "min_version": "0.2.0",
+      "min_version": "0.2.1",
       "version_cmd": ["--version"],
       "notes": "Poisoned Weights Detector: static, provenance, black-box and white-box checks on a checkpoint or endpoint."
     },
