@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (unreleased)
+## 1.2.0
 
 - **pwdet scans can be verified.** When the launch80 server lists
   `scan.pwdet.v1`, `L80 pwdet scan --publish` and `L80 pwdet publish` send the
@@ -15,7 +15,8 @@
   `--base` point at local copies). A scan is stamped only against a re-run
   within tolerance: same file hashes, deterministic findings matching the
   digest, the same significant probe findings. `--accept-differences` does not
-  apply. The console's Verify screen does the same with `p` (re-scan).
+  apply. The console's Verify screen does the same with `p` (re-scan), and
+  its lists gain a Type column (betterbench or pwdet).
 - **Assurance levels.** pwdet 0.2 reports say what a scan could see: Basic,
   Standard, Thorough or Deep, with each threat tested or not, the gaps and
   how to close them, and the measured accuracy for that level. Pages show

@@ -86,7 +86,7 @@ func (s *verifyScreen) rows() []api.Verification {
 
 func (s *verifyScreen) fillTable() {
 	s.table = widgets.Table{Cursor: min(s.table.Cursor, max(0, len(s.rows())-1)), Columns: []widgets.Column{
-		{Title: "Requested", Width: 16}, {Title: "Status", Width: 10}, {Title: "Class", Width: 6}, {Title: "By", Width: 14}, {Title: "Page"}}}
+		{Title: "Requested", Width: 16}, {Title: "Status", Width: 10}, {Title: "Type", Width: 11}, {Title: "Class", Width: 6}, {Title: "By", Width: 14}, {Title: "Page"}}}
 	for _, v := range s.rows() {
 		when := v.RequestedAt
 		if len(when) >= 16 {
@@ -96,8 +96,24 @@ func (s *verifyScreen) fillTable() {
 		if v.Mine {
 			by = "you"
 		}
-		s.table.Rows = append(s.table.Rows, []string{orDash(when), v.Status, orDash(v.RunClass), style.Sanitize(orDash(by)), style.Sanitize(orDash(v.Title))})
+		kind, class := verifyType(v.RunClass), v.RunClass
+		if class == "scan" {
+			class = ""
+		}
+		s.table.Rows = append(s.table.Rows, []string{orDash(when), v.Status, orDash(kind), orDash(class), style.Sanitize(orDash(by)), style.Sanitize(orDash(v.Title))})
 	}
+}
+
+// verifyType names the tool behind a request from the server's run class:
+// "scan" is a pwdet scan, full and quick are BetterBench runs.
+func verifyType(class string) string {
+	switch class {
+	case "scan":
+		return "pwdet"
+	case betterbench.ClassFull, betterbench.ClassQuick:
+		return "betterbench"
+	}
+	return ""
 }
 
 func (s *verifyScreen) open(c *Console, v api.Verification) Cmd {
