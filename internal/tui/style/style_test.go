@@ -91,3 +91,11 @@ func TestBoxAndJoin(t *testing.T) {
 		t.Errorf("join = %q", j)
 	}
 }
+
+func TestWrapKeepsColumns(t *testing.T) {
+	got := Wrap("figure      published\nCombined decode   79.8 t/s\n"+strings.Repeat("word ", 8), 30)
+	want := []string{"figure      published", "Combined decode   79.8 t/s", "word word word word word word", "word word"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("Wrap = %q", got)
+	}
+}
