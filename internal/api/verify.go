@@ -61,6 +61,23 @@ type Verification struct {
 	ServerChecks []ClientCheck `json:"server_checks,omitempty"`
 }
 
+// Checks are the server's checks, then the client's that the server did not
+// also run: the server recomputes most of them from the stored page, and
+// showing both would list each warning twice.
+func (v Verification) Checks() []ClientCheck {
+	out := append([]ClientCheck{}, v.ServerChecks...)
+	seen := map[string]bool{}
+	for _, c := range v.ServerChecks {
+		seen[c.Name] = true
+	}
+	for _, c := range v.ClientChecks {
+		if !seen[c.Name] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // Requester names who asked for the review: the key's label, else its id.
 func (v Verification) Requester() string { return firstOf(v.RequesterLabel, v.KeyID) }
 

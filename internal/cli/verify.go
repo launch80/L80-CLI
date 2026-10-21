@@ -245,7 +245,7 @@ func verifyList(e env, cfg config.Config, scope, status string, asJSON bool) int
 		if r := it.Reviewer(); r != "" {
 			output.Detailf(e.stdout, "reviewed by %s %s", r, it.ReviewedAt)
 		}
-		for _, c := range append(append([]api.ClientCheck{}, it.ServerChecks...), it.ClientChecks...) {
+		for _, c := range it.Checks() {
 			if c.Status != "pass" {
 				output.Detailf(e.stdout, "%s %s: %s", c.Status, c.Name, c.Detail)
 			}
@@ -317,7 +317,7 @@ func printRequestHead(e env, v *api.Verification) {
 }
 
 func printOpenChecks(e env, v *api.Verification) {
-	for _, c := range append(append([]api.ClientCheck{}, v.ServerChecks...), v.ClientChecks...) {
+	for _, c := range v.Checks() {
 		if c.Status != "pass" {
 			output.Detailf(e.stdout, "%s %s: %s", c.Status, c.Name, c.Detail)
 		}

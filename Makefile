@@ -1,5 +1,5 @@
 BINARY := bin/L80
-VERSION ?= 1.1.0
+VERSION ?= 1.2.0
 LDFLAGS := -s -w -X github.com/launch80/L80-CLI/internal/cli.Version=$(VERSION)
 
 .PHONY: build install test fmt vet clean hooks bump-tools check-manifest

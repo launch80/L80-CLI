@@ -16,3 +16,14 @@ func TestVerificationNamesPreferLabels(t *testing.T) {
 		t.Errorf("fallback: %q %q", v.Requester(), v.Reviewer())
 	}
 }
+
+func TestChecksListEachOnce(t *testing.T) {
+	v := Verification{
+		ServerChecks: []ClientCheck{{Name: "truncation", Status: "warn", Detail: "server"}},
+		ClientChecks: []ClientCheck{{Name: "truncation", Status: "warn", Detail: "client"}, {Name: "provenance", Status: "pass"}},
+	}
+	got := v.Checks()
+	if len(got) != 2 || got[0].Detail != "server" || got[1].Name != "provenance" {
+		t.Errorf("checks = %+v", got)
+	}
+}

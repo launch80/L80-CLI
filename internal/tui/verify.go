@@ -391,7 +391,7 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 	}
 	role := t.R(t.Muted, "your key can reproduce and compare; stamping needs a verifier key")
 	if s.me != nil && s.me.IsVerifier {
-		role = t.R(t.OK, "verifier") + t.R(t.Muted, ": you can stamp runs; reproducing first is optional")
+		role = t.R(t.OK, "verifier") + t.R(t.Muted, ": you can stamp runs; scans and quick runs need your re-run first")
 	}
 	if s.phase == 0 {
 		tabs := []string{fmt.Sprintf(" Queue (%d) ", len(s.queue)), fmt.Sprintf(" My requests (%d) ", len(s.mine))}
@@ -449,7 +449,7 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 	if v.DecisionNote != "" {
 		out = append(out, kv(t, "verifier", style.Sanitize(v.DecisionNote)))
 	}
-	for _, ck := range append(append([]api.ClientCheck{}, v.ServerChecks...), v.ClientChecks...) {
+	for _, ck := range v.Checks() {
 		if ck.Status != "pass" {
 			out = append(out, t.R(t.Warn, ck.Status+" "+ck.Name+": ")+t.R(t.Muted, ck.Detail))
 		}
