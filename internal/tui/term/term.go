@@ -14,8 +14,13 @@ import (
 // ErrUnsupported is returned on platforms without a raw-mode implementation.
 var ErrUnsupported = errors.New("the interactive console needs Linux or macOS")
 
-// OpenTTY opens the controlling terminal, for when stdin is redirected.
-func OpenTTY() (*os.File, error) { return os.OpenFile("/dev/tty", os.O_RDWR, 0) }
+// OpenTTY opens the controlling terminal for input, for when stdin is
+// redirected. Output goes to os.Stdout, so the tty is read-only. That
+// matters: Go only registers read-only files with its poller, so only a
+// read-only fd supports the read deadline that pauses input while a child
+// owns the terminal. An O_RDWR fd stays in blocking mode, SetReadDeadline
+// fails, and the terminal cannot be handed off.
+func OpenTTY() (*os.File, error) { return os.OpenFile("/dev/tty", os.O_RDONLY, 0) }
 
 // Control sequences.
 const (
