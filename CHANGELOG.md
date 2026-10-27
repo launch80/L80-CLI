@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.2
+
+- The console hands the terminal to the dashboard and `vast ssh` again. On
+  builds with recent Go the terminal was opened in a mode that cannot pause
+  its input, so choosing the terminal dashboard (or an ssh session) said
+  "This terminal cannot be handed to another program from the console". The
+  console now opens the terminal read-only, which restores the handoff: the
+  child runs full-screen, and `q` in the dashboard comes back to the console.
+
 ## 1.2.1
 
 - The console's About story is reworded.
