@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **`L80 qualitybench` (preview).** Runs QualityBench against an
+  OpenAI-compatible endpoint, writes results and an HTML report, and publishes
+  to `bench.qualitybench.v1`. `--quick` and `--tasks a,b` choose the scope,
+  `--thinking on|off`, `--reference` and `--thresholds` set up a quality-loss
+  comparison, and `compare` runs one locally. With no `--endpoint`, L80 finds
+  the local server serving `--model`. QualityBench is not released yet, so it
+  is listed unpinned: `L80 tools check` and `L80 update` show it as
+  `unreleased` and ask nobody to install it; `L80_QUALITYBENCH` runs a local build.
+- **`L80 qualitybench endpoints`** lists the inference servers running on this
+  machine (vLLM, llama.cpp, llama-swap, SGLang, Ollama, LM Studio), their
+  versions and models, and whether each llama-swap model is loaded.
+- `L80 publish --template bench.qualitybench.v1` strips `env.endpoint` and
+  `env.host`, as for BetterBench files, and refuses home-directory paths and
+  LAN URLs anywhere in the file.
+- README: a Community section (Discord and supporter page).
+
 ## 1.2.2
 
 - The console hands the terminal to the dashboard and `vast ssh` again. On

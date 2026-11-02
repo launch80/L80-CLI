@@ -13,6 +13,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/history"
 	"github.com/launch80/L80-CLI/internal/output"
+	"github.com/launch80/L80-CLI/internal/qualitybench"
 )
 
 // harnessDumpKeys are top-level fields of a BetterBench results.json. None of
@@ -191,6 +192,15 @@ func runPublish(e env, args []string) int {
 				"%s: %v", path, err))
 		}
 		body = stripped
+	}
+	if template == qualitybench.TemplateID {
+		prepared, err := qualitybench.Prepare(body)
+		if err != nil {
+			return fail(e, api.Newf("E_INPUT_INVALID",
+				"Pass the results file written by `qualitybench run`, or use `L80 qualitybench --results <file>`.",
+				"%s: %v", path, err))
+		}
+		body = prepared
 	}
 
 	// Checked after resolution: injecting the id makes the body longer, and

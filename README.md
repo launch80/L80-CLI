@@ -128,6 +128,42 @@ fields never leave the machine: `env.endpoint` and `env.host`; the server
 refuses a file that still carries them. Flags after `--` are passed to
 `betterbench run` untouched.
 
+## QualityBench: quality and quality loss (preview)
+
+`L80 qualitybench` runs [QualityBench](https://github.com/launch80/QualityBench),
+BetterBench's sibling for **quality**: GSM8K, IFEval, MMLU-Pro, HumanEval+ and
+MBPP+, BFCL tool calling, LiveCodeBench, perplexity and long-context needle
+retrieval, against an OpenAI-compatible endpoint. With a reference run it also
+reports what a quantization or an engine change costs: paired per-task deltas
+with confidence intervals, KLD and top-1 agreement, and pass/fail against a
+pre-registered thresholds file. Results publish to the `bench.qualitybench.v1`
+template.
+
+QualityBench has not had its first release, so this L80 does not pin it yet:
+`L80 tools check` shows it as `unreleased`, and nothing is downloaded. Point
+`L80_QUALITYBENCH` at a local build to use it now.
+
+```sh
+L80 qualitybench endpoints                               # local servers, their engine and models
+L80 qualitybench tasks                                   # the suite, item counts, measured run times
+L80 qualitybench --model Qwen/Qwen3-8B --quick           # finds the local server serving the model
+L80 qualitybench --model Qwen/Qwen3-8B --tasks gsm8k,bfcl --thinking on
+L80 qualitybench --model my/int4 --reference bf16.json --thresholds THRESHOLDS.md
+L80 qualitybench compare bf16.json int4.json             # locally, no token
+L80 qualitybench --results results.json --dry-run        # publish an existing file
+```
+
+With no `--endpoint`, L80 probes the usual local ports (vLLM and llama-swap
+8000, llama.cpp 8080, SGLang 30000, Ollama 11434, LM Studio 1234, and
+8001/8002/5000), identifies the engine and lists each server's models; `--scan
+host:port` adds others. It only reads: on llama-swap a listed model is not
+loaded until the run starts, and the tool's warmup request is never scored. A
+run writes `results.json` and an HTML report beside it; rerunning the same
+command resumes it. As for BetterBench, `env.endpoint` and `env.host` never
+leave the machine, and L80 refuses to publish a file that still carries a home
+directory path or a LAN URL. [docs/qualitybench.md](docs/qualitybench.md) is
+the contract between L80 and the tool.
+
 ## Tools
 
 ![Every tool is open on GitHub, pinned to a commit and packaged into L80](docs/media/05-open-source.gif)
@@ -389,6 +425,8 @@ L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
             [--json] [--dry-run]
 L80 betterbench --endpoint <url> --model <m>   Run BetterBench, publish results as written
 L80 betterbench --results <results.json>       Publish an existing results.json
+L80 qualitybench --model <m> [--quick|--tasks] Run QualityBench on the local server for <m> (preview)
+L80 qualitybench endpoints|tasks|compare       Local servers and models; the suite; compare two runs
 L80 templates list [--json]                    List available templates
 L80 verify check|request|status|mine           "Verified by Launch80": pre-checks and your requests
 L80 verify queue|show|reproduce <id>           Review others' runs and reproduce them (any key)
@@ -456,3 +494,9 @@ The binary depends on nothing outside the Go standard library, including the
 console (see THIRD_PARTY_NOTICES.md for the MIT projects its design follows). That is
 deliberate: this process holds a credential, so every dependency it does not
 have is a supply-chain surface it cannot inherit.
+
+## Community
+
+Questions, results, or a model you want tested? Join the Launch80 Discord: https://discord.gg/launch80
+
+If this work is useful to you, please support the server: https://launch80.com/supporter

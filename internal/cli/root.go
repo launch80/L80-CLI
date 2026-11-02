@@ -38,6 +38,8 @@ func Run(args []string) int {
 		return runPublish(e, args[2:])
 	case "betterbench":
 		return runBetterbench(e, args[2:])
+	case "qualitybench":
+		return runQualitybench(e, args[2:])
 	case "templates":
 		return runTemplates(e, args[2:])
 	case "skills":
@@ -107,6 +109,10 @@ Usage:
   L80 betterbench --endpoint <url> --model <m>   Run BetterBench and publish the results
                   [--quick] [--note k=v] ...     file as written (see --help)
   L80 betterbench --results <results.json>       Publish an existing results.json
+  L80 qualitybench --model <m> [--quick|--tasks] Run QualityBench on the local server for <m>
+                   [--endpoint <url>] ...        and publish (see --help; QualityBench is unreleased)
+  L80 qualitybench endpoints|tasks [--json]      Local servers and their models; the suite
+  L80 qualitybench compare <ref.json> <test>     Paired deltas, KLD and thresholds, locally
   L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
                           [--json] [--dry-run]
   L80 history [--limit N] [--json] [--local]     List the share URLs this key has published

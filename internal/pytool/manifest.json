@@ -36,6 +36,18 @@
       "version_cmd": ["--version"],
       "notes": "Poisoned Weights Detector: static, provenance, black-box and white-box checks on a checkpoint or endpoint."
     },
+    "qualitybench": {
+      "repo": "https://github.com/launch80/QualityBench",
+      "ref": "",
+      "commit": "",
+      "package": "qualitybench",
+      "exe": "qualitybench",
+      "env": "L80_QUALITYBENCH",
+      "python": "3.12",
+      "min_version": "0.1.0",
+      "version_cmd": ["--version"],
+      "notes": "Quality baseline and quality-loss suite (GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle). Unpinned until its first release."
+    },
     "vast": {
       "repo": "https://github.com/launch80/BB-VAST-L80",
       "ref": "v0.1.0",
