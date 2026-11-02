@@ -53,6 +53,7 @@ const (
 	scrOnboard
 	scrRecs
 	scrTrain
+	scrQuality
 )
 
 // Console is the root model.
@@ -85,6 +86,7 @@ type Console struct {
 	tools   toolsScreen
 	about   aboutScreen
 	onb     onboardScreen
+	qb      qualityScreen
 	redraw  atomic.Bool
 	running int // jobs in flight, for the spinner tick
 }
@@ -290,7 +292,7 @@ func (c *Console) Update(m Msg) (Model, Cmd) {
 }
 
 func (c *Console) cancelAll() {
-	for _, j := range []*job{c.bench.job, c.vast.job, c.pw.job, c.tools.job, c.verify.job} {
+	for _, j := range []*job{c.bench.job, c.qb.job, c.vast.job, c.pw.job, c.tools.job, c.verify.job} {
 		if j != nil && j.running && j.cancel != nil {
 			j.cancel()
 		}
@@ -301,7 +303,7 @@ func (c *Console) cancelAll() {
 // (a test keeps it that way). The number keys jump to the first nine.
 // Recommendations (scrRecs) and Train & Tune (scrTrain) are deferred, so
 // they stay out of the sidebar until they ship.
-var sidebar = []screenID{scrHome, scrAbout, scrBench, scrDash, scrHistory, scrOnboard, scrPwdet, scrVast, scrTools, scrVerify}
+var sidebar = []screenID{scrHome, scrAbout, scrBench, scrDash, scrHistory, scrOnboard, scrPwdet, scrQuality, scrVast, scrTools, scrVerify}
 
 // route sends input to the sidebar or the focused pane, and everything else
 // (load results, finished jobs) to every screen, since a result can arrive
@@ -398,6 +400,8 @@ func (c *Console) routeTo(s screenID, m Msg) Cmd {
 		return c.about.update(c, m)
 	case scrOnboard:
 		return c.onb.update(c, m)
+	case scrQuality:
+		return c.qb.update(c, m)
 	case scrHelp, scrRecs, scrTrain:
 		if k, ok := m.(KeyMsg); ok && isBack(k) {
 			c.scr = scrHome
@@ -430,6 +434,8 @@ func (c *Console) open(s screenID) Cmd {
 		c.about.off = 0
 	case scrOnboard:
 		return c.onb.start(c)
+	case scrQuality:
+		return c.qb.load(c)
 	}
 	return nil
 }
@@ -440,7 +446,7 @@ func (c *Console) open(s screenID) Cmd {
 var labels = map[screenID]string{
 	scrHome: "Home", scrBench: "Benchmark", scrVast: "Rent (vast)", scrPwdet: "Poison Detector",
 	scrDash: "Dashboard", scrHistory: "History", scrVerify: "Verify", scrTools: "Tools", scrHelp: "Help",
-	scrAbout: "About", scrOnboard: "Onboarding", scrRecs: "Recommendations", scrTrain: "Train & Tune",
+	scrAbout: "About", scrOnboard: "Onboarding", scrRecs: "Recommendations", scrTrain: "Train & Tune", scrQuality: "QualityBench",
 }
 
 // titles override the pane title where the sidebar label is a short form.
@@ -468,6 +474,7 @@ var blurbs = map[screenID]string{
 	scrOnboard: "A short tour that sets L80 up on this machine.",
 	scrRecs:    "Coming soon: what to run a model on, from the community's results.",
 	scrTrain:   "Coming soon: train, fine-tune and quantize models, then benchmark them.",
+	scrQuality: "Measure quality and quality loss on a local server, or plan a rented run.",
 }
 
 const sideW = 22
@@ -547,6 +554,8 @@ func (c *Console) View(w, h int) []string {
 		body, keys = c.about.view(c, padW, contentH)
 	case scrOnboard:
 		body, keys = c.onb.view(c, padW, contentH)
+	case scrQuality:
+		body, keys = c.qb.view(c, padW, contentH)
 	case scrRecs, scrTrain:
 		body, keys = soonView(c, c.scr, padW, contentH)
 	default:

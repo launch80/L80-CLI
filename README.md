@@ -79,7 +79,7 @@ L80 tui
 
 A full-screen console over everything below. A sidebar lists Home, then A to Z:
 About, Benchmark, Dashboard, History, Onboarding, Poison Detector (pwdet),
-Rent (vast), Tools and Verify. Moving through it previews each screen live,
+QualityBench, Rent (vast), Tools and Verify. Moving through it previews each screen live,
 enter opens it and esc comes back; `1`-`9` jump. About has our story, the
 [Discord](https://discord.gg/launch80), the
 [Supporter](https://www.launch80.com/supporter) page and every command. From it you can benchmark an
@@ -89,6 +89,19 @@ anything you do here you can script later. Runs stream into a scrollable log;
 renting, destroying and publishing ask first, with the cost caps or the
 privacy note in front of you. `vast ssh` and the dashboard take over the
 terminal and hand it back when they exit.
+
+QualityBench (preview) is a form with nothing to type in the normal path. Pick
+**Full**, **Quick** or **Custom**: Custom ticks tasks from the suite, each with
+its item count and measured run time, and the total updates as you tick. Pick
+**Local GPUs** and choose from the servers found on this machine (engine and
+version shown) and the models each one lists, with llama-swap models that are
+not loaded yet marked as such. Pick **Rent via Vast** and choose the engine and a
+model from the ones you rented or published before, your Hugging Face cache and
+`~/models`, or a Hugging Face search. Every list ends in "Other…" for a typed
+value. A local run shows per-task progress above its log, then the headline
+scores, `p` to publish and `o` to open the HTML report. Rented QualityBench runs
+are not wired up yet: the Vast choice shows the `L80 vast spec` command to
+prepare one and rents nothing.
 
 It is built on the standard library alone (Linux and macOS). Without a
 terminal it refuses rather than guessing; `L80` with no arguments still prints

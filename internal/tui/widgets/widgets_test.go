@@ -128,3 +128,27 @@ func TestTableAndHelp(t *testing.T) {
 		t.Errorf("help %q", h)
 	}
 }
+
+func TestChecklistToggleAndAll(t *testing.T) {
+	c := &Checklist{Items: []Check{{Title: "GSM8K", Desc: "1319 items", On: true, Value: "gsm8k"}, {Title: "IFEval", Value: "ifeval"}, {Title: "BFCL", Value: "bfcl", On: true}}}
+	c.HandleKey(code(input.Down))
+	c.HandleKey(key(' '))
+	if got := c.Checked(); len(got) != 3 {
+		t.Errorf("checked %v", got)
+	}
+	c.HandleKey(key('a')) // all on: a clears
+	if len(c.Checked()) != 0 {
+		t.Error("a with everything on clears")
+	}
+	c.HandleKey(key('a'))
+	if len(c.Checked()) != 3 {
+		t.Error("a sets every row")
+	}
+	view := style.Strip(strings.Join(c.View(th, 40, 5, true), "\n"))
+	if !strings.Contains(view, "▸ [x] IFEval") || !strings.Contains(view, "[x] GSM8K   1319 items") {
+		t.Errorf("view:\n%s", view)
+	}
+	if c.AtEdge(code(input.Up)) || !(&Checklist{Items: c.Items, Cursor: 2}).AtEdge(code(input.Down)) {
+		t.Error("AtEdge")
+	}
+}

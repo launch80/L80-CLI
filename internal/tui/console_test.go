@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/discover"
+	"github.com/launch80/L80-CLI/internal/models"
 	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
@@ -40,6 +43,10 @@ func newTestConsole(t *testing.T) *Console {
 	c.bench.init()
 	c.vast.init()
 	c.pw.init()
+	// QualityBench must not probe this machine's ports or read its caches.
+	c.qb.scan = func(context.Context) []discover.Endpoint { return nil }
+	c.qb.sources = func(*Console) []models.Model { return nil }
+	c.qb.find = func(context.Context, string) ([]models.Model, error) { return nil, nil }
 	return c
 }
 
@@ -113,7 +120,7 @@ func TestNavigationAndDialog(t *testing.T) {
 	// Vast: starting a real run asks first, quoting the spec's cost caps.
 	spec := filepath.Join(t.TempDir(), "run.yaml")
 	os.WriteFile(spec, []byte("name: t\ngpu:\n  names: [H100]\n  count: 2\n  max_dph: 6.5\nbudget:\n  max_total_usd: 20\n"), 0o644)
-	feed(c, input.Key{Code: input.Rune, Rune: '8'})
+	feed(c, input.Key{Code: input.Rune, Rune: '9'})
 	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
 	c.vast.form.Fields[0].Input.Set(spec)
 	c.vast.form.Fields[3].On = false // not a dry run
@@ -190,7 +197,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	feed(c, SizeMsg{100, 30})
 	drain(c, c.Init(), 0)
 	// Moving the sidebar previews each screen without taking the keyboard.
-	for range 7 {
+	for range 8 {
 		feed(c, input.Key{Code: input.Down})
 	}
 	if c.scr != scrVast || c.paneFocus {
@@ -208,7 +215,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 		t.Fatal("enter focuses the pane")
 	}
 	feed(c, input.Key{Code: input.Esc})
-	if c.paneFocus || c.scr != scrVast || c.sel != 7 {
+	if c.paneFocus || c.scr != scrVast || c.sel != 8 {
 		t.Fatalf("esc: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
 	}
 	// Up from the top wraps to the bottom; enter on Home keeps the sidebar.
@@ -511,7 +518,7 @@ func TestOnboardingSkip(t *testing.T) {
 func TestVastSpecBuilder(t *testing.T) {
 	c := newTestConsole(t)
 	feed(c, SizeMsg{110, 34})
-	feed(c, input.Key{Code: input.Rune, Rune: '8'})
+	feed(c, input.Key{Code: input.Rune, Rune: '9'})
 	if c.scr != scrVast {
 		t.Fatalf("screen %v", c.scr)
 	}
@@ -576,7 +583,7 @@ func TestPwdetReportInline(t *testing.T) {
 		t.Errorf("the worst check comes first, with its detail: %+v", first)
 	}
 	// Moving the cursor changes the detail; passes follow the warnings.
-	for range 7 {
+	for range 8 {
 		feed(c, input.Key{Code: input.Down})
 	}
 	if f := c.pw.shown[c.pw.table.Cursor]; f.Status != "pass" || !strings.Contains(strings.Join(c.View(120, 34), "\n"), f.CheckID+" · pass") {

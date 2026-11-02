@@ -16,6 +16,15 @@
 - `L80 publish --template bench.qualitybench.v1` strips `env.endpoint` and
   `env.host`, as for BetterBench files, and refuses home-directory paths and
   LAN URLs anywhere in the file.
+- **Console: a QualityBench screen (preview).** Scope is Full, Quick or a Custom
+  checklist of tasks with a live run-time estimate. Local runs pick a server
+  found on this machine and one of its models from lists; Vast picks an engine
+  and a model from recent runs, the Hugging Face cache, `~/models` or a
+  Hugging Face search. A run shows per-task progress parsed from QualityBench's
+  `qb:progress` lines, then the scores, publish (`p`) and open report (`o`).
+  The Vast path shows how to prepare a rental and rents nothing yet. The
+  sidebar gains QualityBench between Poison Detector and Rent (vast), so Rent
+  (vast) moves to `9`.
 - README: a Community section (Discord and supporter page).
 
 ## 1.2.2
