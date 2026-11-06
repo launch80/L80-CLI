@@ -163,3 +163,18 @@ func init() {
 func soonScreen(s screenID) screenModel {
 	return screenFunc(func(c *Console, w, h int) ([]string, []widgets.Binding) { return soonView(c, s, w, h) })
 }
+
+// stateOf is the state of a screen that registers from its own file: it
+// lives in c.pages, created zeroed on first use, so adding a screen never
+// means adding a field to Console.
+func stateOf[T any](c *Console, id screenID) *T {
+	if c.pages == nil {
+		c.pages = map[screenID]any{}
+	}
+	if s, ok := c.pages[id].(*T); ok {
+		return s
+	}
+	s := new(T)
+	c.pages[id] = s
+	return s
+}

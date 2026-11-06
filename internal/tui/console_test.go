@@ -120,7 +120,7 @@ func TestNavigationAndDialog(t *testing.T) {
 	// Vast: starting a real run asks first, quoting the spec's cost caps.
 	spec := filepath.Join(t.TempDir(), "run.yaml")
 	os.WriteFile(spec, []byte("name: t\ngpu:\n  names: [H100]\n  count: 2\n  max_dph: 6.5\nbudget:\n  max_total_usd: 20\n"), 0o644)
-	feed(c, input.Key{Code: input.Rune, Rune: '9'})
+	jumpTo(t, c, scrVast)
 	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
 	c.vast.form.Fields[0].Input.Set(spec)
 	c.vast.form.Fields[3].On = false // not a dry run
@@ -197,7 +197,8 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	feed(c, SizeMsg{100, 30})
 	drain(c, c.Init(), 0)
 	// Moving the sidebar previews each screen without taking the keyboard.
-	for range 8 {
+	vastAt := slices.Index(c.side, scrVast)
+	for range vastAt {
 		feed(c, input.Key{Code: input.Down})
 	}
 	if c.scr != scrVast || c.paneFocus {
@@ -215,7 +216,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 		t.Fatal("enter focuses the pane")
 	}
 	feed(c, input.Key{Code: input.Esc})
-	if c.paneFocus || c.scr != scrVast || c.sel != 8 {
+	if c.paneFocus || c.scr != scrVast || c.sel != vastAt {
 		t.Fatalf("esc: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
 	}
 	// Up from the top wraps to the bottom; enter on Home keeps the sidebar.
@@ -578,10 +579,7 @@ func TestOnboardingSkip(t *testing.T) {
 func TestVastSpecBuilder(t *testing.T) {
 	c := newTestConsole(t)
 	feed(c, SizeMsg{110, 34})
-	feed(c, input.Key{Code: input.Rune, Rune: '9'})
-	if c.scr != scrVast {
-		t.Fatalf("screen %v", c.scr)
-	}
+	jumpTo(t, c, scrVast)
 	// Starting with no spec opens the builder instead of failing.
 	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
 	c.vast.form.Focus = len(c.vast.form.Fields)

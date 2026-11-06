@@ -35,6 +35,8 @@ type Deps struct {
 	Usage string
 	// Onboard opens the console on onboarding (first run, or `L80 onboard`).
 	Onboard bool
+	// Update runs `L80 update` with args, in process; nil where it cannot.
+	Update func(args []string, stdout, stderr io.Writer) int
 }
 
 // Console is the root model.
@@ -57,17 +59,19 @@ type Console struct {
 	dialog   *widgets.Dialog
 	onDialog func(choice int) Cmd
 
-	home    homeScreen
-	bench   benchScreen
-	vast    vastScreen
-	pw      pwdetScreen
-	dash    dashScreen
-	hist    histScreen
-	verify  verifyScreen
-	tools   toolsScreen
-	about   aboutScreen
-	onb     onboardScreen
-	qb      qualityScreen
+	home   homeScreen
+	bench  benchScreen
+	vast   vastScreen
+	pw     pwdetScreen
+	dash   dashScreen
+	hist   histScreen
+	verify verifyScreen
+	tools  toolsScreen
+	about  aboutScreen
+	onb    onboardScreen
+	qb     qualityScreen
+	// pages holds the state of screens that register from their own file.
+	pages   map[screenID]any
 	redraw  atomic.Bool
 	running int // jobs in flight, for the spinner tick
 }

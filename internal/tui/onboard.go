@@ -1,14 +1,10 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
-	l80skills "github.com/launch80/L80-CLI"
-	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/skillinstall"
@@ -161,21 +157,12 @@ func (o *onboardScreen) key(c *Console, k KeyMsg) Cmd {
 }
 
 func (o *onboardScreen) saveToken(c *Console) bool {
-	tok := strings.TrimSpace(o.token.String())
-	if config.KeyIDOf(tok) == "" {
-		o.tokenMsg, o.tokenBad = "That does not look like a launch80 token (L80_<key>_<secret>).", true
-		return false
+	msg, ok := c.login(o.token.String())
+	o.tokenMsg, o.tokenBad = msg, !ok
+	if ok {
+		o.token.Set("")
 	}
-	if err := config.SaveCredentials(tok); err != nil {
-		o.tokenMsg, o.tokenBad = "Could not save it: "+err.Error(), true
-		return false
-	}
-	cfg := &c.d.Config
-	cfg.Token, cfg.KeyID, cfg.TokenSource = tok, config.KeyIDOf(tok), config.SourceFile
-	c.d.Client = api.NewClient(cfg.BaseURL, tok, c.d.Version)
-	o.token.Set("")
-	o.tokenMsg, o.tokenBad = "Saved to "+config.CredentialsPath()+" (readable only by you).", false
-	return true
+	return ok
 }
 
 // install puts every bundled skill into each chosen harness. A copy that is
@@ -187,21 +174,7 @@ func (o *onboardScreen) install() {
 		if !a.on {
 			continue
 		}
-		var failed []string
-		for _, n := range l80skills.SkillNames {
-			dest := filepath.Join(a.dir, n)
-			if skillinstall.Status(n, dest) == skillinstall.Linked {
-				continue
-			}
-			if err := skillinstall.Install(n, dest, skillinstall.Opts{Force: true}); err != nil && !errors.Is(err, skillinstall.ErrExists) {
-				failed = append(failed, n+": "+err.Error())
-			}
-		}
-		if len(failed) > 0 {
-			a.result, a.bad = strings.Join(failed, "; "), true
-		} else {
-			a.result = fmt.Sprintf("installed %d skills", len(l80skills.SkillNames))
-		}
+		a.result, a.bad = installSkills(a.dir)
 	}
 }
 
