@@ -67,10 +67,10 @@ func runVastSpec(e env, args []string) int {
 			case "qualitybench", "qualitybench-thinking":
 				st.Type, st.Tasks, st.Thresholds, st.Deadline = vast.StepQualityBench, tasks, *thresholds, *qbDeadline
 				st.Reference = *reference
+				// Off is the baseline: a chat-template switch, ignored by models without thinking.
+				st.Thinking, st.Label = "off", "quality"
 				if strings.HasSuffix(name, "-thinking") {
 					st.Thinking, st.Label, st.Reference = "on", "quality-thinking", ""
-				} else if *reasoning != "" {
-					st.Thinking, st.Label = "off", "quality"
 				}
 			default:
 				return fail(e, api.Newf("E_USAGE", "Use betterbench, qualitybench or qualitybench-thinking.", "--steps: unknown step %q", name))
