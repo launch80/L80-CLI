@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -226,5 +227,77 @@ func TestHomeLauncherOpensScreens(t *testing.T) {
 	feed(c, input.Key{Code: input.Esc})
 	if c.paneFocus || c.scr != scrVast {
 		t.Errorf("back: scr=%v focus=%v", c.scr, c.paneFocus)
+	}
+}
+
+// A job started on one screen stays listed, with its log, from every other;
+// stopping it asks first.
+func TestJobsListEveryJobAndStopAsks(t *testing.T) {
+	c := newTestConsole(t)
+	feed(c, SizeMsg{110, 34})
+	done := newJob("prefetch betterbench")
+	drain(c, c.start(done, func(_ context.Context, out io.Writer) (any, int, error) {
+		fmt.Fprintln(out, "BetterBench 0.6.1")
+		return nil, 3, nil
+	}), 0)
+	live := newJob("vast run qwen.yaml")
+	c.start(live, func(context.Context, io.Writer) (any, int, error) { return nil, 0, nil }) // never run: stays running
+	live.log.Line("renting H100…")
+	stopped := false
+	live.cancel = func() { stopped = true }
+
+	jumpTo(t, c, scrJobs)
+	v := view(t, c)
+	for _, want := range []string{"2 job(s), 1 running", "running", "vast run qwen.yaml", "exit 3", "prefetch betterbench", "renting H100", "x stop"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("jobs missing %q:\n%s", want, v)
+		}
+	}
+	feed(c, input.Key{Code: input.Down})
+	feed(c, input.Key{Code: input.Enter})
+	if v := view(t, c); !strings.Contains(v, "BetterBench 0.6.1") || !strings.Contains(v, "status 3") {
+		t.Errorf("finished job keeps its log:\n%s", v)
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'x'})
+	if c.dialog != nil {
+		t.Error("a finished job has nothing to stop")
+	}
+	feed(c, input.Key{Code: input.Esc})
+	feed(c, input.Key{Code: input.Up})
+	feed(c, input.Key{Code: input.Rune, Rune: 'x'})
+	if c.dialog == nil || c.dialog.Choice != 1 || !c.dialog.Danger {
+		t.Fatalf("stop must ask, keep-running focused: %+v", c.dialog)
+	}
+	feed(c, input.Key{Code: input.Esc})
+	if stopped {
+		t.Fatal("cancel stopped it")
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'x'})
+	feed(c, input.Key{Code: input.Left})
+	feed(c, input.Key{Code: input.Enter})
+	if !stopped {
+		t.Error("stop did not cancel the job")
+	}
+	// Home lists jobs too.
+	feed(c, input.Key{Code: input.Esc})
+	jumpTo(t, c, scrHome)
+	if v := view(t, c); !strings.Contains(v, "vast run qwen.yaml") {
+		t.Errorf("home jobs:\n%s", v)
+	}
+}
+
+func TestTrackBoundsTheJobsList(t *testing.T) {
+	c := newTestConsole(t)
+	live := &job{title: "live", running: true}
+	c.track(live)
+	for i := range maxJobs + 5 {
+		c.track(&job{title: fmt.Sprint(i)})
+	}
+	c.track(live) // already tracked: not added twice
+	if len(c.jobs) != maxJobs || c.jobs[0] != live {
+		t.Errorf("len %d, first %q: a running job is never dropped", len(c.jobs), c.jobs[0].title)
+	}
+	if c.jobs[1].title != "6" {
+		t.Errorf("the oldest finished go first: %q", c.jobs[1].title)
 	}
 }

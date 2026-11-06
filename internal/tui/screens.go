@@ -142,6 +142,13 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 		}
 		st = append(st, kv(t, "launch80", c.d.Config.BaseURL), kv(t, "server", server))
 		st = append(st, kv(t, "token", tok), "")
+		if js := newestFirst(c); len(js) > 0 {
+			st = append(st, t.R(t.Title, "Jobs")+t.R(t.Muted, "  (all of them in Jobs)"))
+			for _, j := range js[:min(3, len(js))] {
+				st = append(st, "  "+jobLine(c, j))
+			}
+			st = append(st, "")
+		}
 		st = append(st, t.R(t.Title, "Tools"))
 		for _, ts := range h.tools {
 			st = append(st, kv(t, ts.Name, toolState(t, ts)))

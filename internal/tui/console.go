@@ -73,7 +73,8 @@ type Console struct {
 	// pages holds the state of screens that register from their own file.
 	pages   map[screenID]any
 	redraw  atomic.Bool
-	running int // jobs in flight, for the spinner tick
+	running int    // jobs in flight, for the spinner tick
+	jobs    []*job // every job started, oldest first (see track)
 }
 
 // Run starts the console. It returns ErrNoTTY when there is no terminal.
@@ -151,6 +152,7 @@ func (c *Console) start(j *job, fn func(ctx context.Context, out io.Writer) (any
 	ctx, cancel := context.WithCancel(context.Background())
 	j.log.Clear()
 	j.cancel, j.started, j.running, j.err, j.code = cancel, time.Now(), true, nil, 0
+	c.track(j)
 	c.running++
 	out := paneWriter{pane: j.log, c: c}
 	first := c.running == 1
@@ -163,6 +165,25 @@ func (c *Console) start(j *job, fn func(ctx context.Context, out io.Writer) (any
 		return Batch(run, c.tickCmd())
 	}
 	return run
+}
+
+// maxJobs bounds the jobs list; the oldest finished ones go first.
+const maxJobs = 50
+
+// track records j in the console's jobs list, so a job stays visible (and
+// cancellable) from the Jobs screen after its own screen moves on.
+func (c *Console) track(j *job) {
+	if slices.Contains(c.jobs, j) {
+		return
+	}
+	c.jobs = append(c.jobs, j)
+	for len(c.jobs) > maxJobs {
+		i := slices.IndexFunc(c.jobs, func(j *job) bool { return !j.running })
+		if i < 0 {
+			break
+		}
+		c.jobs = slices.Delete(c.jobs, i, i+1)
+	}
 }
 
 func (c *Console) tickCmd() Cmd {
@@ -277,8 +298,8 @@ func (c *Console) Update(m Msg) (Model, Cmd) {
 }
 
 func (c *Console) cancelAll() {
-	for _, j := range []*job{c.bench.job, c.qb.job, c.vast.job, c.pw.job, c.tools.job, c.verify.job} {
-		if j != nil && j.running && j.cancel != nil {
+	for _, j := range c.jobs {
+		if j.running && j.cancel != nil {
 			j.cancel()
 		}
 	}
