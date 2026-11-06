@@ -63,6 +63,11 @@ func RunQuality(ctx context.Context, o qualitybench.RunOptions, s Sink) (Quality
 		}
 		return QualityResult{Path: o.Out, Report: qualitybench.ReportPath(o.Out), Data: data, Runner: runner, Partial: p}, nil
 	}
+	if err != nil && ctx.Err() != nil {
+		return QualityResult{}, api.Newf("E_STOPPED",
+			"Rerun the same command to resume: finished tasks are kept and skipped.",
+			"QualityBench stopped")
+	}
 	if err != nil {
 		return QualityResult{}, api.Newf("E_INPUT_INVALID",
 			fmt.Sprintf("Fix what QualityBench reported above and rerun the same command: finished tasks are kept and skipped. Partial results, if any, are at %s.", o.Out),

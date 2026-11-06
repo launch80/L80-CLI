@@ -93,6 +93,9 @@ func ExitCodeFor(code string) int {
 		return ExitServer
 	case "E_UPDATE_FAILED":
 		return ExitInternal
+	// The user stopped it (ctrl+c, ctrl+x in the console): the shell's 128+SIGINT.
+	case "E_STOPPED":
+		return 130
 	default:
 		return ExitInternal
 	}

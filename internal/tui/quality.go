@@ -1227,7 +1227,11 @@ func (p *qbProgress) view(t widgets.Theme, w int) []string {
 			st = t.Warn
 		case "queued":
 			if d, ok := p.tr.TaskLeft(r.ID); ok {
-				state += " · ~" + qualitybench.Duration(d)
+				if s := qualitybench.Duration(d); strings.HasPrefix(s, "<") {
+					state += " · " + s
+				} else {
+					state += " · ~" + s
+				}
 			}
 		}
 		line := "  " + style.PadRight(label, 18) + widgets.Progress(t, frac, barW) + " " + style.PadRight(count, 11) + t.R(st, state)
