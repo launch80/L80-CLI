@@ -90,7 +90,16 @@ func (h *homeScreen) update(c *Console, m Msg) Cmd {
 		case v.Code == input.End:
 			h.cursor = len(launch) - 1
 		case v.Code == input.Enter:
-			return c.goTo(launch[h.cursor].to, true)
+			l := launch[h.cursor]
+			if l.to == scrQuality {
+				c.qb.ensure()
+				c.qb.mode.Choice = modeRun
+				c.qb.focus = qsScope
+				if strings.HasPrefix(l.title, "Compare") {
+					c.qb.mode.Choice, c.qb.focus = modeCompare, qsCmpRef
+				}
+			}
+			return c.goTo(l.to, true)
 		case v.Code == input.Rune && v.Rune == 'r':
 			return h.load(c)
 		}

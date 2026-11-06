@@ -86,7 +86,7 @@ func (r *rentWizard) init() {
 	}}
 	r.forms[pgReview] = widgets.Form{Submit: "Rent and run", Fields: []*widgets.Field{
 		text("hours", "Max hours", "The hard cap. When it is reached L80 stops the run and destroys the box; QualityBench stops starting work 15 minutes before, so its results are written.", "", ""),
-		text("budget", "Budget $", "The run refuses to start if the account balance is below this.", "", num(d.BudgetUSD)),
+		text("budget", "Budget $", "The run refuses to start if the Vast.ai balance is below this. Empty: the cost cap (max hours × max $/hr).", "the cost cap", ""),
 		text("name", "Save as", "The spec's file name, without .yaml. Leave empty to name it after the model.", "from the model", ""),
 		{Key: "dry", Label: "Dry run", Kind: widgets.ToggleField, On: true, Help: "Show the offers and the plan without renting anything. Turn off to rent."},
 	}}
@@ -242,6 +242,9 @@ func (r *rentWizard) spec() (vast.Spec, error) {
 		dst        *float64
 	}{{pgHardware, "vram", "min GPU memory", &sp.MinGPURAMGB}, {pgHardware, "dph", "max $/hr", &sp.MaxDPH}, {pgReview, "budget", "budget", &sp.BudgetUSD}}
 	for _, f := range floats {
+		if f.key == "budget" && r.val(f.page, f.key) == "" {
+			continue // filled from the cap below
+		}
 		n, err := strconv.ParseFloat(strings.TrimPrefix(r.val(f.page, f.key), "$"), 64)
 		if err != nil {
 			return sp, fmt.Errorf("%s must be a number", f.label)
@@ -253,6 +256,11 @@ func (r *rentWizard) spec() (vast.Spec, error) {
 		return sp, err
 	}
 	sp.Steps = st
+	if r.val(pgReview, "budget") == "" {
+		if h, err := r.hours(r.plan(sp)); err == nil {
+			sp.BudgetUSD = math.Ceil(h*sp.MaxDPH*100) / 100
+		}
+	}
 	return sp, sp.Validate()
 }
 
@@ -291,11 +299,11 @@ type plan struct {
 
 func (r *rentWizard) plan(sp vast.Spec) plan {
 	p := plan{minutes: provisionMinutes}
-	p.lines = append(p.lines, fmt.Sprintf("  %-34s %s", "rent, provision, serve", humanMinutes(provisionMinutes)+"  (image pull, weights, engine start)"))
+	p.lines = append(p.lines, fmt.Sprintf("  %-46s %s", "rent, provision, serve", humanMinutes(provisionMinutes)+"  (image pull, weights, engine start)"))
 	for i, st := range sp.Steps {
 		m, why := stepMinutes(st)
 		p.minutes += m
-		p.lines = append(p.lines, fmt.Sprintf("  %-34s %s", fmt.Sprintf("%d. %s", i+1, st.Describe()), humanMinutes(m)+"  ("+why+")"))
+		p.lines = append(p.lines, fmt.Sprintf("  %-46s %s", fmt.Sprintf("%d. %s", i+1, st.Describe()), humanMinutes(m)+"  ("+why+")"))
 	}
 	p.capHours = math.Ceil(float64(p.minutes)*1.3/30) / 2
 	return p
@@ -364,7 +372,7 @@ func (r *rentWizard) view(c *Console, w int) []string {
 			out = append(out, style.Truncate(style.Sanitize(l), w, "…"))
 		}
 		hrs, herr := r.hours(p)
-		out = append(out, fmt.Sprintf("  %-34s %s", "total", humanMinutes(p.minutes)))
+		out = append(out, fmt.Sprintf("  %-46s %s", "total", humanMinutes(p.minutes)))
 		if herr == nil {
 			out = append(out, "", t.R(t.Title, "Cost"),
 				fmt.Sprintf("  at most $%.2f: %.1f h cap × $%s/hr ceiling (the offer rented may be cheaper)", hrs*sp.MaxDPH, hrs, strconv.FormatFloat(sp.MaxDPH, 'f', -1, 64)))
