@@ -50,14 +50,14 @@
     },
     "vast": {
       "repo": "https://github.com/launch80/BB-VAST-L80",
-      "ref": "v0.1.0",
-      "commit": "d8ed73f5f9af436df9d575b3b8465ff7790d536d",
+      "ref": "v0.2.0",
+      "commit": "5587e1f2d3e53333239975d6827f33cd8d5b21ba",
       "package": "bbvastl80",
       "exe": "bbvastl80",
       "env": "L80_VAST",
-      "min_version": "0.1.0",
+      "min_version": "0.2.0",
       "version_cmd": ["--version"],
-      "notes": "Rent a Vast.ai GPU, serve a model, benchmark it with BetterBench, publish, tear down."
+      "notes": "Rent a Vast.ai GPU, serve a model, run ordered steps on it (BetterBench, QualityBench), publish, tear down."
     }
   }
 }
