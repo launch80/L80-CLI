@@ -133,10 +133,12 @@ type (
 		ms    []models.Model
 		err   error
 	}
+	// qbPublished reports a publish of the results file at path, from the
+	// QualityBench screen or History.
 	qbPublished struct {
-		j   *job
-		art *api.Artifact
-		err *api.Error
+		path string
+		art  *api.Artifact
+		err  *api.Error
 	}
 	qbResults   struct{ rs []qualitybench.ResultFile }
 	qbEstimated struct {
@@ -566,14 +568,12 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 		if r, ok := v.result.(*app.QualityResult); ok && r != nil {
 			s.result = r
 			s.summary = qualitySummary(r)
-			j, comparing := v.j, s.comparing
-			j.publish = func(c *Console) Cmd { return s.publish(c, j, r, comparing, false) }
 		}
 		if v.err != nil {
 			c.setFlash(v.err.Error(), true)
 		} else if s.result != nil && c.scr != scrQuality {
 			// On this screen the key hints say it; elsewhere, say where to go.
-			c.setFlash("QualityBench done: p publishes it to launch80, from Jobs or the QualityBench screen", false)
+			c.setFlash("QualityBench done: publish it from History or the QualityBench screen with p", false)
 		}
 		return nil
 	case qbPublished:
@@ -581,10 +581,7 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 			c.setFlash(v.err.Code+": "+v.err.Message+" — "+v.err.Remedy, true)
 			return nil
 		}
-		if v.j != nil {
-			v.j.url = v.art.URL
-		}
-		if v.j == s.job {
+		if s.result != nil && v.path == s.result.Path {
 			s.url = v.art.URL
 		}
 		c.setFlash("published: "+v.art.URL, false)
@@ -617,7 +614,7 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 			s.job.cancel()
 		case s.job.running:
 		case v.Code == input.Rune && v.Rune == 'p' && s.result != nil && s.url == "":
-			return s.publish(c, s.job, s.result, s.comparing, false)
+			return publishQuality(c, s.result, s.comparing, false)
 		case v.Code == input.Rune && v.Rune == 'o' && s.result != nil:
 			if err := openFile(s.result.Report); err != nil {
 				c.setFlash("could not open "+s.result.Report+": "+err.Error(), true)
@@ -1104,9 +1101,9 @@ func qualitySummary(r *app.QualityResult) []string {
 	return append(out, qualitybench.Headline(r.Data)...)
 }
 
-// publish asks before publishing res, the result of job j, then publishes it.
-// The QualityBench screen and the Jobs screen both call it.
-func (s *qualityScreen) publish(c *Console, j *job, res *app.QualityResult, comparing, confirmed bool) Cmd {
+// publishQuality asks before publishing res, then publishes it. The
+// QualityBench screen and History both call it; the answer is a qbPublished.
+func publishQuality(c *Console, res *app.QualityResult, comparing, confirmed bool) Cmd {
 	if !c.d.Config.HasToken() {
 		c.setFlash("publishing needs a token: set L80_TOKEN or ~/.config/L80/credentials.json (L80 auth status)", true)
 		return nil
@@ -1122,7 +1119,7 @@ func (s *qualityScreen) publish(c *Console, j *job, res *app.QualityResult, comp
 		c.confirm(&widgets.Dialog{Title: "Publish", Body: body,
 			Buttons: []string{"Publish", "Cancel"}, Choice: 1}, func(ch int) Cmd {
 			if ch == 0 {
-				return s.publish(c, j, res, comparing, true)
+				return publishQuality(c, res, comparing, true)
 			}
 			return nil
 		})
@@ -1131,16 +1128,16 @@ func (s *qualityScreen) publish(c *Console, j *job, res *app.QualityResult, comp
 	return func() Msg {
 		body, err := qualitybench.Prepare(res.Data)
 		if err != nil {
-			return qbPublished{j: j, err: api.Newf("E_INPUT_INVALID", "Publish it from the command line to see details: L80 qualitybench --results <file>.", "%v", err)}
+			return qbPublished{path: res.Path, err: api.Newf("E_INPUT_INVALID", "Publish it from the command line to see details: L80 qualitybench --results <file>.", "%v", err)}
 		}
 		if len(body) > api.MaxPayloadBytesFor(qualitybench.TemplateID) {
-			return qbPublished{j: j, err: api.Newf("E_PAYLOAD_TOO_LARGE", "Rerun with a current QualityBench.", "payload is %d bytes", len(body))}
+			return qbPublished{path: res.Path, err: api.Newf("E_PAYLOAD_TOO_LARGE", "Rerun with a current QualityBench.", "payload is %d bytes", len(body))}
 		}
 		pub, apiErr := app.Publish(c.d.Client, app.PublishRequest{Body: body, Template: qualitybench.TemplateID, SourcePath: res.Path, APIBase: c.d.Config.BaseURL})
 		if apiErr != nil {
-			return qbPublished{j: j, err: apiErr}
+			return qbPublished{path: res.Path, err: apiErr}
 		}
-		return qbPublished{j: j, art: pub.Artifact}
+		return qbPublished{path: res.Path, art: pub.Artifact}
 	}
 }
 

@@ -139,10 +139,6 @@ type job struct {
 	// status, when set, adds live progress to the title while the job runs
 	// ("48% · 23 min left").
 	status func() string
-	// publish, when set on a finished job, asks to publish its result to
-	// launch80; the Jobs screen offers it as p. url is the page once published.
-	publish func(c *Console) Cmd
-	url     string
 }
 
 // label is the job's title with its live status while it runs.
@@ -188,7 +184,7 @@ func (c *Console) start(j *job, fn func(ctx context.Context, out io.Writer) (any
 const maxJobs = 50
 
 // track records j in the console's jobs list, so a job stays visible (and
-// cancellable) from the Jobs screen after its own screen moves on.
+// cancellable on quit) on Home after its own screen moves on.
 func (c *Console) track(j *job) {
 	if slices.Contains(c.jobs, j) {
 		return

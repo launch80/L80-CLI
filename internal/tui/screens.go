@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/history"
 	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/pytool"
+	"github.com/launch80/L80-CLI/internal/qualitybench"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
@@ -152,7 +154,7 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 		st = append(st, kv(t, "launch80", c.d.Config.BaseURL), kv(t, "server", server))
 		st = append(st, kv(t, "token", tok), "")
 		if js := newestFirst(c); len(js) > 0 {
-			st = append(st, t.R(t.Title, "Jobs")+t.R(t.Muted, "  (all of them in Jobs)"))
+			st = append(st, t.R(t.Title, "This session")+t.R(t.Muted, "  (finished QualityBench runs: History)"))
 			for _, j := range js[:min(3, len(js))] {
 				st = append(st, "  "+jobLine(c, j))
 			}
@@ -241,6 +243,9 @@ func helpView(c *Console, w, h int) ([]string, []widgets.Binding) {
 type histScreen struct {
 	table   widgets.Table
 	entries []history.Entry
+	// local are QualityBench results on this machine not yet published; they
+	// lead the table, so the table's row i is local[i], then entries.
+	local   []qualitybench.ResultFile
 	source  string
 	err     string
 	loading bool
@@ -300,28 +305,82 @@ func (s *histScreen) verify(c *Console, e history.Entry) Cmd {
 
 type histLoaded struct {
 	entries []history.Entry
+	local   []qualitybench.ResultFile
 	source  string
 	err     string
+}
+
+// unpublishedQuality is every QualityBench results file the QualityBench
+// screen can find on this machine that this machine has not published.
+var unpublishedQuality = func(c *Console) []qualitybench.ResultFile {
+	published := map[string]bool{}
+	if entries, err := history.Read(); err == nil {
+		for _, e := range entries {
+			if e.TemplateID == qualitybench.TemplateID && e.SourcePath != "" {
+				published[e.SourcePath] = true
+			}
+		}
+	}
+	var out []qualitybench.ResultFile
+	for _, r := range localResults(c) {
+		if !published[r.Path] {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func (s *histScreen) load(c *Console) Cmd {
 	s.loading = true
 	return func() Msg {
+		local := unpublishedQuality(c)
 		page, apiErr := c.d.Client.History(100, "")
 		if apiErr == nil {
 			var out []history.Entry
 			for _, a := range page.Artifacts {
 				out = append(out, history.Entry{GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, Title: a.Title, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier, RunClass: a.RunClass})
 			}
-			return histLoaded{entries: out, source: "server"}
+			return histLoaded{entries: out, local: local, source: "server"}
 		}
-		local, err := history.Read()
+		record, err := history.Read()
 		msg := apiErr.Message + "; showing this machine's record"
 		if err != nil {
 			msg = err.Error()
 		}
-		return histLoaded{entries: local, source: "local", err: msg}
+		return histLoaded{entries: record, local: local, source: "local", err: msg}
 	}
+}
+
+// selected is the row under the cursor: a local report, or a published page.
+func (s *histScreen) selected() (*qualitybench.ResultFile, *history.Entry) {
+	i := s.table.Cursor
+	switch {
+	case i < len(s.local):
+		return &s.local[i], nil
+	case i-len(s.local) < len(s.entries):
+		return nil, &s.entries[i-len(s.local)]
+	}
+	return nil, nil
+}
+
+// publishLocal asks, then publishes a local QualityBench results file.
+func (s *histScreen) publishLocal(c *Console, r qualitybench.ResultFile) Cmd {
+	data, err := os.ReadFile(r.Path)
+	if err != nil {
+		c.setFlash("could not read "+r.Path+": "+err.Error(), true)
+		return nil
+	}
+	res := &app.QualityResult{Path: r.Path, Report: qualitybench.ReportPath(r.Path), Data: data, Partial: qualitybench.Partials(data)}
+	return publishQuality(c, res, r.Compare, false)
+}
+
+// whenOf is a results file's run time in the table's format.
+func whenOf(r qualitybench.ResultFile) string {
+	when := strings.Replace(r.Generated, "T", " ", 1)
+	if len(when) > 16 {
+		when = when[:16]
+	}
+	return when
 }
 
 func (s *histScreen) update(c *Console, m Msg) Cmd {
@@ -332,9 +391,21 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 		} else {
 			c.setFlash("verification "+v.status, false)
 		}
+	case qbPublished:
+		if v.err == nil {
+			return s.load(c)
+		}
 	case histLoaded:
-		s.loading, s.entries, s.source, s.err = false, v.entries, v.source, v.err
+		cur := s.table.Cursor
+		s.loading, s.entries, s.local, s.source, s.err = false, v.entries, v.local, v.source, v.err
 		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Class", Width: 6}, {Title: "Title"}}}
+		for _, r := range v.local {
+			class := "full"
+			if r.Quick {
+				class = "quick"
+			}
+			s.table.Rows = append(s.table.Rows, []string{whenOf(r), qualitybench.TemplateID, "local", class, orDash(r.Title) + " · not published"})
+		}
 		for _, e := range v.entries {
 			when := strings.Replace(e.CreatedAt, "T", " ", 1)
 			if len(when) > 16 {
@@ -342,9 +413,25 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 			}
 			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.RunClass), orDash(e.Title)})
 		}
+		s.table.Cursor = min(cur, max(0, len(s.table.Rows)-1))
 	case KeyMsg:
-		if v.Code == input.Rune && v.Rune == 'v' && s.table.Cursor < len(s.entries) {
-			return s.verify(c, s.entries[s.table.Cursor])
+		r, e := s.selected()
+		switch {
+		case v.Code == input.Rune && v.Rune == 'v' && e != nil:
+			return s.verify(c, *e)
+		case v.Code == input.Rune && v.Rune == 'v' && r != nil:
+			c.setFlash("publish it first (p); then it can be verified", true)
+			return nil
+		case v.Code == input.Rune && v.Rune == 'p' && r != nil:
+			return s.publishLocal(c, *r)
+		case v.Code == input.Rune && v.Rune == 'o' && r != nil:
+			rep := qualitybench.ReportPath(r.Path)
+			if err := openFile(rep); err != nil {
+				c.setFlash("could not open "+rep+": "+err.Error(), true)
+			} else {
+				c.setFlash("opened "+rep, false)
+			}
+			return nil
 		}
 		if s.detail {
 			if isBack(v) || v.Code == input.Enter {
@@ -358,7 +445,7 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 		switch {
 		case isBack(v):
 			c.scr = scrHome
-		case v.Code == input.Enter && len(s.entries) > 0:
+		case v.Code == input.Enter && len(s.table.Rows) > 0:
 			s.detail = true
 		case v.Code == input.Rune && v.Rune == 'r':
 			return s.load(c)
@@ -373,11 +460,30 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 		return []string{t.R(t.Muted, widgets.Spin(c.tick)+" loading…")}, nil
 	}
 	head := t.R(t.Muted, fmt.Sprintf("%d page(s), from the %s record", len(s.entries), s.source))
+	if len(s.local) > 0 {
+		head += t.R(t.Muted, fmt.Sprintf(" · %d QualityBench report(s) on this machine not published", len(s.local)))
+	}
 	if s.err != "" {
 		head += t.R(t.Warn, "  "+clip(s.err, w-40))
 	}
-	if s.detail && s.table.Cursor < len(s.entries) {
-		e := s.entries[s.table.Cursor]
+	r, sel := s.selected()
+	if s.detail && r != nil {
+		lines := []string{head, "", t.R(t.Title, style.Sanitize(orDash(r.Title))), "",
+			kv(t, "model", style.Sanitize(r.Model)), kv(t, "run", orDash(whenOf(*r))), kv(t, "results", style.Sanitize(r.Path))}
+		if _, err := os.Stat(qualitybench.ReportPath(r.Path)); err == nil {
+			lines = append(lines, kv(t, "report", style.Sanitize(qualitybench.ReportPath(r.Path))))
+		}
+		if data, err := os.ReadFile(r.Path); err == nil {
+			lines = append(lines, "")
+			for _, l := range qualitybench.Headline(data) {
+				lines = append(lines, "  "+style.Sanitize(l))
+			}
+		}
+		lines = append(lines, "", t.R(t.Muted, "Not published. p publishes it as a public launch80 page (endpoint and host removed)."))
+		return lines, []widgets.Binding{{Keys: "p", Desc: "publish"}, {Keys: "o", Desc: "open report"}, {Keys: "esc", Desc: "back"}}
+	}
+	if s.detail && sel != nil {
+		e := *sel
 		lines := []string{head, "", t.R(t.Title, style.Sanitize(orDash(e.Title))), "",
 			kv(t, "url", style.Sanitize(e.URL)), kv(t, "template", e.TemplateID), kv(t, "tier", orDash(e.TrustTier)),
 			kv(t, "class", orDash(e.RunClass)), kv(t, "published", e.CreatedAt), kv(t, "guid", e.GUID)}
@@ -390,8 +496,14 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 		lines = append(lines, "", t.R(t.Muted, "Pages are public. A page is self-reported until launch80 verifies it."))
 		return lines, []widgets.Binding{{Keys: "v", Desc: "request verification"}, {Keys: "esc", Desc: "back"}}
 	}
+	keys := []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "details"}}
+	if r != nil {
+		keys = append(keys, widgets.Binding{Keys: "p", Desc: "publish"}, widgets.Binding{Keys: "o", Desc: "open report"})
+	} else {
+		keys = append(keys, widgets.Binding{Keys: "v", Desc: "verify"})
+	}
 	return append([]string{head, ""}, s.table.View(t, w, h-2, true)...),
-		[]widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "details"}, {Keys: "v", Desc: "verify"}, {Keys: "r", Desc: "refresh"}, {Keys: "esc", Desc: "back"}}
+		append(keys, widgets.Binding{Keys: "r", Desc: "refresh"}, widgets.Binding{Keys: "esc", Desc: "back"})
 }
 
 // --- tools --------------------------------------------------------------------------

@@ -81,8 +81,8 @@ L80 tui
 A full-screen console over everything below. Home is a launcher: "What do
 you want to do?" lists benchmark speed, measure quality, compare runs, rent a
 GPU, scan weights, publish, verify and settings, with the server, token and
-tool status and your latest jobs below it. A sidebar lists Home, then A to Z:
-About, Benchmark, Dashboard, Doctor, History, Jobs, Onboarding, Poison
+tool status and this session's runs below it. A sidebar lists Home, then A to Z:
+About, Benchmark, Dashboard, Doctor, History, Onboarding, Poison
 Detector, QualityBench, Rent (vast), Settings, Skills, Templates, Tools and
 Verify. Moving through it previews each screen live, enter opens it and esc
 comes back; `1`-`9` jump to the first nine, and the sidebar scrolls on a short
@@ -94,10 +94,11 @@ anything you do here you can script later.
 - **Skills** installs or links L80's skills for each agent found. **Templates**
   lists the page templates. **Doctor** runs `L80 doctor`, each check with its
   remedy.
-- **Jobs** lists every run started from the console, newest first, with its
-  state and log. A run stays listed after you leave its screen, and you can
-  stop it from here. A finished QualityBench run can be published from here
-  with `p`.
+- **History** lists every page this key published, with its trust tier (`v`
+  requests verification). Above them are the QualityBench reports on this
+  machine that are not published yet (the current directory, rental step
+  folders), read from disk so they are there after a restart: `p` publishes
+  one, `o` opens its HTML report.
 - About has our story, the [Discord](https://discord.gg/launch80), the
   [Supporter](https://www.launch80.com/supporter) page and every command.
 

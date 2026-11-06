@@ -480,13 +480,12 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
         <div class="tbl"><table>
           <thead><tr><th>Screen</th><th>What you can do</th></tr></thead>
           <tbody>
-            <tr><td>Home</td><td>A launcher, "What do you want to do?", with server, token and tool status and your latest jobs.</td></tr>
+            <tr><td>Home</td><td>A launcher, "What do you want to do?", with server, token and tool status and this session's runs.</td></tr>
             <tr><td>About</td><td>Our story, the <a href="https://discord.gg/launch80">Discord</a>, the <a href="https://www.launch80.com/supporter">Supporter</a> page and the full command directory.</td></tr>
             <tr><td>Benchmark</td><td>Fill in a form, watch the run stream, then publish or dry-run.</td></tr>
             <tr><td>Dashboard</td><td>Attach to the telemetry view or start the sampler.</td></tr>
             <tr><td>Doctor</td><td>The <code>L80 doctor</code> checks, each with its remedy.</td></tr>
-            <tr><td>History</td><td>Every page you published, with its trust tier. Press <kbd>v</kbd> to request verification.</td></tr>
-            <tr><td>Jobs</td><td>Every run started here, with its state and log. A run stays listed after you leave its screen; stop it from here, or publish a finished QualityBench run with <kbd>p</kbd>.</td></tr>
+            <tr><td>History</td><td>Every page you published, with its trust tier; press <kbd>v</kbd> to request verification. QualityBench reports on this machine that are not published yet are listed first, read from disk: <kbd>p</kbd> publishes one, <kbd>o</kbd> opens its report.</td></tr>
             <tr><td>Onboarding</td><td>Check the tools, save a publish token, pick where to start, and install skills for the AI agents found.</td></tr>
             <tr><td>Poison Detector</td><td>Pick an assurance level, scan a model and read the whole report inline: verdict and level, a threat matrix, accuracy, every check with its evidence. <kbd>m</kbd> opens the Method tab; publish with <kbd>p</kbd>.</td></tr>
             <tr><td>QualityBench</td><td>Run or Compare. Pick a scope, a local server and model, a reference and a tokenizer; watch per-task progress, then publish with <kbd>p</kbd> or open the report with <kbd>o</kbd>.</td></tr>

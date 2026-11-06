@@ -2,12 +2,16 @@
 
 ## Unreleased
 
-### QualityBench: publish a finished run from Jobs, with or without logprobs
+### History: publish QualityBench reports; the Jobs screen is gone
 
-- A finished QualityBench run can be published from the **Jobs** screen with
-  `p`, as well as from the QualityBench screen. It asks first, as
-  before. When the run ends while you are on another screen, the console says
-  so and points to `p`. A published job shows its page link in Jobs.
+- **History** now lists the QualityBench reports on this machine that are not
+  published yet (the current directory and rental step folders, each with its
+  `.qb` folder), above the pages you published. They are read from disk, so a
+  finished run is still there after the console restarts. `p` publishes one
+  (it asks first), `o` opens its HTML report, enter shows its scores.
+- The **Jobs** screen is removed: its list lived only in memory and was empty
+  after a restart. Home still shows this session's runs, and each run's own
+  screen keeps its log and its stop key.
 - A task-only run (BFCL only, say) publishes once launch80 PR #82 (empty
   `tasks` or `logprobs`) is in production; the page leaves out the empty
   sections. QualityBench 0.2.0 still ends such a run with "launch80 will not
