@@ -46,9 +46,9 @@ func (s *templatesScreen) load(c *Console) Cmd {
 
 // templateMaker names what in L80 writes a payload for a template.
 var templateMaker = map[string]string{
-	betterbench.TemplateID:    "Benchmark, or `L80 betterbench`",
-	betterbench.RawTemplateID: "Benchmark, or `L80 betterbench`",
-	pwdet.ScanTemplateID:      "Poison Detector, or `L80 pwdet scan --publish`",
+	betterbench.TemplateID:    "Bench Speed, or `L80 betterbench`",
+	betterbench.RawTemplateID: "Bench Speed, or `L80 betterbench`",
+	pwdet.ScanTemplateID:      "Bench Risk, or `L80 pwdet scan --publish`",
 	qualitybench.TemplateID:   "QualityBench, or `L80 qualitybench`",
 }
 

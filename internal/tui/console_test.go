@@ -164,7 +164,7 @@ func TestBenchJobStreamsAndSummarises(t *testing.T) {
 	os.Chdir(t.TempDir())
 	defer os.Chdir(wd)
 
-	feed(c, input.Key{Code: input.Rune, Rune: '3'})
+	jumpTo(t, c, scrBench)
 	c.bench.form.Fields[0].Input.Set("http://h/v1")
 	c.bench.form.Fields[1].Input.Set("m")
 	c.bench.form.Fields[5].Input.Set("sk-secret")
@@ -212,7 +212,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 		t.Fatalf("preview: scr=%v focus=%v", c.scr, c.paneFocus)
 	}
 	view := checkFrame(t, c.View(100, 30), 100, 30)
-	for _, want := range []string{"Rent a Vast.ai GPU", "Home", "Rent (vast)", "Tools", "enter open", "1-9 jump"} {
+	for _, want := range []string{"Rent a Vast.ai GPU", "Home", "Rent GPUs", "Tools", "enter open", "1-9 jump"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q:\n%s", want, view)
 		}
@@ -237,7 +237,7 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	}
 	// Up from the top wraps to the bottom.
 	feed(c, input.Key{Code: input.Up})
-	if c.scr != scrVerify {
+	if c.scr != c.side[len(c.side)-1] {
 		t.Errorf("wrap: scr=%v", c.scr)
 	}
 }
@@ -272,8 +272,7 @@ func TestVerifyScreenQueueAndStamp(t *testing.T) {
 	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
 	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
 	feed(c, SizeMsg{120, 36})
-	feed(c, input.Key{Code: input.End}) // Verify is last; past the number keys
-	feed(c, input.Key{Code: input.Enter})
+	jumpTo(t, c, scrVerify)
 	view := checkFrame(t, c.View(120, 36), 120, 36)
 	for _, want := range []string{"Verify", "Queue (1)", "Qwen3-8B on vLLM", "verifier", "lab-mi300"} {
 		if !strings.Contains(view, want) {
@@ -328,8 +327,7 @@ func TestVerifyScreenQuickRunNeedsAReproduction(t *testing.T) {
 	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
 	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
 	feed(c, SizeMsg{120, 36})
-	feed(c, input.Key{Code: input.End})
-	feed(c, input.Key{Code: input.Enter})
+	jumpTo(t, c, scrVerify)
 	if view := checkFrame(t, c.View(120, 36), 120, 36); !strings.Contains(view, "Class") || !strings.Contains(view, "quick") {
 		t.Fatalf("queue should show the class:\n%s", view)
 	}
@@ -374,8 +372,7 @@ func TestVerifyScreenScanNeedsAReScan(t *testing.T) {
 	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
 	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
 	feed(c, SizeMsg{120, 36})
-	feed(c, input.Key{Code: input.End})
-	feed(c, input.Key{Code: input.Enter})
+	jumpTo(t, c, scrVerify)
 	feed(c, input.Key{Code: input.Enter})
 	view := checkFrame(t, c.View(120, 36), 120, 36)
 	for _, want := range []string{"To re-scan", "unsloth/Qwen3-0.6B@", "standard", "p re-scan"} {

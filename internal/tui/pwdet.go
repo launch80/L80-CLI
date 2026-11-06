@@ -86,7 +86,7 @@ func (s *pwdetScreen) update(c *Console, m Msg) Cmd {
 			s.url = v.art.URL
 			msg := "published: " + v.art.URL
 			if v.art.TemplateID == pwdet.ScanTemplateID {
-				msg += " — verifiable: History, then v"
+				msg += " — verifiable: Bench - History, then v"
 			}
 			c.setFlash(msg, false)
 		}

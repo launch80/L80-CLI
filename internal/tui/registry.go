@@ -131,17 +131,17 @@ func (f screenFunc) view(c *Console, w, h int) ([]string, []widgets.Binding) { r
 func init() {
 	register(screenDef{id: scrHome, label: "Home", side: true, blurb: "Server, token and tools at a glance, and where to start.",
 		get: func(c *Console) screenModel { return &c.home }, open: func(c *Console) Cmd { return c.home.load(c) }})
-	register(screenDef{id: scrBench, label: "Benchmark", side: true, blurb: "Run BetterBench against an endpoint and publish the result.",
+	register(screenDef{id: scrBench, label: "Bench Speed", side: true, blurb: "Run BetterBench against an endpoint and publish the result.",
 		get: func(c *Console) screenModel { return &c.bench }})
-	register(screenDef{id: scrVast, label: "Rent (vast)", side: true, blurb: "Rent a Vast.ai GPU, serve, benchmark, publish, tear down.",
+	register(screenDef{id: scrVast, label: "Rent GPUs", side: true, blurb: "Rent a Vast.ai GPU, serve, benchmark, publish, tear down.",
 		get: func(c *Console) screenModel { return &c.vast }, open: func(c *Console) Cmd { return c.vast.loadRuns(c) }})
-	register(screenDef{id: scrPwdet, label: "Poison Detector", side: true, blurb: "Check model weights for tampering.",
+	register(screenDef{id: scrPwdet, label: "Bench Risk", side: true, blurb: "Check model weights for tampering.",
 		get: func(c *Console) screenModel { return &c.pw }})
 	register(screenDef{id: scrDash, label: "Dashboard", side: true, blurb: "GPU and inference telemetry for this machine.",
 		get: func(c *Console) screenModel { return &c.dash }, open: func(c *Console) Cmd { return c.dash.load(c) }})
-	register(screenDef{id: scrHistory, label: "History", side: true, blurb: "What this key has published, and each page's tier.",
+	register(screenDef{id: scrHistory, label: "Bench - History", side: true, blurb: "What this key has published, and each page's tier.",
 		get: func(c *Console) screenModel { return &c.hist }, open: func(c *Console) Cmd { return c.hist.load(c) }})
-	register(screenDef{id: scrVerify, label: "Verify", side: true, blurb: "Review others' runs: reproduce them, and stamp them if you are a verifier.",
+	register(screenDef{id: scrVerify, label: "Bench Verify", side: true, blurb: "Review others' runs: reproduce them, and stamp them if you are a verifier.",
 		get: func(c *Console) screenModel { return &c.verify }, open: func(c *Console) Cmd { return c.verify.load(c) }})
 	register(screenDef{id: scrTools, label: "Tools", side: true, blurb: "The pinned tools and how each resolves here.",
 		get: func(c *Console) screenModel { return &c.tools }, open: func(c *Console) Cmd { return c.tools.load(c, false) }})
@@ -151,7 +151,7 @@ func init() {
 		get: func(c *Console) screenModel { return &c.about }, open: func(c *Console) Cmd { c.about.off = 0; return nil }})
 	register(screenDef{id: scrOnboard, label: "Onboarding", side: true, blurb: "A short tour that sets L80 up on this machine.",
 		get: func(c *Console) screenModel { return &c.onb }, open: func(c *Console) Cmd { return c.onb.start(c) }})
-	register(screenDef{id: scrQuality, label: "QualityBench", side: true, blurb: "Measure quality and quality loss on a local server, or plan a rented run.",
+	register(screenDef{id: scrQuality, label: "Bench Quality", side: true, blurb: "Measure quality and quality loss on a local server, or plan a rented run.",
 		get: func(c *Console) screenModel { return &c.qb }, open: func(c *Console) Cmd { return c.qb.load(c) }})
 	// Deferred: registered so they can be shown, kept out of the sidebar until they ship.
 	register(screenDef{id: scrRecs, label: "Recommendations", blurb: "Coming soon: what to run a model on, from the community's results.",

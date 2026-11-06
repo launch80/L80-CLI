@@ -573,7 +573,7 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 			c.setFlash(v.err.Error(), true)
 		} else if s.result != nil && c.scr != scrQuality {
 			// On this screen the key hints say it; elsewhere, say where to go.
-			c.setFlash("QualityBench done: publish it from History or the QualityBench screen with p", false)
+			c.setFlash("QualityBench done: publish it from Bench - History or Bench Quality with p", false)
 		}
 		return nil
 	case qbPublished:

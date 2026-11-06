@@ -132,7 +132,7 @@ qb:progress {"task":"gsm8k","state":"scored","correct":1147,"total":1319}
 qb:progress {"task":"lcb","state":"partial","done":88,"total":175}
 ```
 
-The console's QualityBench screen parses these for its per-task progress
+The console's Bench Quality screen parses these for its per-task progress
 view. Any other output is shown as log text.
 
 From QualityBench 0.2.0 (all additive; L80 works with 0.1.x without them):

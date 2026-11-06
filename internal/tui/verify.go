@@ -403,7 +403,7 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 		return []string{t.R(t.Muted, widgets.Spin(c.tick)+" loading…")}, nil
 	case s.unsupported:
 		return []string{t.R(t.Warn, "Verification is not enabled on this launch80 server yet."), "",
-			t.R(t.Muted, "You can still check your own runs: History, then v, or `L80 verify check <results.json>`.")}, []widgets.Binding{{Keys: "r", Desc: "retry"}, {Keys: "esc", Desc: "back"}}
+			t.R(t.Muted, "You can still check your own runs: Bench - History, then v, or `L80 verify check <results.json>`.")}, []widgets.Binding{{Keys: "r", Desc: "retry"}, {Keys: "esc", Desc: "back"}}
 	}
 	role := t.R(t.Muted, "your key can reproduce and compare; stamping needs a verifier key")
 	if s.me != nil && s.me.IsVerifier {
@@ -426,7 +426,7 @@ func (s *verifyScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) 
 			if s.tab == 0 {
 				out = append(out, t.R(t.Muted, "Nothing is waiting for review."))
 			} else {
-				out = append(out, t.R(t.Muted, "You have not requested verification. Open History, select a BetterBench run or pwdet scan and press v."))
+				out = append(out, t.R(t.Muted, "You have not requested verification. Open Bench - History, select a BetterBench run or pwdet scan and press v."))
 			}
 		} else {
 			out = append(out, s.table.View(t, w, min(len(s.rows())+2, h-4), true)...)

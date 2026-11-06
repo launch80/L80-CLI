@@ -154,7 +154,7 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 		st = append(st, kv(t, "launch80", c.d.Config.BaseURL), kv(t, "server", server))
 		st = append(st, kv(t, "token", tok), "")
 		if js := newestFirst(c); len(js) > 0 {
-			st = append(st, t.R(t.Title, "This session")+t.R(t.Muted, "  (finished QualityBench runs: History)"))
+			st = append(st, t.R(t.Title, "This session")+t.R(t.Muted, "  (finished QualityBench runs: Bench - History)"))
 			for _, j := range js[:min(3, len(js))] {
 				st = append(st, "  "+jobLine(c, j))
 			}
@@ -166,7 +166,7 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 		}
 		st = append(st, "", t.R(t.Title, "Last publishes"))
 		if len(h.recent) == 0 {
-			st = append(st, t.R(t.Muted, "  nothing yet: open Benchmark to publish your first run"))
+			st = append(st, t.R(t.Muted, "  nothing yet: open Bench Speed to publish your first run"))
 		}
 		for _, e := range h.recent {
 			tier := e.TrustTier

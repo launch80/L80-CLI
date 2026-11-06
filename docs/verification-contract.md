@@ -17,7 +17,7 @@ The workflow has three roles, all ordinary publish keys:
 
 1. **Publisher**: the key that published the page asks for verification.
 2. **Any other key**: sees the request in its queue (`L80 verify queue`, the
-   console's Verify screen), can open it and reproduce the run on its own
+   console's Bench Verify screen), can open it and reproduce the run on its own
    hardware. This is open to every valid key so the community can check runs.
 3. **Verifier**: a key with `publisher_keys.is_verifier = true` stamps the
    page verified or rejects it. Reproducing first is optional; when the

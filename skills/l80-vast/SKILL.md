@@ -78,7 +78,7 @@ makes, not one you make.
 
 ## In the console
 
-`L80 tui` → Rent (vast) → New rental is the same thing as a wizard:
+`L80 tui` → Rent GPUs → New rental is the same thing as a wizard:
 - Model, Hardware (`s` searches offers), Operations (presets such as "Speed + quality"
   and "Compare to a run"), and Review, with per-step time estimates and the cost cap.
 - One consent dialog, then a live step list.

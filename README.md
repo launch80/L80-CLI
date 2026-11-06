@@ -82,9 +82,9 @@ A full-screen console over everything below. Home is a launcher: "What do
 you want to do?" lists benchmark speed, measure quality, compare runs, rent a
 GPU, scan weights, publish, verify and settings, with the server, token and
 tool status and this session's runs below it. A sidebar lists Home, then A to Z:
-About, Benchmark, Dashboard, Doctor, History, Onboarding, Poison
-Detector, QualityBench, Rent (vast), Settings, Skills, Templates, Tools and
-Verify. Moving through it previews each screen live, enter opens it and esc
+About, Bench - History, Bench Quality, Bench Risk, Bench Speed, Bench Verify,
+Dashboard, Doctor, Onboarding, Rent GPUs, Settings, Skills, Templates and
+Tools. Moving through it previews each screen live, enter opens it and esc
 comes back; `1`-`9` jump to the first nine, and the sidebar scrolls on a short
 terminal. Each screen drives the same code as the matching command, so
 anything you do here you can script later.
@@ -94,7 +94,7 @@ anything you do here you can script later.
 - **Skills** installs or links L80's skills for each agent found. **Templates**
   lists the page templates. **Doctor** runs `L80 doctor`, each check with its
   remedy.
-- **History** lists every page this key published, with its trust tier (`v`
+- **Bench - History** lists every page this key published, with its trust tier (`v`
   requests verification). Above them are the QualityBench reports on this
   machine that are not published yet (the current directory, rental step
   folders), read from disk so they are there after a restart: `p` publishes
@@ -106,7 +106,7 @@ Runs stream into a scrollable log; renting, destroying and publishing ask
 first, with the cost caps or the privacy note in front of you. `vast ssh` and
 the dashboard take over the terminal and hand it back when they exit.
 
-The QualityBench screen has two modes. **Run** is a form with nothing to type
+The Bench Quality screen has two modes. **Run** is a form with nothing to type
 in the normal path. Pick **Full**, **Quick** or **Custom**: Custom ticks tasks
 from the suite, each with its item count and measured run time, and the total
 updates as you tick. Pick **Local GPUs** and choose from the servers found on
@@ -213,7 +213,7 @@ own. The code tasks run model-written code in Docker on this machine.
 
 As for BetterBench, `env.endpoint` and `env.host` never leave the machine, and
 L80 refuses to publish a file that still carries a home directory path or a
-LAN URL. In the console, the QualityBench screen does all of this (see above).
+LAN URL. In the console, the Bench Quality screen does all of this (see above).
 [docs/qualitybench.md](docs/qualitybench.md) is the contract between L80 and
 the tool.
 
@@ -278,7 +278,7 @@ before the cap, so its results are written. L80 never answers a confirmation
 prompt for you. The Vast key comes from `VAST_API_KEY` or
 `~/.config/bbvastl80/credentials`.
 
-In the console, Rent (vast) has three tabs: Runs, Spec file and New rental.
+In the console, Rent GPUs has three tabs: Runs, Spec file and New rental.
 New rental is a wizard: Model, Hardware, Operations, Review. Operations offers
 presets (Speed + quality, Quality baseline, Speed only, Compare to a run,
 Custom). Review shows a time plan for each step and the cost cap, which is max
@@ -315,7 +315,7 @@ see. Read "clean · basic" as "nothing found in what ran":
 The report also gives each threat (code on load, prompt injection, weight
 implants, trained-in behaviour, supply chain) as tested or not, what would
 close each gap, and how scans at that level fared on pwdet's evaluation
-corpus. In the console, the Poison Detector shows all of it, and `m` opens a
+corpus. In the console, Bench Risk shows all of it, and `m` opens a
 Method tab: how pwdet works, what this scan tested, and its limits.
 
 `scan` exits 0 for clean or inconclusive, 1 for suspicious (or a pwdet
@@ -341,7 +341,7 @@ GPUs get a generic view.
 
 ## Verified by Launch80
 
-![The console's Verify screen: open another key's request, reproduce it on your hardware, compare, and stamp it](docs/media/tui-verify.gif)
+![The console's Bench Verify screen: open another key's request, reproduce it on your hardware, compare, and stamp it](docs/media/tui-verify.gif)
 
 A published BetterBench page is self-reported. A Launch80 verifier can stamp
 it **verified**: a complete, cold-cache run, described well enough to reproduce.
@@ -369,7 +369,7 @@ TTFT ±25%). Only keys Launch80 marks as verifiers can stamp. A verifier may
 stamp a full run on review alone; when they reproduced the run, the comparison
 goes with the stamp, and a reproduction that disagrees needs
 `--accept-differences`. The
-console's Verify screen does the same with `p` (reproduce), `a` (verify) and
+console's Bench Verify screen does the same with `p` (reproduce), `a` (verify) and
 `x` (reject).
 
 **Quick runs can be verified too** (new in 1.1). A run with 5 to 19 passes
@@ -400,7 +400,7 @@ local folder, cannot be verified: `L80 verify check report.json` says why.
 
 ## History
 
-![The console's History screen: every page this key published, with its trust tier](docs/media/tui-history.gif)
+![The console's Bench - History screen: every page this key published, with its trust tier](docs/media/tui-history.gif)
 
 ```sh
 L80 history                 # newest first: time, template, URL, title

@@ -373,7 +373,7 @@ L80 qualitybench compare bf16.json int4.json   # locally, no token</pre><button 
           <li><code>--reference</code> and <code>compare</code> need each results file's <code>.qb/</code> folder beside it.</li>
           <li>On vLLM, logprobs needs <code>--max-logprobs 64</code>, and BFCL scores the server's tool-call parser.</li>
         </ul>
-        <p>The console's QualityBench screen does the same with nothing to type: Run or Compare, a scope, a server and model from lists, a "Compare to" reference and a tokenizer. "Rent via Vast" hands the model to Rent with a QualityBench step.</p>
+        <p>The console's Bench Quality screen does the same with nothing to type: Run or Compare, a scope, a server and model from lists, a "Compare to" reference and a tokenizer. "Rent via Vast" hands the model to Rent with a QualityBench step.</p>
       </article>
 
       <article id="publish">
@@ -421,7 +421,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td>Provenance</td><td>This machine published the page, from a file that has not changed since.</td></tr>
           </tbody>
         </table></div>
-        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. A reproduction compares the headline figures with tolerances: decode ±10%, ITL 1% low ±15%, TTFT ±25%. One that disagrees needs <code>--accept-differences</code> and a note to stamp. <strong>Quick runs</strong> are stamped only against a reproduction within wider tolerances (decode ±15%, ITL ±25%, TTFT ±40%), on medians, with no override; their badge reads "Verified by Launch80 · quick run (N passes)". <strong>pwdet scans</strong> qualify at Standard or above, of a Hugging Face repo pinned to a commit, from pwdet 0.2 or later. A scan is stamped only against a re-run within tolerance: the same file hashes, deterministic findings matching the digest, and the same significant probe findings; <code>--accept-differences</code> does not apply. The console's Verify screen does all of this with <kbd>p</kbd>, <kbd>a</kbd> and <kbd>x</kbd>, and its lists show each request's type, betterbench or pwdet.</p>
+        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. A reproduction compares the headline figures with tolerances: decode ±10%, ITL 1% low ±15%, TTFT ±25%. One that disagrees needs <code>--accept-differences</code> and a note to stamp. <strong>Quick runs</strong> are stamped only against a reproduction within wider tolerances (decode ±15%, ITL ±25%, TTFT ±40%), on medians, with no override; their badge reads "Verified by Launch80 · quick run (N passes)". <strong>pwdet scans</strong> qualify at Standard or above, of a Hugging Face repo pinned to a commit, from pwdet 0.2 or later. A scan is stamped only against a re-run within tolerance: the same file hashes, deterministic findings matching the digest, and the same significant probe findings; <code>--accept-differences</code> does not apply. The console's Bench Verify screen does all of this with <kbd>p</kbd>, <kbd>a</kbd> and <kbd>x</kbd>, and its lists show each request's type, betterbench or pwdet.</p>
         <div class="note">Verification is rolling out on launch80. Until the server accepts requests, <code>verify request</code> says it is not supported (exit 8), and <code>verify check</code> still works.</div>
       </article>
 
@@ -482,19 +482,19 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
           <tbody>
             <tr><td>Home</td><td>A launcher, "What do you want to do?", with server, token and tool status and this session's runs.</td></tr>
             <tr><td>About</td><td>Our story, the <a href="https://discord.gg/launch80">Discord</a>, the <a href="https://www.launch80.com/supporter">Supporter</a> page and the full command directory.</td></tr>
-            <tr><td>Benchmark</td><td>Fill in a form, watch the run stream, then publish or dry-run.</td></tr>
+            <tr><td>Bench - History</td><td>Every page you published, with its trust tier; press <kbd>v</kbd> to request verification. QualityBench reports on this machine that are not published yet are listed first, read from disk: <kbd>p</kbd> publishes one, <kbd>o</kbd> opens its report.</td></tr>
+            <tr><td>Bench Quality</td><td>Run or Compare. Pick a scope, a local server and model, a reference and a tokenizer; watch per-task progress, then publish with <kbd>p</kbd> or open the report with <kbd>o</kbd>.</td></tr>
+            <tr><td>Bench Risk</td><td>Pick an assurance level, scan a model and read the whole report inline: verdict and level, a threat matrix, accuracy, every check with its evidence. <kbd>m</kbd> opens the Method tab; publish with <kbd>p</kbd>.</td></tr>
+            <tr><td>Bench Speed</td><td>Fill in a form, watch the run stream, then publish or dry-run.</td></tr>
+            <tr><td>Bench Verify</td><td>Other keys' requests to review, with type (betterbench or pwdet) and key label: reproduce or re-scan them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
             <tr><td>Dashboard</td><td>Attach to the telemetry view or start the sampler.</td></tr>
             <tr><td>Doctor</td><td>The <code>L80 doctor</code> checks, each with its remedy.</td></tr>
-            <tr><td>History</td><td>Every page you published, with its trust tier; press <kbd>v</kbd> to request verification. QualityBench reports on this machine that are not published yet are listed first, read from disk: <kbd>p</kbd> publishes one, <kbd>o</kbd> opens its report.</td></tr>
             <tr><td>Onboarding</td><td>Check the tools, save a publish token, pick where to start, and install skills for the AI agents found.</td></tr>
-            <tr><td>Poison Detector</td><td>Pick an assurance level, scan a model and read the whole report inline: verdict and level, a threat matrix, accuracy, every check with its evidence. <kbd>m</kbd> opens the Method tab; publish with <kbd>p</kbd>.</td></tr>
-            <tr><td>QualityBench</td><td>Run or Compare. Pick a scope, a local server and model, a reference and a tokenizer; watch per-task progress, then publish with <kbd>p</kbd> or open the report with <kbd>o</kbd>.</td></tr>
-            <tr><td>Rent (vast)</td><td>Tabs Runs, Spec file and New rental. The New rental wizard (Model, Hardware, Operations, Review) has presets, a time plan per step and the cost cap, then one consent dialog and a live step list; <kbd>o</kbd> opens a step's report.</td></tr>
+            <tr><td>Rent GPUs</td><td>Tabs Runs, Spec file and New rental. The New rental wizard (Model, Hardware, Operations, Review) has presets, a time plan per step and the cost cap, then one consent dialog and a live step list; <kbd>o</kbd> opens a step's report.</td></tr>
             <tr><td>Settings</td><td>Log in with a masked input or log out, and check for an update with its release notes, then run it.</td></tr>
             <tr><td>Skills</td><td>Install or link L80's skills for each agent found.</td></tr>
             <tr><td>Templates</td><td>The page templates the server offers.</td></tr>
             <tr><td>Tools</td><td>How each tool resolves, and prefetch it.</td></tr>
-            <tr><td>Verify</td><td>Other keys' requests to review, with type (betterbench or pwdet) and key label: reproduce or re-scan them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
           </tbody>
         </table></div>
         <p>Renting, destroying and publishing always ask first. <code>vast ssh</code> and the dashboard take over the terminal and hand it back when they exit. Linux and macOS.</p>

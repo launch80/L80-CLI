@@ -77,12 +77,12 @@ func (r *rentWizard) init() {
 		{Key: "qboff", Label: "QualityBench", Kind: widgets.ToggleField, On: true, Help: "Quality with thinking off (or the server's default when the model has no thinking mode): GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle. Code tasks run in Docker on this machine."},
 		{Key: "qbon", Label: "  + thinking on", Kind: widgets.ToggleField, Help: "A second QualityBench run with thinking forced on. Needs the reasoning parser on the Model page. Much slower: replies are long."},
 		{Key: "qbscope", Label: "  scope", Kind: widgets.ChoiceField, Choices: []string{"Full", "Quick"}, Help: "Quick runs a fixed tenth of each task: a smoke test, and the page says so. Quick runs compare only with quick runs."},
-		text("qbtasks", "  tasks", "Comma-separated task ids (see the QualityBench screen), or empty for the whole default suite.", "the default suite", ""),
+		text("qbtasks", "  tasks", "Comma-separated task ids (see Bench Quality), or empty for the whole default suite.", "the default suite", ""),
 		{Key: "ref", Label: "  reference", Kind: widgets.ChoiceField, Choices: []string{"none"},
 			Help: "A finished QualityBench run (same tier and tokenizer) to compare against: the page then shows this run as an arm of the reference, with paired deltas, KLD and threshold verdicts."},
 		text("thresholds", "  thresholds", "A pre-registered thresholds file for the compare; empty uses QualityBench's default bars.", "default bars", ""),
 		text("deadline", "  time budget", "Per QualityBench run, e.g. 3h: no new work starts after it and cut tasks are listed as partial. Empty: only the run's max hours.", "none", ""),
-		{Key: "publish", Label: "Publish pages", Kind: widgets.ToggleField, On: true, Help: "Publish each finished step as a public launch80 page (endpoint and host removed). Off keeps everything local; you can publish later from History or the QualityBench screen."},
+		{Key: "publish", Label: "Publish pages", Kind: widgets.ToggleField, On: true, Help: "Publish each finished step as a public launch80 page (endpoint and host removed). Off keeps everything local; you can publish later from Bench - History or Bench Quality."},
 	}}
 	r.forms[pgReview] = widgets.Form{Submit: "Rent and run", Fields: []*widgets.Field{
 		text("hours", "Max hours", "The hard cap. When it is reached L80 stops the run and destroys the box; QualityBench stops starting work 15 minutes before, so its results are written.", "", ""),
