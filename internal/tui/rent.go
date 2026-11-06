@@ -190,11 +190,9 @@ func (r *rentWizard) steps() ([]vast.Step, error) {
 			Deadline: r.val(pgOps, "deadline"), Publish: pub}
 	}
 	if r.val(pgOps, "qboff") == "true" {
-		th := "off"
-		if r.val(pgModel, "reasoning") == "" {
-			th = "" // no reasoning parser: the server's default, which QualityBench records
-		}
-		out = append(out, qb(th, "quality"))
+		// Off is the baseline. enable_thinking=false is a chat-template switch, so
+		// it needs no reasoning parser; a model without thinking ignores it.
+		out = append(out, qb("off", "quality"))
 	}
 	if r.val(pgOps, "qbon") == "true" {
 		st := qb("on", "quality-thinking")

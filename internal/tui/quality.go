@@ -146,7 +146,8 @@ func (s *qualityScreen) ensure() {
 	s.target = widgets.Field{Key: "target", Label: "Target", Kind: widgets.ChoiceField, Choices: []string{"Local GPUs", "Rent via Vast"},
 		Help: "Local runs against a server already running on this machine. Vast rents a GPU, serves the model there and tears the box down."}
 	s.thinking = widgets.Field{Key: "thinking", Label: "Thinking", Kind: widgets.ChoiceField, Choices: []string{"default", "off", "on"},
-		Help: "Force reasoning on or off for every request, or leave the server's default. QualityBench checks the server obeys before it starts."}
+		Help: "Force reasoning on or off for every request, or leave the server's default. Off is the usual baseline, and fine for models without thinking. QualityBench checks the server obeys before it starts; a model that thinks by default needs off or on."}
+	s.thinking.Choice = 1 // off
 	s.engine = widgets.Field{Key: "engine", Label: "Engine", Kind: widgets.ChoiceField, Choices: []string{"vLLM", "llama.cpp"},
 		Help: "The serving engine the rented box runs."}
 	s.epURL = widgets.Field{Key: "url", Label: "URL", Help: "OpenAI-compatible base URL, e.g. http://127.0.0.1:8000/v1. It never leaves this machine.",

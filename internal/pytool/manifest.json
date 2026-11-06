@@ -38,13 +38,13 @@
     },
     "qualitybench": {
       "repo": "https://github.com/launch80/QualityBench",
-      "ref": "v0.1.0",
-      "commit": "1f603a693a120d6a8bb5e86dae3510e01540f96d",
+      "ref": "v0.1.1",
+      "commit": "e1664cf19bd34c73f3fb930af99773750715d64e",
       "package": "qualitybench",
       "exe": "qualitybench",
       "env": "L80_QUALITYBENCH",
       "python": "3.12",
-      "min_version": "0.1.0",
+      "min_version": "0.1.1",
       "version_cmd": ["--version"],
       "notes": "Quality baseline and quality-loss suite (GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle)."
     },
