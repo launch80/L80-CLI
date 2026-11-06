@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"github.com/launch80/L80-CLI/internal/qualitybench"
+	"github.com/launch80/L80-CLI/internal/vast"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -121,7 +123,7 @@ func TestNavigationAndDialog(t *testing.T) {
 	spec := filepath.Join(t.TempDir(), "run.yaml")
 	os.WriteFile(spec, []byte("name: t\ngpu:\n  names: [H100]\n  count: 2\n  max_dph: 6.5\nbudget:\n  max_total_usd: 20\n"), 0o644)
 	feed(c, input.Key{Code: input.Rune, Rune: '9'})
-	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
+	feed(c, input.Key{Code: input.Rune, Rune: 'f'})
 	c.vast.form.Fields[0].Input.Set(spec)
 	c.vast.form.Fields[3].On = false // not a dry run
 	c.vast.form.Focus = len(c.vast.form.Fields)
@@ -515,43 +517,93 @@ func TestOnboardingSkip(t *testing.T) {
 	}
 }
 
-func TestVastSpecBuilder(t *testing.T) {
+func TestRentWizard(t *testing.T) {
 	c := newTestConsole(t)
-	feed(c, SizeMsg{110, 34})
+	c.qb.findResults = func(*Console) []qualitybench.ResultFile { return nil }
+	feed(c, SizeMsg{110, 40})
 	feed(c, input.Key{Code: input.Rune, Rune: '9'})
 	if c.scr != scrVast {
 		t.Fatalf("screen %v", c.scr)
 	}
-	// Starting with no spec opens the builder instead of failing.
-	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
+	// Starting the spec-file form with no spec opens the wizard instead of failing.
+	feed(c, input.Key{Code: input.Rune, Rune: 'f'})
 	c.vast.form.Focus = len(c.vast.form.Fields)
 	feed(c, input.Key{Code: input.Enter})
-	if c.vast.tab != 2 {
-		t.Fatalf("tab %d, want the builder", c.vast.tab)
+	if c.vast.tab != 2 || c.vast.wiz.page != pgModel {
+		t.Fatalf("tab %d page %d, want the wizard", c.vast.tab, c.vast.wiz.page)
 	}
-	checkFrame(t, c.View(110, 34), 110, 34)
-	// A bad repo is refused, naming the problem.
-	c.vast.build.Focus = len(c.vast.build.Fields)
-	feed(c, input.Key{Code: input.Enter})
-	if c.vast.tab != 2 || !strings.Contains(c.flash, "Hugging Face repo") {
-		t.Fatalf("empty model accepted: tab %d flash %q", c.vast.tab, c.flash)
+	checkFrame(t, c.View(110, 40), 110, 40)
+	w := &c.vast.wiz
+	next := func() {
+		w.forms[w.page].Focus = len(w.forms[w.page].Fields)
+		feed(c, input.Key{Code: input.Enter})
 	}
-	c.vast.build.Fields[0].Input.Set("Qwen/Qwen3-8B")
-	c.vast.build.Fields[3].Input.Set("RTX_4090")
-	feed(c, input.Key{Code: input.Enter})
-	want := filepath.Join(filepath.Dir(c.d.RunsDir), "specs", "qwen3-8b.yaml")
-	if c.vast.tab != 1 || c.vast.form.Get("spec") != want {
-		t.Fatalf("tab %d spec %q flash %q", c.vast.tab, c.vast.form.Get("spec"), c.flash)
+	// A bad repo is refused on the Model page, naming the problem.
+	next()
+	if w.page != pgModel || !strings.Contains(c.flash, "Hugging Face repo") {
+		t.Fatalf("empty model accepted: page %d flash %q", w.page, c.flash)
 	}
-	data, err := os.ReadFile(want)
-	if err != nil || !strings.Contains(string(data), `names: ["RTX 4090"]`) {
-		t.Fatalf("spec: %v\n%s", err, data)
+	w.field(pgModel, "model").Input.Set("Qwen/Qwen3-8B")
+	w.field(pgModel, "toolparser").Input.Set("hermes")
+	next()
+	w.field(pgHardware, "gpu").Input.Set("RTX_4090")
+	next()
+	if w.page != pgOps {
+		t.Fatalf("page %d", w.page)
 	}
-	// Writing it again asks before replacing.
-	c.vast.tab = 2
-	feed(c, input.Key{Code: input.Enter})
-	if c.dialog == nil || !strings.Contains(c.dialog.Body, "already exists") {
-		t.Fatal("overwrite must ask")
+	// The Quality baseline preset unticks BetterBench.
+	w.forms[pgOps].Focus = 0
+	feed(c, input.Key{Code: input.Right})
+	if w.val(pgOps, "bb") != "false" || w.val(pgOps, "qboff") != "true" {
+		t.Fatalf("preset: bb=%s qboff=%s", w.val(pgOps, "bb"), w.val(pgOps, "qboff"))
+	}
+	w.field(pgOps, "qbscope").Choice = 1
+	next()
+	view := strings.Join(c.View(110, 40), "\n")
+	for _, want := range []string{"Plan", "QualityBench baseline", "quick", "at most $", "Rent and run"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("review missing %q:\n%s", want, view)
+		}
+	}
+	// Dry run (the default) writes the spec and starts without asking.
+	w.field(pgReview, "dry").On = false
+	next()
+	if c.dialog == nil || !strings.Contains(c.dialog.Body, "destroyed when the run ends") || !strings.Contains(c.dialog.Body, "at most $") {
+		t.Fatalf("renting must ask with the price: %+v", c.dialog)
+	}
+	if c.dialog.Choice != 1 {
+		t.Error("the safe choice must be focused")
+	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.vast.job != nil {
+		t.Fatal("cancel must not start anything")
+	}
+	sp, err := w.spec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if y := sp.YAML(); !strings.Contains(y, "type: qualitybench") || !strings.Contains(y, `names: ["RTX 4090"]`) || strings.Contains(y, "type: betterbench") {
+		t.Fatalf("spec:\n%s", y)
+	}
+}
+
+func TestRentProgressParsesSteps(t *testing.T) {
+	steps := []vast.Step{{Type: vast.StepBetterBench, Publish: true}, {Type: vast.StepQualityBench, Quick: true, Tasks: []string{"gsm8k"}}}
+	p := newRentProgress(steps)
+	for _, l := range []string{
+		`bbvastl80:step {"index": 1, "type": "betterbench", "state": "done", "label": "01-betterbench", "results": "/r/01/results.json", "url": "https://launch80.com/a/x"}`,
+		`bbvastl80:step {"index": 2, "type": "qualitybench", "state": "running", "label": "02-quality"}`,
+		`qb:progress {"task":"gsm8k","done":5,"total":132}`,
+	} {
+		p.parse(l)
+	}
+	th := widgets.DefaultTheme(style.NoColor, true)
+	v := strings.Join(p.view(th, 100, 0), "\n")
+	if !strings.Contains(v, "✓ 1. BetterBench") || !strings.Contains(v, "launch80.com/a/x") || !strings.Contains(v, "gsm8k") {
+		t.Fatalf("view:\n%s", v)
+	}
+	if o := p.outputs(); len(o) != 1 || o[0].Results != "/r/01/results.json" {
+		t.Fatalf("outputs %+v", o)
 	}
 }
 

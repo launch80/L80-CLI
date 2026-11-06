@@ -112,3 +112,21 @@ func TestScanExtraAndFind(t *testing.T) {
 		t.Error("unknown model matched")
 	}
 }
+
+func TestTokenizerGuess(t *testing.T) {
+	cases := []struct {
+		m    Model
+		want string
+	}{
+		{Model{ID: "my-alias", Root: "Qwen/Qwen3-8B"}, "Qwen/Qwen3-8B"},
+		{Model{ID: "x", Root: "/models/qwen"}, "/models/qwen"},
+		{Model{ID: "Qwen/Qwen3-8B"}, "Qwen/Qwen3-8B"},
+		{Model{ID: "Qwen/Qwen3-0.6B-GGUF@b580"}, ""},
+		{Model{ID: "qwen.gguf"}, ""},
+	}
+	for _, c := range cases {
+		if got := c.m.Tokenizer(); got != c.want {
+			t.Errorf("%+v: got %q want %q", c.m, got, c.want)
+		}
+	}
+}

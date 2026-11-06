@@ -32,6 +32,8 @@ func runQualitybench(e env, args []string) int {
 			return qualityTasks(e, args[1:])
 		case "compare":
 			return qualityCompare(e, args[1:])
+		case "setup":
+			return qualitySetup(e, args[1:])
 		}
 	}
 
@@ -50,6 +52,8 @@ func runQualitybench(e env, args []string) int {
 	deadline := fs.String("deadline", "", "stop starting work at this time (RFC 3339) or after this long (e.g. 6h); cut tasks are marked partial")
 	var notes multiFlag
 	fs.Var(&notes, "note", "KEY=VALUE recorded in the run; repeatable")
+	tokenizer := fs.String("tokenizer", "", "Hugging Face repo (or local dir) for logprobs and needle when the served id is not one")
+	sandbox := fs.String("sandbox", "", "docker (default) | native: native runs model-written code on this machine; only for a disposable box")
 	apiKey := fs.String("api-key", "", "bearer key for the endpoint (or L80_QUALITYBENCH_API_KEY); passed by environment, never recorded")
 	out := fs.String("out", "", "results file (default ./qualitybench-<model>-<time>.json); the HTML report goes beside it")
 	var scan multiFlag
@@ -71,6 +75,9 @@ func runQualitybench(e env, args []string) int {
 	if len(positional) != 0 {
 		return fail(e, api.Newf("E_USAGE", "Run `L80 qualitybench --help`.", "unexpected argument %q", positional[0]))
 	}
+	if *sandbox != "" && *sandbox != "docker" && *sandbox != "native" {
+		return fail(e, api.Newf("E_USAGE", "Pass --sandbox docker or --sandbox native.", "--sandbox %q", *sandbox))
+	}
 	if *thinking != "" && *thinking != "on" && *thinking != "off" {
 		return fail(e, api.Newf("E_USAGE", "Pass --thinking on or --thinking off.", "--thinking %q", *thinking))
 	}
@@ -81,6 +88,7 @@ func runQualitybench(e env, args []string) int {
 	}
 
 	var data []byte
+	partial := false
 	resultsPath := *results
 	switch {
 	case *results != "" && (*endpoint != "" || *model != ""):
@@ -117,6 +125,14 @@ func runQualitybench(e env, args []string) int {
 			}
 			ep = found.URL
 			output.Detailf(e.stderr, "using %s (%s) for %s", found.URL, engineLabel(found), *model)
+			if *tokenizer == "" {
+				for _, m := range found.Models {
+					if m.ID == *model && m.Tokenizer() != "" && m.Tokenizer() != *model {
+						*tokenizer = m.Tokenizer()
+						output.Detailf(e.stderr, "tokenizer %s (the server's root for %s)", *tokenizer, *model)
+					}
+				}
+			}
 			if !servesLoaded(found, *model) {
 				output.Detailf(e.stderr, "warning: %s is not loaded yet; the first request pays the load time (QualityBench's warmup request is not scored)", *model)
 			}
@@ -146,6 +162,7 @@ func runQualitybench(e env, args []string) int {
 		opts := qualitybench.RunOptions{
 			Endpoint: ep, Model: *model, Out: resultsPath, Scope: scope, Thinking: *thinking,
 			Reference: *reference, Thresholds: *thresholds, Deadline: *deadline, Notes: notes, Extra: extra, APIKey: key,
+			Tokenizer: *tokenizer, Sandbox: *sandbox,
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		res, apiErr := app.RunQuality(ctx, opts, app.WriterSink{W: e.stderr})
@@ -154,6 +171,7 @@ func runQualitybench(e env, args []string) int {
 			return fail(e, apiErr)
 		}
 		data = res.Data
+		partial = len(res.Partial) > 0
 		output.Successf(e.stderr, "results written to %s", resultsPath)
 		if _, err := os.Stat(res.Report); err == nil {
 			output.Successf(e.stderr, "report written to %s", res.Report)
@@ -161,9 +179,12 @@ func runQualitybench(e env, args []string) int {
 		for _, l := range qualitybench.Headline(data) {
 			output.Detailf(e.stderr, "%s", l)
 		}
+		if partial {
+			output.Detailf(e.stderr, "warning: partial run (%s); the page lists what is missing", strings.Join(res.Partial, "; "))
+		}
 		if *noPublish {
 			output.Detailf(e.stderr, "not published; publish later with `L80 qualitybench --results %s`", resultsPath)
-			return api.ExitOK
+			return partialCode(partial)
 		}
 	}
 
@@ -193,7 +214,44 @@ func runQualitybench(e env, args []string) int {
 		output.Successf(e.stdout, "dry run: would publish %s as %s (%d bytes)", resultsPath, qualitybench.TemplateID, len(body))
 		return api.ExitOK
 	}
-	return publishBody(e, body, qualitybench.TemplateID, resultsPath, *apiBase, *asJSON)
+	if code := publishBody(e, body, qualitybench.TemplateID, resultsPath, *apiBase, *asJSON); code != api.ExitOK {
+		return code
+	}
+	return partialCode(partial)
+}
+
+// partialCode passes the tool's "a task failed" status through once the
+// results are kept (and published), so scripts can tell a partial run.
+func partialCode(partial bool) int {
+	if partial {
+		return qualitybench.ExitTaskFailed
+	}
+	return api.ExitOK
+}
+
+func qualitySetup(e env, args []string) int {
+	fs := flag.NewFlagSet("qualitybench setup", flag.ContinueOnError)
+	fs.SetOutput(e.stderr)
+	tasks := fs.String("tasks", "", "only what these tasks need")
+	sandbox := fs.String("sandbox", "", "docker (default) | native")
+	if _, err := parseArgs(fs, args); err != nil {
+		return api.ExitUsage
+	}
+	var ts []string
+	if *tasks != "" {
+		scope, err := qualitybench.ResolveScope(false, *tasks)
+		if err != nil {
+			return fail(e, api.Newf("E_USAGE", "Pick tasks from `L80 qualitybench tasks`.", "--tasks: %v", err))
+		}
+		ts = scope.Tasks
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	code, apiErr := app.SetupQuality(ctx, ts, *sandbox, app.WriterSink{W: e.stderr})
+	if apiErr != nil {
+		return fail(e, apiErr)
+	}
+	return code
 }
 
 // endpointFor scans this machine for the server that serves model. One
@@ -371,6 +429,7 @@ func qualitybenchUsage(e env) {
   L80 qualitybench endpoints [--json] [--scan host:port]
   L80 qualitybench tasks [--json]
   L80 qualitybench compare <reference.json> <test.json> [--thresholds T.md]
+  L80 qualitybench setup [--tasks a,b] [--sandbox docker|native]
 
 Runs QualityBench (https://github.com/launch80/QualityBench) against an
 OpenAI-compatible endpoint, writes results.json and an HTML report, and publishes
@@ -387,10 +446,14 @@ Run flags:
   --thresholds T.md       pre-registered thresholds, hashed into the results
   --deadline T            RFC 3339 time or a duration (6h); tasks cut by it are marked partial
   --note KEY=VALUE        recorded in the run (repeatable)
+  --tokenizer org/repo    tokenizer for logprobs and needle, if the served id is not a HF repo
+  --sandbox docker|native native runs model code on this machine: only on a disposable box
   --out <path>            results file (default ./qualitybench-<model>-<time>.json)
   --api-key <key>         endpoint key (or L80_QUALITYBENCH_API_KEY); sent by environment
   --no-publish            keep the results local
   Rerunning the same command resumes: finished tasks and shards are skipped.
+  If a task fails, the rest are kept (and published); the page lists what is
+  missing, and the exit status is 1.
 
 Publish flags:
   --dry-run, --payload-out <path>, --json, --api-base   as for L80 publish

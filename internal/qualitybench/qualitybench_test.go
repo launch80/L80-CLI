@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -172,5 +173,63 @@ func TestHeadline(t *testing.T) {
 	h := Headline(fixture(t))
 	if len(h) == 0 || !strings.HasPrefix(h[0], "GSM8K: 87.0% (1147/1319), thinking on") {
 		t.Errorf("headline = %v", h)
+	}
+}
+
+func TestArgsTokenizerAndSandbox(t *testing.T) {
+	o := RunOptions{Endpoint: "http://h/v1", Model: "m", Out: "/o.json", Tokenizer: "org/tok", Sandbox: "native"}
+	got := strings.Join(o.Args(), " ")
+	if !strings.Contains(got, "--tokenizer org/tok") || !strings.Contains(got, "--sandbox native") {
+		t.Fatalf("args = %s", got)
+	}
+}
+
+func TestPartialsAndSidecar(t *testing.T) {
+	if got := Partials([]byte(`{"partials":["needle: 128k longer than the server's context","lcb: deadline"]}`)); len(got) != 2 {
+		t.Fatalf("partials = %v", got)
+	}
+	if got := Partials([]byte(`{}`)); len(got) != 0 {
+		t.Fatalf("partials = %v", got)
+	}
+	d := t.TempDir()
+	f := filepath.Join(d, "ref.json")
+	os.WriteFile(f, []byte("{}"), 0o644)
+	if err := CheckSidecar(f); err == nil {
+		t.Fatal("a results file without its .qb folder must be refused")
+	}
+	os.Mkdir(filepath.Join(d, "ref.qb"), 0o755)
+	if err := CheckSidecar(f); err != nil {
+		t.Fatal(err)
+	}
+	if SidecarDir("/a/b.json") != "/a/b.qb" {
+		t.Fatal(SidecarDir("/a/b.json"))
+	}
+}
+
+func TestFindResults(t *testing.T) {
+	d := t.TempDir()
+	write := func(rel, body string, sidecar bool) string {
+		p := filepath.Join(d, rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(body), 0o644)
+		if sidecar {
+			os.Mkdir(SidecarDir(p), 0o755)
+		}
+		return p
+	}
+	write("a.json", `{"qualitybench_version":"0.1.0","model":"m1","caveats":["Quick run: x"],"tasks":[{}],"logprobs":{}}`, true)
+	write("run/02-base/results.json", `{"qualitybench_version":"0.1.0","model":"m2","tasks":[],"logprobs":{"kld":{}}}`, true)
+	write("nosidecar.json", `{"qualitybench_version":"0.1.0","model":"m3"}`, false)
+	write("other.json", `{"betterbench_version":"0.6.1"}`, true)
+	got := FindResults(nil, d)
+	if len(got) != 2 {
+		t.Fatalf("got %+v", got)
+	}
+	byModel := map[string]ResultFile{}
+	for _, r := range got {
+		byModel[r.Model] = r
+	}
+	if !byModel["m1"].Quick || byModel["m1"].Tasks != 1 || !byModel["m2"].HasLogp {
+		t.Fatalf("got %+v", byModel)
 	}
 }

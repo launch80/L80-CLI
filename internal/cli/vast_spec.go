@@ -8,6 +8,7 @@ import (
 
 	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/output"
+	"github.com/launch80/L80-CLI/internal/qualitybench"
 	"github.com/launch80/L80-CLI/internal/vast"
 )
 
@@ -27,7 +28,15 @@ func runVastSpec(e env, args []string) int {
 	budget := fs2.Float64("budget", d.BudgetUSD, "budget for the whole run, $")
 	ctxLen := fs2.Int("context", d.MaxModelLen, "max context length (0: the engine's default)")
 	disk := fs2.Int("disk", d.DiskGB, "instance disk, GB")
-	quick := fs2.Bool("quick", false, "run a short benchmark")
+	quick := fs2.Bool("quick", false, "short runs: BetterBench quick and the QualityBench quick tier")
+	steps := fs2.String("steps", "", "operations on the box, in order: betterbench, qualitybench, qualitybench-thinking (default: betterbench)")
+	qbTasks := fs2.String("qb-tasks", "", "QualityBench task ids, comma-separated (default: the suite)")
+	reference := fs2.String("reference", "", "a local QualityBench results file the qualitybench step compares against")
+	thresholds := fs2.String("thresholds", "", "thresholds file for that compare")
+	qbDeadline := fs2.String("qb-deadline", "", "time budget per QualityBench step, e.g. 3h")
+	toolParser := fs2.String("tool-parser", "", "vLLM --tool-call-parser (QualityBench bfcl scores it), e.g. hermes")
+	reasoning := fs2.String("reasoning-parser", "", "vLLM --reasoning-parser (needed for qualitybench-thinking), e.g. qwen3")
+	noPublish := fs2.Bool("no-publish", false, "keep every step's results local")
 	name := fs2.String("name", "", "spec name (default: from the model)")
 	out := fs2.String("o", "", "write here instead of "+vast.SpecsDir())
 	force := fs2.Bool("force", false, "overwrite an existing spec")
@@ -40,9 +49,38 @@ func runVastSpec(e env, args []string) int {
 	s := vast.Spec{Name: *name, ModelRepo: *model, ModelID: *id, Engine: *engine, GPUCount: *gpus,
 		MinGPURAMGB: *vram, MaxDPH: *dph, BudgetUSD: *budget, MaxModelLen: *ctxLen, DiskGB: *disk, Quick: *quick}
 	s.GPUNames = vast.ParseGPUNames(*gpu)
+	s.ToolCallParser, s.ReasoningParser = *toolParser, *reasoning
+	if *steps != "" {
+		var tasks []string
+		if *qbTasks != "" {
+			ts, err := qualitybench.ParseTasks(*qbTasks)
+			if err != nil {
+				return fail(e, api.Newf("E_USAGE", "Pick tasks from `L80 qualitybench tasks`.", "--qb-tasks: %v", err))
+			}
+			tasks = ts
+		}
+		for _, name := range strings.Split(*steps, ",") {
+			st := vast.Step{Quick: *quick, Publish: !*noPublish}
+			switch strings.TrimSpace(name) {
+			case "betterbench":
+				st.Type = vast.StepBetterBench
+			case "qualitybench", "qualitybench-thinking":
+				st.Type, st.Tasks, st.Thresholds, st.Deadline = vast.StepQualityBench, tasks, *thresholds, *qbDeadline
+				st.Reference = *reference
+				if strings.HasSuffix(name, "-thinking") {
+					st.Thinking, st.Label, st.Reference = "on", "quality-thinking", ""
+				} else if *reasoning != "" {
+					st.Thinking, st.Label = "off", "quality"
+				}
+			default:
+				return fail(e, api.Newf("E_USAGE", "Use betterbench, qualitybench or qualitybench-thinking.", "--steps: unknown step %q", name))
+			}
+			s.Steps = append(s.Steps, st)
+		}
+	}
 	if *model == "" {
 		return fail(e, api.Newf("E_USAGE",
-			"Pass the weights' repo, e.g. `L80 vast spec --model Qwen/Qwen3-8B --gpu \"RTX 4090\" --max-dph 0.6`, or build one in `L80 tui` (Rent, b).",
+			"Pass the weights' repo, e.g. `L80 vast spec --model Qwen/Qwen3-8B --gpu \"RTX 4090\" --max-dph 0.6`, or build one in `L80 tui` (Rent, New rental).",
 			"--model is required"))
 	}
 	if err := s.Validate(); err != nil {

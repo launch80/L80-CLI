@@ -42,7 +42,7 @@ func TestSpecYAMLAndWrite(t *testing.T) {
 	s.ModelRepo, s.GPUNames, s.GPUCount, s.MaxDPH = "Qwen/Qwen3-32B", []string{"H100 SXM"}, 2, 4.25
 	y := s.YAML()
 	for _, want := range []string{`name: "qwen3-32b"`, `names: ["H100 SXM"]`, "count: 2", "max_dph: 4.25",
-		`hf_repo: "Qwen/Qwen3-32B"`, "engine: vllm", `"--tensor-parallel-size", "2"`, "max_total_usd: 5"} {
+		`hf_repo: "Qwen/Qwen3-32B"`, "engine: vllm", "max_total_usd: 5"} {
 		if !strings.Contains(y, want) {
 			t.Errorf("YAML missing %q:\n%s", want, y)
 		}
@@ -59,5 +59,37 @@ func TestSpecYAMLAndWrite(t *testing.T) {
 	}
 	if got := ListSpecs(filepath.Dir(path)); len(got) != 1 || got[0] != path {
 		t.Errorf("ListSpecs = %q", got)
+	}
+}
+
+func TestSpecSteps(t *testing.T) {
+	s := DefaultSpec()
+	s.ModelRepo = "Qwen/Qwen3-8B"
+	s.ToolCallParser = "hermes"
+	s.Steps = []Step{{Type: StepBetterBench, Quick: true, Publish: true},
+		{Type: StepQualityBench, Label: "base", Tasks: []string{"gsm8k", "logprobs"}, Thinking: "off", Deadline: "3h"}}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	y := s.YAML()
+	for _, want := range []string{"steps:", "  - type: betterbench", "  - type: qualitybench", `label: "base"`,
+		`tasks: ["gsm8k", "logprobs"]`, `thinking: "off"`, `deadline: "3h"`, "publish: false", `tool_call_parser: "hermes"`} {
+		if !strings.Contains(y, want) {
+			t.Errorf("YAML missing %q:\n%s", want, y)
+		}
+	}
+	if strings.Contains(y, "benchmark:") {
+		t.Error("a spec with steps should not also write benchmark:")
+	}
+	if !s.NeedsLogprobs() {
+		t.Error("logprobs step")
+	}
+	s.Steps[1].Thinking = "on"
+	if err := s.Validate(); err == nil {
+		t.Error("thinking on without a reasoning parser should be refused")
+	}
+	s.Steps[1].Thinking, s.Steps[1].Reference = "", "/no/such/file.json"
+	if err := s.Validate(); err == nil {
+		t.Error("a missing reference should be refused")
 	}
 }

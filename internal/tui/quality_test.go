@@ -2,6 +2,9 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/launch80/L80-CLI/internal/qualitybench"
+	"github.com/launch80/L80-CLI/internal/vast"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,7 +111,7 @@ func TestQualityLocalPickers(t *testing.T) {
 	c.qb.focus = qsEndpoint
 	feed(c, code(input.Down))
 	secs := c.qb.sections()
-	if !strings.Contains(screen(t, c), "URL") || secs[3] != qsEndpointURL || secs[4] != qsModelID {
+	if !strings.Contains(screen(t, c), "URL") || secs[4] != qsEndpointURL || secs[5] != qsModelID {
 		t.Errorf("other: %v", secs)
 	}
 	if _, _, err := c.qb.localTarget(); err == nil {
@@ -211,7 +214,7 @@ func TestQualityVastPlansButDoesNotRent(t *testing.T) {
 	c.qb.focus = qsTarget
 	feed(c, code(input.Right))
 	view := screen(t, c)
-	for _, want := range []string{"‹Rent via Vast›", "Engine", "‹vLLM›", "Search", "Qwen/Qwen3-8B", "recent · rented before", "not a repo id", "Plan the rental"} {
+	for _, want := range []string{"‹Rent via Vast›", "Engine", "‹vLLM›", "Search", "Qwen/Qwen3-8B", "recent · rented before", "not a repo id", "Set up the rental"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q:\n%s", want, view)
 		}
@@ -227,11 +230,67 @@ func TestQualityVastPlansButDoesNotRent(t *testing.T) {
 	c.qb.engine.Choice = 1
 	c.qb.focus = qsSubmit
 	feed(c, code(input.Enter))
-	if c.dialog == nil || !strings.Contains(c.dialog.Body, "L80 vast spec --model Jackrong/Qwopus-dir --engine llamacpp") || !strings.Contains(c.dialog.Body, "Nothing was rented") {
-		t.Fatalf("dialog %+v", c.dialog)
+	// The rental is handed to Rent with the model and a QualityBench step.
+	if c.scr != scrVast || c.vast.tab != 2 || c.vast.wiz.page != pgHardware {
+		t.Fatalf("screen %v tab %d page %d", c.scr, c.vast.tab, c.vast.wiz.page)
 	}
-	feed(c, code(input.Enter))
+	if c.vast.wiz.val(pgModel, "model") != "Jackrong/Qwopus-dir" || c.vast.wiz.val(pgModel, "engine") != "llamacpp" {
+		t.Fatalf("model %q engine %q", c.vast.wiz.val(pgModel, "model"), c.vast.wiz.val(pgModel, "engine"))
+	}
+	if h := c.vast.wiz.handed; len(h) != 1 || h[0].Type != vast.StepQualityBench {
+		t.Fatalf("handed %+v", h)
+	}
 	if c.vast.job != nil || c.qb.job != nil || c.dialog != nil {
-		t.Error("planning must not start anything")
+		t.Error("handing over must not start anything")
+	}
+}
+
+func TestQualityCompareTwoRuns(t *testing.T) {
+	fixture, _ := filepath.Abs("../qualitybench/testdata/results-bf16.json")
+	dir := t.TempDir()
+	mk := func(name string) string {
+		p := filepath.Join(dir, name+".json")
+		var d map[string]any
+		data, _ := os.ReadFile(fixture)
+		json.Unmarshal(data, &d)
+		delete(d, "arms") // a plain run, not a comparison
+		data, _ = json.Marshal(d)
+		os.WriteFile(p, data, 0o644)
+		os.Mkdir(filepath.Join(dir, name+".qb"), 0o755)
+		return p
+	}
+	ref, test := mk("bf16"), mk("int4")
+	argsFile := filepath.Join(dir, "args")
+	script := "#!/bin/sh\necho \"$*\" > " + argsFile + "\n" +
+		"out=''; while [ $# -gt 0 ]; do [ \"$1\" = --out ] && out=$2; shift; done\ncp " + fixture + " \"$out\"\necho '<html>' > \"${out%.json}.html\"\necho 'KLD 0.01'\n"
+	os.WriteFile(filepath.Join(dir, "qualitybench"), []byte(script), 0o755)
+	t.Setenv("L80_QUALITYBENCH", filepath.Join(dir, "qualitybench"))
+
+	c := openQuality(t, swap)
+	c.qb.findResults = func(*Console) []qualitybench.ResultFile { return qualitybench.FindResults([]string{ref, test}) }
+	drain(c, c.qb.refreshResults(c), 0)
+	c.qb.mode.Choice = modeCompare
+	if secs := c.qb.sections(); len(secs) != 5 || secs[1] != qsCmpRef {
+		t.Fatalf("sections %v", secs)
+	}
+	c.qb.cmpRef.Cursor, c.qb.cmpTest.Cursor = 0, 1
+	refPath, testPath := listPath(&c.qb.cmpRef), listPath(&c.qb.cmpTest)
+	c.qb.focus = qsSubmit
+	feed(c, code(input.Enter))
+	if c.qb.job == nil {
+		t.Fatalf("no job; flash %q", c.flash)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for c.qb.job.running && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	feed(c, jobDone{j: c.qb.job, result: nil})
+	got, _ := os.ReadFile(argsFile)
+	want := "compare " + refPath + " " + testPath
+	if !strings.Contains(string(got), want) || !strings.Contains(string(got), "-vs-") {
+		t.Errorf("argv %q, want %q", got, want)
+	}
+	if !c.qb.comparing {
+		t.Error("a compare job")
 	}
 }

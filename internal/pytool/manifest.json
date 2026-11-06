@@ -38,15 +38,15 @@
     },
     "qualitybench": {
       "repo": "https://github.com/launch80/QualityBench",
-      "ref": "",
-      "commit": "",
+      "ref": "v0.1.0",
+      "commit": "1f603a693a120d6a8bb5e86dae3510e01540f96d",
       "package": "qualitybench",
       "exe": "qualitybench",
       "env": "L80_QUALITYBENCH",
       "python": "3.12",
       "min_version": "0.1.0",
       "version_cmd": ["--version"],
-      "notes": "Quality baseline and quality-loss suite (GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle). Unpinned until its first release."
+      "notes": "Quality baseline and quality-loss suite (GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle)."
     },
     "vast": {
       "repo": "https://github.com/launch80/BB-VAST-L80",

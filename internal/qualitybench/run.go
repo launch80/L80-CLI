@@ -2,6 +2,7 @@ package qualitybench
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -56,7 +57,13 @@ type RunOptions struct {
 	// are marked partial in the results, never dropped.
 	Deadline string
 	Notes    []string // KEY=VALUE
-	Extra    []string // passed through after the named flags
+	// Tokenizer is the Hugging Face repo (or local dir) logprobs and needle
+	// tokenize with, when the served id is not one (a llama-swap alias).
+	Tokenizer string
+	// Sandbox is "docker" (default) or "native"; native runs model-written
+	// code directly and is only for disposable rented boxes.
+	Sandbox string
+	Extra   []string // passed through after the named flags
 	// APIKey reaches the child as QUALITYBENCH_API_KEY, never on the command line.
 	APIKey string
 }
@@ -92,6 +99,12 @@ func (o RunOptions) Args() []string {
 	if o.Deadline != "" {
 		args = append(args, "--deadline", o.Deadline)
 	}
+	if o.Tokenizer != "" {
+		args = append(args, "--tokenizer", o.Tokenizer)
+	}
+	if o.Sandbox != "" {
+		args = append(args, "--sandbox", o.Sandbox)
+	}
 	for _, n := range o.Notes {
 		args = append(args, "--note", n)
 	}
@@ -106,22 +119,93 @@ func ReportPath(out string) string {
 	return out + ".html"
 }
 
+// ExitTaskFailed is the tool's status when a task failed: the results file
+// is still written, with that task listed in `partials`.
+const ExitTaskFailed = 1
+
+// ErrPartial is returned with the results when the tool exited
+// ExitTaskFailed: the data is usable and lists what failed.
+var ErrPartial = errors.New("a task failed; the results list it under partials")
+
 // Execute runs `qualitybench run`, streaming its output, and returns the
 // results file it wrote. Cancelling ctx interrupts the run; the tool keeps
-// what it finished, so the same command resumes it.
+// what it finished, so the same command resumes it. When a task failed the
+// data comes back with ErrPartial.
 func Execute(ctx context.Context, r Runner, o RunOptions, out, errOut io.Writer) ([]byte, error) {
 	code, err := pytool.Exec(ctx, r, o.Args(), pytool.ExecOpts{Stdout: out, Stderr: errOut, ExtraEnv: o.Env()})
 	if err != nil {
 		return nil, err
 	}
-	if code != 0 {
+	if code != 0 && code != ExitTaskFailed {
 		return nil, fmt.Errorf("qualitybench exited with status %d", code)
 	}
-	data, err := os.ReadFile(o.Out)
-	if err != nil {
-		return nil, fmt.Errorf("qualitybench finished but %s was not written: %w", o.Out, err)
+	data, rerr := os.ReadFile(o.Out)
+	if rerr != nil {
+		if code != 0 {
+			return nil, fmt.Errorf("qualitybench exited with status %d and wrote no %s", code, o.Out)
+		}
+		return nil, fmt.Errorf("qualitybench finished but %s was not written: %w", o.Out, rerr)
+	}
+	if code == ExitTaskFailed {
+		return data, ErrPartial
 	}
 	return data, nil
+}
+
+// Partials lists the `partials` of a results file: tasks cut by the deadline,
+// refused by the server, or failed.
+func Partials(data []byte) []string {
+	var d struct {
+		Partials []any `json:"partials"`
+	}
+	if json.Unmarshal(data, &d) != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range d.Partials {
+		switch v := p.(type) {
+		case string:
+			out = append(out, v)
+		case map[string]any:
+			if t, ok := v["task"].(string); ok {
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
+// SidecarDir is the per-item folder the tool keeps beside a results file;
+// compare and --reference need it.
+func SidecarDir(results string) string {
+	if s, ok := strings.CutSuffix(results, ".json"); ok {
+		return s + ".qb"
+	}
+	return results + ".qb"
+}
+
+// CheckSidecar reports why results cannot be used as a reference, or nil.
+func CheckSidecar(results string) error {
+	if _, err := os.Stat(results); err != nil {
+		return fmt.Errorf("%s: %w", results, err)
+	}
+	if info, err := os.Stat(SidecarDir(results)); err != nil || !info.IsDir() {
+		return fmt.Errorf("%s has no %s folder beside it (compare needs the per-item records)", results, SidecarDir(results))
+	}
+	return nil
+}
+
+// Setup runs `qualitybench setup`: the harness environments, the LCB image
+// and the datasets, so the first run does not pay for them.
+func Setup(ctx context.Context, r Runner, tasks []string, sandbox string, out io.Writer) (int, error) {
+	args := []string{"setup"}
+	if len(tasks) > 0 {
+		args = append(args, "--tasks", strings.Join(tasks, ","))
+	}
+	if sandbox != "" {
+		args = append(args, "--sandbox", sandbox)
+	}
+	return pytool.Exec(ctx, r, args, pytool.ExecOpts{Stdout: out, Stderr: out, ExtraEnv: []string{"QUALITYBENCH_NO_UPDATE_CHECK=1"}})
 }
 
 // Compare runs `qualitybench compare ref test` locally; no token is involved.

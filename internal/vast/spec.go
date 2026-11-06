@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +28,75 @@ type Spec struct {
 	BudgetUSD   float64 // whole-run budget check
 	MaxModelLen int
 	DiskGB      int
-	Quick       bool // a short benchmark
+	Quick       bool // a short benchmark (the default BetterBench step, when Steps is empty)
+	// ToolCallParser and ReasoningParser are vLLM's parsers: QualityBench's
+	// bfcl scores the tool parser, and thinking on needs the reasoning parser.
+	ToolCallParser  string
+	ReasoningParser string
+	// Steps are the operations run on the box once it serves the model, in
+	// order (bbvastl80 0.2.0). Empty means one BetterBench step.
+	Steps []Step
+}
+
+// Step types bbvastl80 runs.
+const (
+	StepBetterBench  = "betterbench"
+	StepQualityBench = "qualitybench"
+)
+
+// Step is one operation on the rented box.
+type Step struct {
+	Type  string
+	Label string // names the output folder; optional
+	Quick bool
+	// QualityBench only.
+	Tasks      []string // empty = the default suite
+	Thinking   string   // on | off | ""
+	Reference  string   // a local results file to compare against
+	Thresholds string
+	Deadline   string // a duration, e.g. 3h
+	Tokenizer  string
+	Publish    bool
+}
+
+// Describe is a one-line summary of the step.
+func (st Step) Describe() string {
+	var parts []string
+	switch st.Type {
+	case StepBetterBench:
+		parts = append(parts, "BetterBench (speed)")
+	case StepQualityBench:
+		if st.Reference != "" {
+			parts = append(parts, "QualityBench compare")
+		} else {
+			parts = append(parts, "QualityBench baseline")
+		}
+		if len(st.Tasks) > 0 {
+			parts = append(parts, strings.Join(st.Tasks, ","))
+		}
+		if st.Thinking != "" {
+			parts = append(parts, "thinking "+st.Thinking)
+		}
+	default:
+		parts = append(parts, st.Type)
+	}
+	if st.Quick {
+		parts = append(parts, "quick")
+	}
+	if !st.Publish {
+		parts = append(parts, "kept local")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// NeedsLogprobs reports whether a QualityBench step scores logprobs.
+func (s Spec) NeedsLogprobs() bool {
+	for _, st := range s.Steps {
+		if st.Type == StepQualityBench && (len(st.Tasks) == 0 || slices.Contains(st.Tasks, "logprobs")) {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseGPUNames splits a comma-separated list of Vast.ai GPU names. Vast
@@ -74,6 +143,27 @@ func (s Spec) Validate() error {
 		return errors.New("disk must be at least 1 GB")
 	case s.Name != "" && slug(s.Name) != s.Name:
 		return fmt.Errorf("name %q may use only a-z, 0-9, '.', '_' and '-'", s.Name)
+	}
+	for i, st := range s.Steps {
+		switch st.Type {
+		case StepBetterBench, StepQualityBench:
+		default:
+			return fmt.Errorf("step %d: type must be %s or %s", i+1, StepBetterBench, StepQualityBench)
+		}
+		if st.Thinking != "" && st.Thinking != "on" && st.Thinking != "off" {
+			return fmt.Errorf("step %d: thinking must be on or off", i+1)
+		}
+		if st.Thinking == "on" && s.Engine == "vllm" && s.ReasoningParser == "" {
+			return fmt.Errorf("step %d: thinking on needs a vLLM reasoning parser (e.g. qwen3)", i+1)
+		}
+		if st.Label != "" && slug(st.Label) != st.Label {
+			return fmt.Errorf("step %d: label %q may use only a-z, 0-9, '.', '_' and '-'", i+1, st.Label)
+		}
+		if st.Reference != "" {
+			if _, err := os.Stat(st.Reference); err != nil {
+				return fmt.Errorf("step %d: reference %s: %v", i+1, st.Reference, err)
+			}
+		}
 	}
 	return nil
 }
@@ -151,17 +241,57 @@ func (s Spec) YAML() string {
 	}
 	if s.Engine == "vllm" {
 		w("    gpu_mem_util: 0.90")
-		if s.GPUCount > 1 {
-			w("    extra_args: [\"--tensor-parallel-size\", \"%d\"]", s.GPUCount)
+		if s.ToolCallParser != "" {
+			w("    tool_call_parser: %s   # QualityBench bfcl scores the server's tool parser", q(s.ToolCallParser))
+		}
+		if s.ReasoningParser != "" {
+			w("    reasoning_parser: %s", q(s.ReasoningParser))
 		}
 	}
 	w("")
 	w("instance:")
 	w("  disk_gb: %d", s.DiskGB)
 	w("")
-	w("benchmark:")
-	w("  quick: %t", s.Quick)
-	w("")
+	if len(s.Steps) == 0 {
+		w("benchmark:")
+		w("  quick: %t", s.Quick)
+		w("")
+	} else {
+		w("steps:   # run in order once the box serves the model; outputs land in runs/<id>/<NN>-<label>/")
+		for _, st := range s.Steps {
+			w("  - type: %s", st.Type)
+			if st.Label != "" {
+				w("    label: %s", q(st.Label))
+			}
+			w("    quick: %t", st.Quick)
+			if st.Type == StepQualityBench {
+				if len(st.Tasks) > 0 {
+					ts := make([]string, len(st.Tasks))
+					for i, t := range st.Tasks {
+						ts[i] = q(t)
+					}
+					w("    tasks: [%s]", strings.Join(ts, ", "))
+				}
+				if st.Thinking != "" {
+					w("    thinking: %s", q(st.Thinking))
+				}
+				if st.Reference != "" {
+					w("    reference: %s", q(st.Reference))
+				}
+				if st.Thresholds != "" {
+					w("    thresholds: %s", q(st.Thresholds))
+				}
+				if st.Deadline != "" {
+					w("    deadline: %s", q(st.Deadline))
+				}
+				if st.Tokenizer != "" {
+					w("    tokenizer: %s", q(st.Tokenizer))
+				}
+			}
+			w("    publish: %t", st.Publish)
+		}
+		w("")
+	}
 	w("budget:")
 	w("  max_total_usd: %s   # the run refuses to start if its estimate is above this", num(s.BudgetUSD))
 	w("  max_provision_min: 20")

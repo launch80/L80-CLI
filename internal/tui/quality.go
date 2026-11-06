@@ -22,6 +22,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
+	"github.com/launch80/L80-CLI/internal/vast"
 )
 
 // The QualityBench screen is one form whose rows depend on the choices above
@@ -33,7 +34,8 @@ import (
 type qsec int
 
 const (
-	qsScope qsec = iota
+	qsMode qsec = iota
+	qsScope
 	qsTasks
 	qsTarget
 	qsEndpoint
@@ -43,7 +45,12 @@ const (
 	qsSearch
 	qsVastModel
 	qsModelID
+	qsTokenizer
 	qsThinking
+	qsReference
+	qsCmpRef
+	qsCmpTest
+	qsThresholds
 	qsNotes
 	qsKey
 	qsSubmit
@@ -60,6 +67,11 @@ const (
 	targetVast
 )
 
+const (
+	modeRun = iota
+	modeCompare
+)
+
 // other marks the "Other…" row of a picker.
 type other struct{}
 
@@ -67,11 +79,18 @@ type qualityScreen struct {
 	inited bool
 	focus  qsec
 
-	scope, target, thinking, engine widgets.Field
-	epURL, modelID, search          widgets.Field
-	notes, apikey                   widgets.Field
-	tasks                           widgets.Checklist
-	eps, mods, vmods                widgets.List
+	mode, scope, target, thinking, engine widgets.Field
+	epURL, modelID, search                widgets.Field
+	notes, apikey, tokenizer, thresholds  widgets.Field
+	tasks                                 widgets.Checklist
+	eps, mods, vmods                      widgets.List
+	refs, cmpRef, cmpTest                 widgets.List
+
+	// results are the local results files with their .qb folders, for
+	// --reference and Compare. findResults is swapped out by tests.
+	results     []qualitybench.ResultFile
+	findResults func(c *Console) []qualitybench.ResultFile
+	comparing   bool // the finished job was a compare
 
 	// scan, sources and find are swapped out by tests.
 	scan    func(context.Context) []discover.Endpoint
@@ -107,6 +126,7 @@ type (
 		art *api.Artifact
 		err *api.Error
 	}
+	qbResults struct{ rs []qualitybench.ResultFile }
 )
 
 func (s *qualityScreen) ensure() {
@@ -114,6 +134,13 @@ func (s *qualityScreen) ensure() {
 		return
 	}
 	s.inited = true
+	s.focus = qsScope // Run is the common case; Do is one row up
+	s.mode = widgets.Field{Key: "mode", Label: "Do", Kind: widgets.ChoiceField, Choices: []string{"Run", "Compare"},
+		Help: "Run measures a model now. Compare pairs two finished runs item by item (paired deltas with intervals, KLD, threshold verdicts) and needs no server."}
+	s.tokenizer = widgets.Field{Key: "tokenizer", Label: "Tokenizer", Help: "The Hugging Face repo (or local dir) logprobs and needle tokenize with. Leave empty to use the server's root or the model id; set it when the served id is an alias.",
+		Input: widgets.TextInput{Placeholder: "auto"}}
+	s.thresholds = widgets.Field{Key: "thresholds", Label: "Thresholds", Help: "A pre-registered thresholds file (Markdown); empty uses QualityBench's default bars. Its sha256 is recorded.",
+		Input: widgets.TextInput{Placeholder: "default bars"}}
 	s.scope = widgets.Field{Key: "scope", Label: "Scope", Kind: widgets.ChoiceField, Choices: []string{"Full", "Quick", "Custom"},
 		Help: "Full runs the whole suite. Quick runs a fixed tenth of each task: a smoke test, and the page says so. Custom runs the tasks you tick, at full size."}
 	s.target = widgets.Field{Key: "target", Label: "Target", Kind: widgets.ChoiceField, Choices: []string{"Local GPUs", "Rent via Vast"},
@@ -152,8 +179,62 @@ func (s *qualityScreen) ensure() {
 	if s.find == nil {
 		s.find = func(ctx context.Context, q string) ([]models.Model, error) { return models.Search(ctx, nil, q, 20) }
 	}
+	if s.findResults == nil {
+		s.findResults = localResults
+	}
 	s.buildEndpoints()
 	s.buildVastModels()
+	s.buildResults()
+}
+
+// localResults finds QualityBench results this machine can compare: files
+// it published, the current directory, and rental step folders.
+func localResults(c *Console) []qualitybench.ResultFile {
+	var files []string
+	if entries, err := history.Read(); err == nil {
+		for _, e := range entries {
+			if e.TemplateID == qualitybench.TemplateID && e.SourcePath != "" {
+				files = append(files, e.SourcePath)
+			}
+		}
+	}
+	cwd, _ := os.Getwd()
+	return qualitybench.FindResults(files, cwd, c.d.RunsDir)
+}
+
+func (s *qualityScreen) buildResults() {
+	mk := func(none string) []widgets.Item {
+		var items []widgets.Item
+		if none != "" {
+			items = append(items, widgets.Item{Title: none, Value: ""})
+		}
+		for _, r := range s.results {
+			if r.Compare {
+				continue
+			}
+			items = append(items, widgets.Item{Title: r.Label(), Desc: style.Sanitize(r.Path), Value: r.Path})
+		}
+		return items
+	}
+	keep := func(l *widgets.List, items []widgets.Item) {
+		cur := l.Cursor
+		*l = widgets.List{Items: items, Filterable: true, Cursor: min(cur, max(0, len(items)-1))}
+	}
+	keep(&s.refs, mk("None: measure only"))
+	keep(&s.cmpRef, mk(""))
+	keep(&s.cmpTest, mk(""))
+	if len(s.cmpTest.Items) > 1 && s.cmpTest.Cursor == s.cmpRef.Cursor {
+		s.cmpTest.Cursor = 1
+	}
+}
+
+func listPath(l *widgets.List) string {
+	if it, ok := l.Selected(); ok {
+		if p, isPath := it.Value.(string); isPath {
+			return p
+		}
+	}
+	return ""
 }
 
 // localSources gathers the models offered for a rental: ones published or
@@ -178,12 +259,19 @@ func localSources(c *Console) []models.Model {
 func (s *qualityScreen) load(c *Console) Cmd {
 	s.ensure()
 	s.scanning = true
-	scan, sources := s.scan, s.sources
+	scan, sources, find := s.scan, s.sources, s.findResults
 	return Batch(func() Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return qbScanned{scan(ctx)}
-	}, func() Msg { return qbSources{sources(c)} })
+	}, func() Msg { return qbSources{sources(c)} }, func() Msg { return qbResults{find(c)} })
+}
+
+// refreshResults rescans local results (for Compare and the Rent wizard).
+func (s *qualityScreen) refreshResults(c *Console) Cmd {
+	s.ensure()
+	find := s.findResults
+	return func() Msg { return qbResults{find(c)} }
 }
 
 func (s *qualityScreen) runSearch(q string) Cmd {
@@ -305,7 +393,10 @@ func pickedOther(l *widgets.List) bool {
 
 // sections are the rows the form shows now, in order.
 func (s *qualityScreen) sections() []qsec {
-	out := []qsec{qsScope}
+	if s.mode.Choice == modeCompare {
+		return []qsec{qsMode, qsCmpRef, qsCmpTest, qsThresholds, qsSubmit}
+	}
+	out := []qsec{qsMode, qsScope}
 	if s.scope.Choice == scopeCustom {
 		out = append(out, qsTasks)
 	}
@@ -320,13 +411,18 @@ func (s *qualityScreen) sections() []qsec {
 				out = append(out, qsModelID)
 			}
 		}
+		out = append(out, qsTokenizer)
 	} else {
 		out = append(out, qsEngine, qsSearch, qsVastModel)
 		if pickedOther(&s.vmods) {
 			out = append(out, qsModelID)
 		}
 	}
-	return append(out, qsThinking, qsNotes, qsKey, qsSubmit)
+	out = append(out, qsThinking, qsReference)
+	if listPath(&s.refs) != "" {
+		out = append(out, qsThresholds)
+	}
+	return append(out, qsNotes, qsKey, qsSubmit)
 }
 
 func (s *qualityScreen) move(d int) {
@@ -342,6 +438,12 @@ func (s *qualityScreen) move(d int) {
 
 func (s *qualityScreen) field(q qsec) *widgets.Field {
 	switch q {
+	case qsMode:
+		return &s.mode
+	case qsTokenizer:
+		return &s.tokenizer
+	case qsThresholds:
+		return &s.thresholds
 	case qsScope:
 		return &s.scope
 	case qsTarget:
@@ -372,6 +474,12 @@ func (s *qualityScreen) list(q qsec) *widgets.List {
 		return &s.mods
 	case qsVastModel:
 		return &s.vmods
+	case qsReference:
+		return &s.refs
+	case qsCmpRef:
+		return &s.cmpRef
+	case qsCmpTest:
+		return &s.cmpTest
 	}
 	return nil
 }
@@ -391,6 +499,10 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 	case qbSources:
 		s.cands = v.ms
 		s.buildVastModels()
+		return nil
+	case qbResults:
+		s.results = v.rs
+		s.buildResults()
 		return nil
 	case qbSearched:
 		s.searching, s.searched = false, v.query
@@ -641,6 +753,9 @@ func (s *qualityScreen) vastModel() (models.Model, error) {
 }
 
 func (s *qualityScreen) submit(c *Console) Cmd {
+	if s.mode.Choice == modeCompare {
+		return s.submitCompare(c)
+	}
 	scope, err := s.scopeOf()
 	if err != nil {
 		c.setFlash(err.Error(), true)
@@ -653,13 +768,16 @@ func (s *qualityScreen) submit(c *Console) Cmd {
 			return nil
 		}
 		eng := map[int]string{0: "vllm", 1: "llamacpp"}[s.engine.Choice]
-		c.confirm(&widgets.Dialog{Title: "Rent via Vast",
-			Body: "QualityBench runs on rented GPUs are coming: they need a `benchmark: qualitybench` step in L80 vast first. Nothing was rented.\n\n" +
-				"To rent a box for this model now, write a spec and start it from the Rent (vast) screen:\n\n" +
-				"  L80 vast spec --model " + m.ID + " --engine " + eng + "\n\n" +
-				"then run QualityBench here, against the rented endpoint, under Other….",
-			Buttons: []string{"OK"}}, nil)
-		return nil
+		thinking := ""
+		if s.thinking.Choice > 0 {
+			thinking = s.thinking.Value()
+		}
+		st := vast.Step{Type: vast.StepQualityBench, Quick: scope.Tier == qualitybench.TierQuick, Thinking: thinking,
+			Reference: listPath(&s.refs), Thresholds: s.thresholds.Value(), Publish: true}
+		if s.scope.Choice == scopeCustom {
+			st.Tasks = scope.Tasks
+		}
+		return c.rentWith(m.ID, eng, []vast.Step{st})
 	}
 	endpoint, model, err := s.localTarget()
 	if err != nil {
@@ -688,14 +806,29 @@ func (s *qualityScreen) submit(c *Console) Cmd {
 		return r
 	}, model)
 	out := filepath.Join(cwd, fmt.Sprintf("qualitybench-%s-%s.json", safe, time.Now().Format("20060102-1504")))
+	tok := s.tokenizer.Value()
+	if tok == "" {
+		tok = s.guessTokenizer()
+	}
+	ref := listPath(&s.refs)
 	opts := qualitybench.RunOptions{Endpoint: endpoint, Model: model, Out: out, Scope: scope, Thinking: thinking,
-		Notes: notes, APIKey: s.apikey.Input.String()}
+		Notes: notes, APIKey: s.apikey.Input.String(), Tokenizer: tok, Reference: ref}
+	if ref != "" {
+		opts.Thresholds = s.thresholds.Value()
+	}
 	s.prog = newQBProgress(scope.Tasks)
 	s.job = newJob("QualityBench " + model)
-	s.phase, s.result, s.summary, s.url = 1, nil, nil, ""
+	s.phase, s.result, s.summary, s.url, s.comparing = 1, nil, nil, "", false
 	prog := s.prog
 	return c.start(s.job, func(ctx context.Context, w io.Writer) (any, int, error) {
+		// Setup is idempotent: seconds once done, minutes the first time
+		// (harness environments, the LiveCodeBench image, datasets).
 		pw := &progressWriter{out: w, p: prog}
+		if code, apiErr := app.SetupQuality(ctx, scope.Tasks, "", app.WriterSink{W: pw}); apiErr != nil {
+			return nil, 1, fmt.Errorf("%s: %s — %s", apiErr.Code, apiErr.Message, apiErr.Remedy)
+		} else if code != 0 {
+			return nil, code, fmt.Errorf("QualityBench setup exited with status %d; see the log", code)
+		}
 		res, apiErr := app.RunQuality(ctx, opts, app.WriterSink{W: pw})
 		pw.flush()
 		if apiErr != nil {
@@ -705,8 +838,73 @@ func (s *qualityScreen) submit(c *Console) Cmd {
 	})
 }
 
+// guessTokenizer is the tokenizer the selected server reports for the model.
+func (s *qualityScreen) guessTokenizer() string {
+	ep, ok := s.selectedEndpoint()
+	if !ok {
+		return ""
+	}
+	id := ""
+	if it, ok := s.mods.Selected(); ok {
+		id, _ = it.Value.(string)
+	}
+	for _, m := range ep.Models {
+		if m.ID == id {
+			return m.Tokenizer()
+		}
+	}
+	return ""
+}
+
+// compareOut names the comparison after the runs, using a rental step's
+// folder name when the file is just results.json.
+func compareOut(ref, test string) string {
+	stem := func(p string) string {
+		b := strings.TrimSuffix(filepath.Base(p), ".json")
+		if b == "results" {
+			b = filepath.Base(filepath.Dir(p))
+		}
+		return b
+	}
+	return filepath.Join(filepath.Dir(test), stem(test)+"-vs-"+stem(ref)+".json")
+}
+
+func (s *qualityScreen) submitCompare(c *Console) Cmd {
+	ref, test := listPath(&s.cmpRef), listPath(&s.cmpTest)
+	switch {
+	case ref == "" || test == "":
+		c.setFlash("pick a reference and a test run; runs show here once their .qb folder is beside them", true)
+		return nil
+	case ref == test:
+		c.setFlash("pick two different runs", true)
+		return nil
+	}
+	out := compareOut(ref, test)
+	th := s.thresholds.Value()
+	s.prog = nil
+	s.job = newJob("QualityBench compare")
+	s.phase, s.result, s.summary, s.url, s.comparing = 1, nil, nil, "", true
+	return c.start(s.job, func(ctx context.Context, w io.Writer) (any, int, error) {
+		code, apiErr := app.CompareQuality(ctx, ref, test, th, out, app.WriterSink{W: w})
+		if apiErr != nil {
+			return nil, 1, fmt.Errorf("%s: %s — %s", apiErr.Code, apiErr.Message, apiErr.Remedy)
+		}
+		if code != 0 {
+			return nil, code, fmt.Errorf("qualitybench compare exited with status %d; see the log", code)
+		}
+		data, err := os.ReadFile(out)
+		if err != nil {
+			return nil, 1, err
+		}
+		return &app.QualityResult{Path: out, Report: qualitybench.ReportPath(out), Data: data}, 0, nil
+	})
+}
+
 func qualitySummary(r *app.QualityResult) []string {
 	out := []string{"results " + r.Path}
+	for _, p := range r.Partial {
+		out = append(out, "partial: "+p)
+	}
 	if _, err := os.Stat(r.Report); err == nil {
 		out = append(out, "report  "+r.Report)
 	}
@@ -719,7 +917,14 @@ func (s *qualityScreen) publish(c *Console, confirmed bool) Cmd {
 		return nil
 	}
 	if !confirmed {
-		c.confirm(&widgets.Dialog{Title: "Publish", Body: "Publish this run to launch80 as a public page?\n\nThe endpoint URL and hostname are removed first. The page is self-reported.",
+		body := "Publish this run to launch80 as a public page?\n\nThe endpoint URL and hostname are removed first. The page is self-reported."
+		if s.comparing {
+			body = "Publish this comparison to launch80 as a public page? It is the reference run's page with the test run drawn as an arm."
+		}
+		if s.result != nil && len(s.result.Partial) > 0 {
+			body += "\n\nThis run is partial (" + strings.Join(s.result.Partial, "; ") + "); the page lists what is missing."
+		}
+		c.confirm(&widgets.Dialog{Title: "Publish", Body: body,
 			Buttons: []string{"Publish", "Cancel"}, Choice: 1}, func(ch int) Cmd {
 			if ch == 0 {
 				return s.publish(c, true)
@@ -946,6 +1151,27 @@ func (s *qualityScreen) view(c *Console, w, h int) ([]string, []widgets.Binding)
 			focusAt = len(out)
 		}
 		switch q {
+		case qsMode:
+			choice(q, &s.mode, "")
+		case qsTokenizer:
+			if g := s.guessTokenizer(); g != "" {
+				s.tokenizer.Input.Placeholder = "auto: " + g
+			} else {
+				s.tokenizer.Input.Placeholder = "set it if the served id is not a Hugging Face repo"
+			}
+			text(q, &s.tokenizer)
+		case qsReference:
+			picker(q, "Compare to", &s.refs, min(8, 2*len(s.refs.Items)))
+		case qsCmpRef, qsCmpTest:
+			name, l := "Reference", &s.cmpRef
+			if q == qsCmpTest {
+				name, l = "Test", &s.cmpTest
+			}
+			if len(l.Items) == 0 {
+				out = append(out, label(q, name)+t.R(t.Warn, "no QualityBench results with a .qb folder found here yet"))
+				continue
+			}
+			picker(q, name, l, min(8, 2*len(l.Items)))
 		case qsScope:
 			choice(q, &s.scope, s.estimate())
 		case qsTasks:
@@ -976,8 +1202,11 @@ func (s *qualityScreen) view(c *Console, w, h int) ([]string, []widgets.Binding)
 			choice(q, &s.thinking, "")
 		case qsSubmit:
 			name := "Run QualityBench"
-			if !s.local() {
-				name = "Plan the rental"
+			switch {
+			case s.mode.Choice == modeCompare:
+				name = "Compare"
+			case !s.local():
+				name = "Set up the rental"
 			}
 			btn := "[ " + name + " ]"
 			if s.focus == q {
@@ -1000,11 +1229,20 @@ func (s *qualityScreen) view(c *Console, w, h int) ([]string, []widgets.Binding)
 		if s.focus == qsVastModel {
 			help += " Recent models, your Hugging Face cache and ~/models; search above for more."
 		}
+	case qsReference:
+		help = "Optional. A finished run of the same tier and tokenizer: this run is then also compared with it, and the result is the reference's page with this run as an arm."
+	case qsCmpRef:
+		help = "The baseline, e.g. the BF16 run. Results from this directory, rental step folders and your publishes; each needs its .qb folder."
+	case qsCmpTest:
+		help = "The run to judge against the reference, e.g. the INT4 build. Both must be the same tier (full or quick)."
 	case qsSubmit:
-		if s.local() {
-			help = "Runs QualityBench against the server; results and an HTML report go to the current directory."
-		} else {
-			help = "Shows what renting for this model takes. Nothing is rented from here yet."
+		switch {
+		case s.mode.Choice == modeCompare:
+			help = "Writes <test>-vs-<reference>.json and .html beside the test run; p publishes it, o opens the report."
+		case s.local():
+			help = "Sets QualityBench up if needed, then runs it against the server; results and an HTML report go to the current directory."
+		default:
+			help = "Opens Rent with this model and a QualityBench step filled in. You review the GPU and the cost there; nothing is rented until you confirm."
 		}
 	default:
 		if f := s.field(s.focus); f != nil {

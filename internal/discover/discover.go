@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -40,6 +41,9 @@ type Model struct {
 	// Backend and GPU come from llama-swap's metadata when it has them.
 	Backend string `json:"backend,omitempty"`
 	GPU     string `json:"gpu,omitempty"`
+	// Root is the weights the server loaded, when it says (vLLM's "root": a
+	// Hugging Face repo or a local path). QualityBench tokenizes with it.
+	Root string `json:"root,omitempty"`
 	// Loaded is false for a llama-swap model that is configured but not
 	// running: the first request pays its load time, which a benchmark must
 	// not count.
@@ -129,6 +133,7 @@ type modelList struct {
 	Data []struct {
 		ID      string `json:"id"`
 		OwnedBy string `json:"owned_by"`
+		Root    string `json:"root"`
 		Meta    struct {
 			LlamaSwap *struct {
 				Backend string `json:"backend"`
@@ -155,7 +160,7 @@ func Probe(ctx context.Context, c *http.Client, base string) (Endpoint, bool) {
 		if d.ID == "" {
 			continue
 		}
-		m := Model{ID: d.ID, Loaded: true}
+		m := Model{ID: d.ID, Root: d.Root, Loaded: true}
 		owners[strings.ToLower(d.OwnedBy)] = true
 		if ls := d.Meta.LlamaSwap; ls != nil {
 			swap = true
@@ -278,4 +283,19 @@ func FindModel(eps []Endpoint, id string) []Endpoint {
 		}
 	}
 	return append(loaded, cold...)
+}
+
+var hfRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// Tokenizer is the best guess at the tokenizer for m: the server's root when
+// it is a Hugging Face repo or a local directory, else the id when that is a
+// repo. "" means the user has to say.
+func (m Model) Tokenizer() string {
+	switch {
+	case hfRepo.MatchString(m.Root) || strings.HasPrefix(m.Root, "/"):
+		return m.Root
+	case hfRepo.MatchString(m.ID) && !strings.Contains(m.ID, "@"):
+		return m.ID
+	}
+	return ""
 }

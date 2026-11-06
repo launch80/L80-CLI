@@ -20,9 +20,10 @@ import (
 )
 
 type vastScreen struct {
-	tab   int // 0 runs, 1 new run, 2 build spec
+	tab   int // 0 runs, 1 run a spec file, 2 new rental (the wizard)
 	form  widgets.Form
-	build widgets.Form
+	wiz   rentWizard
+	prog  *rentProgress
 	runs  []vast.RunState
 	table widgets.Table
 	job   *job
@@ -33,8 +34,8 @@ var upTo = []string{"reap", "publish", "bench", "connect", "provision", "rent"}
 
 func (s *vastScreen) init() {
 	s.form = widgets.Form{Submit: "Start", Fields: []*widgets.Field{
-		{Key: "spec", Label: "Spec file", Help: "The run's YAML: which model, engine and GPUs, the price ceiling and the budget. No spec yet? Press ctrl+b to build one (or run `L80 vast spec`).",
-			Input: widgets.TextInput{Placeholder: "ctrl+b builds one"}},
+		{Key: "spec", Label: "Spec file", Help: "A run spec YAML (the New rental tab writes one per rental, or `L80 vast spec`). No spec yet? Press ctrl+b for the New rental tab.",
+			Input: widgets.TextInput{Placeholder: "ctrl+b: new rental"}},
 		{Key: "hours", Label: "Max hours", Help: "Watchdog: when it fires, L80 stops the run and destroys its instance. Leave empty for none.",
 			Input: widgets.TextInput{}},
 		{Key: "upto", Label: "Stop after", Kind: widgets.ChoiceField, Choices: upTo,
@@ -43,110 +44,178 @@ func (s *vastScreen) init() {
 	}}
 	s.form.Fields[1].Input.Set("2")
 
-	d := vast.DefaultSpec()
-	num := func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
-	s.build = widgets.Form{Submit: "Save spec", Fields: []*widgets.Field{
-		{Key: "model", Label: "Model (HF repo)", Help: "The Hugging Face repo with the weights, e.g. Qwen/Qwen3-8B. For llamacpp, a GGUF repo.",
-			Input: widgets.TextInput{Placeholder: "Qwen/Qwen3-8B"}},
-		{Key: "id", Label: "Served as", Help: "The model id the endpoint answers to at /v1. Leave empty to use the repo name.",
-			Input: widgets.TextInput{Placeholder: "same as the repo"}},
-		{Key: "engine", Label: "Engine", Kind: widgets.ChoiceField, Choices: vast.Engines,
-			Help: "vllm serves safetensors (and GPTQ/AWQ) weights; llamacpp serves GGUF."},
-		{Key: "gpu", Label: "GPU types", Help: "Vast.ai GPU names, comma-separated, exactly as `s` (search offers) lists them, e.g. RTX 4090, RTX 3090, A100 SXM4, H100 SXM. The cheapest matching offer is rented. Leave empty for any GPU that fits the memory and price.",
-			Input: widgets.TextInput{Placeholder: "any"}},
-		{Key: "count", Label: "GPU count", Help: "GPUs on the box. With vllm, more than one also sets tensor parallelism.", Input: widgets.TextInput{}},
-		{Key: "vram", Label: "Min GPU memory", Help: "Total GPU memory in GB across the GPUs. Rule of thumb: the weights' size on disk plus 20% for the KV cache.", Input: widgets.TextInput{}},
-		{Key: "dph", Label: "Max $/hr", Help: "Price ceiling. No offer above this is rented; `s` on the Runs tab shows what is available under it.", Input: widgets.TextInput{}},
-		{Key: "budget", Label: "Budget $", Help: "The run refuses to start if its cost estimate is above this.", Input: widgets.TextInput{}},
-		{Key: "context", Label: "Context length", Help: "max_model_len for the engine. 0 leaves the engine's default.", Input: widgets.TextInput{}},
-		{Key: "disk", Label: "Disk GB", Help: "Instance disk. It must hold the weights plus the engine image.", Input: widgets.TextInput{}},
-		{Key: "quick", Label: "Quick benchmark", Kind: widgets.ToggleField, Help: "A short BetterBench pass: cheaper, less precise."},
-		{Key: "name", Label: "Save as", Help: "The spec's file name, without .yaml. Leave empty to name it after the model.",
-			Input: widgets.TextInput{Placeholder: "from the model"}},
-	}}
-	for k, v := range map[string]string{"count": strconv.Itoa(d.GPUCount), "vram": num(d.MinGPURAMGB), "dph": num(d.MaxDPH),
-		"budget": num(d.BudgetUSD), "context": strconv.Itoa(d.MaxModelLen), "disk": strconv.Itoa(d.DiskGB)} {
-		for _, f := range s.build.Fields {
-			if f.Key == k {
-				f.Input.Set(v)
-			}
-		}
-	}
+	s.wiz.init()
 }
 
 // specsDir sits next to the runs directory, as `L80 vast spec` writes it.
 func specsDir(c *Console) string { return filepath.Join(filepath.Dir(c.d.RunsDir), "specs") }
 
-// buildSpec turns the builder form into a Spec, naming the field at fault.
-func (s *vastScreen) buildSpec() (vast.Spec, error) {
-	v := s.build.Values()
-	sp := vast.Spec{ModelRepo: v["model"], ModelID: v["id"], Engine: v["engine"], Name: v["name"], Quick: v["quick"] == "true"}
-	sp.GPUNames = vast.ParseGPUNames(v["gpu"])
-	ints := []struct {
-		key, label string
-		dst        *int
-	}{{"count", "GPU count", &sp.GPUCount}, {"context", "context length", &sp.MaxModelLen}, {"disk", "disk GB", &sp.DiskGB}}
-	for _, f := range ints {
-		n, err := strconv.Atoi(v[f.key])
-		if err != nil {
-			return sp, fmt.Errorf("%s must be a whole number", f.label)
-		}
-		*f.dst = n
+// openBuilder switches to the New rental tab, explaining why.
+func (s *vastScreen) openBuilder(c *Console, why string) Cmd {
+	s.tab, s.wiz.page = 2, pgModel
+	s.wiz.forms[pgModel].Focus = 0
+	if why != "" {
+		c.setFlash(why, false)
 	}
-	floats := []struct {
-		key, label string
-		dst        *float64
-	}{{"vram", "min GPU memory", &sp.MinGPURAMGB}, {"dph", "max $/hr", &sp.MaxDPH}, {"budget", "budget", &sp.BudgetUSD}}
-	for _, f := range floats {
-		n, err := strconv.ParseFloat(strings.TrimPrefix(v[f.key], "$"), 64)
-		if err != nil {
-			return sp, fmt.Errorf("%s must be a number", f.label)
-		}
-		*f.dst = n
-	}
-	return sp, sp.Validate()
+	return c.qb.refreshResults(c)
 }
 
-// writeSpec writes the builder's spec, asking before replacing a file, and
-// hands it to the New run tab.
-func (s *vastScreen) writeSpec(c *Console) Cmd {
-	sp, err := s.buildSpec()
+// rentWith opens the New rental tab with a model and steps filled in (from
+// the QualityBench screen); the user picks the hardware and reviews the cost.
+func (c *Console) rentWith(model, engine string, steps []vast.Step) Cmd {
+	s := &c.vast
+	s.wiz.field(pgModel, "model").Input.Set(model)
+	eng := s.wiz.field(pgModel, "engine")
+	for i, e := range eng.Choices {
+		if e == engine {
+			eng.Choice = i
+		}
+	}
+	s.wiz.handed = steps
+	s.tab, s.wiz.page = 2, pgHardware
+	s.wiz.forms[pgHardware].Focus = 0
+	for i, id := range c.side {
+		if id == scrVast {
+			c.sel = i
+		}
+	}
+	c.scr, c.paneFocus = scrVast, true
+	c.setFlash("pick the GPU, then review the steps and the cost; nothing is rented until you confirm", false)
+	return s.loadRuns(c)
+}
+
+// wizardKey drives the New rental tab.
+func (s *vastScreen) wizardKey(c *Console, k KeyMsg, busy bool) Cmd {
+	w := &s.wiz
+	switch {
+	case k.Ctrl && k.Rune == 'r' && len(w.handed) > 0:
+		w.handed = nil
+		return nil
+	case k.Code == input.Rune && k.Rune == 's' && w.page == pgHardware && !k.Ctrl:
+		if f := w.forms[pgHardware]; f.Focus < len(f.Fields) && f.Fields[f.Focus].Kind == widgets.TextField {
+			break // typing an s
+		}
+		if busy {
+			return nil
+		}
+		return s.searchOffers(c)
+	}
+	next, back := w.handKey(k)
+	switch {
+	case back && w.page == 0:
+		s.tab = 0
+	case back:
+		w.page--
+	case next && w.page < pgReview:
+		if w.page == pgModel {
+			if _, err := w.spec(); err != nil && strings.Contains(err.Error(), "model") {
+				c.setFlash(err.Error(), true)
+				return nil
+			}
+		}
+		w.page++
+		w.forms[w.page].Focus = 0
+	case next && !busy:
+		return s.startRental(c)
+	}
+	return nil
+}
+
+// searchOffers shows the offers the Hardware page matches, renting nothing.
+func (s *vastScreen) searchOffers(c *Console) Cmd {
+	sp, err := s.wiz.spec()
+	if err != nil && !strings.Contains(err.Error(), "operation") {
+		c.setFlash(err.Error(), true)
+		return nil
+	}
+	f, err := os.CreateTemp("", "l80-search-*.yaml")
+	if err != nil {
+		c.setFlash(err.Error(), true)
+		return nil
+	}
+	f.WriteString(sp.YAML())
+	f.Close()
+	cmd := s.tool(c, "search offers", []string{"search", "--spec", f.Name()})
+	return cmd
+}
+
+// startRental writes the wizard's spec (the record), then asks once, with
+// the price and the cap, and runs it.
+func (s *vastScreen) startRental(c *Console) Cmd {
+	sp, err := s.wiz.spec()
+	if err != nil {
+		c.setFlash(err.Error(), true)
+		return nil
+	}
+	p := s.wiz.plan(sp)
+	hrs, err := s.wiz.hours(p)
 	if err != nil {
 		c.setFlash(err.Error(), true)
 		return nil
 	}
 	path := filepath.Join(specsDir(c), sp.FileName())
-	done := func(force bool) Cmd {
-		if _, err := vast.WriteSpec(sp, path, force); err != nil {
+	dry := s.wiz.val(pgReview, "dry") == "true"
+	limit := time.Duration(hrs * float64(time.Hour))
+	run := func() Cmd {
+		if _, err := vast.WriteSpec(sp, path, true); err != nil {
 			c.setFlash(err.Error(), true)
 			return nil
 		}
 		s.form.Fields[0].Input.Set(path)
-		s.form.Focus = len(s.form.Fields)
-		s.tab = 1
-		c.setFlash("wrote "+path+": dry run is on, enter starts it", false)
-		return nil
+		args := []string{"run", "--spec", path}
+		if dry {
+			args = append(args, "--dry-run")
+		}
+		return s.launch(c, path, args, limit, sp.Steps)
 	}
-	if _, err := os.Stat(path); err == nil {
-		c.confirm(&widgets.Dialog{Title: "Replace spec", Buttons: []string{"Replace", "Cancel"}, Choice: 1,
-			Body: path + " already exists. Replace it?"}, func(ch int) Cmd {
+	consent := func() Cmd {
+		if dry {
+			return run()
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "Rent a GPU on Vast.ai for %s?\n\n", sp.ModelRepo)
+		gpu := strings.Join(sp.GPUNames, ", ")
+		if gpu == "" {
+			gpu = "any"
+		}
+		fmt.Fprintf(&b, "GPU: %s × %d, at most $%s/hr\n", gpu, sp.GPUCount, strconv.FormatFloat(sp.MaxDPH, 'f', -1, 64))
+		for i, st := range sp.Steps {
+			fmt.Fprintf(&b, "%d. %s\n", i+1, st.Describe())
+		}
+		fmt.Fprintf(&b, "\nAbout %s; hard cap %.1f h, so at most $%.2f.\n", humanMinutes(p.minutes), hrs, hrs*sp.MaxDPH)
+		b.WriteString("The box is destroyed when the run ends or the cap is hit; nothing waits on you.")
+		if pubs := publishing(sp.Steps); pubs > 0 {
+			fmt.Fprintf(&b, "\n%d step(s) publish a public launch80 page.", pubs)
+		}
+		c.confirm(&widgets.Dialog{Title: "Rent a GPU", Danger: true, Buttons: []string{"Rent", "Cancel"}, Choice: 1, Body: b.String()}, func(ch int) Cmd {
 			if ch == 0 {
-				return done(true)
+				return run()
 			}
 			return nil
 		})
 		return nil
 	}
-	return done(false)
+	if _, err := os.Stat(path); err == nil {
+		c.confirm(&widgets.Dialog{Title: "Replace spec", Buttons: []string{"Replace", "Cancel"}, Choice: 1,
+			Body: path + " already exists (an earlier rental's record). Replace it with this one?"}, func(ch int) Cmd {
+			if ch == 0 {
+				return consent()
+			}
+			return nil
+		})
+		return nil
+	}
+	return consent()
 }
 
-// openBuilder switches to the Build spec tab, explaining why.
-func (s *vastScreen) openBuilder(c *Console, why string) Cmd {
-	s.tab, s.build.Focus = 2, 0
-	if why != "" {
-		c.setFlash(why, false)
+func publishing(steps []vast.Step) int {
+	n := 0
+	for _, st := range steps {
+		if st.Publish {
+			n++
+		}
 	}
-	return nil
+	return n
 }
 
 type vastRunsLoaded struct {
@@ -197,12 +266,14 @@ func (s *vastScreen) update(c *Console, m Msg) Cmd {
 		if v.j == s.job {
 			return s.loadRuns(c)
 		}
+	case qbResults:
+		s.wiz.setResults(v.rs)
 	case PasteMsg:
 		switch s.tab {
 		case 1:
 			s.form.HandlePaste(v)
 		case 2:
-			s.build.HandlePaste(v)
+			s.wiz.forms[s.wiz.page].HandlePaste(v)
 		}
 	case MouseMsg:
 		if s.job != nil {
@@ -214,19 +285,11 @@ func (s *vastScreen) update(c *Console, m Msg) Cmd {
 			s.job.cancel()
 			return nil
 		}
-		if v.Code == input.Tab && v.Ctrl == false && s.tab == 0 {
-			s.tab = 1
-			return nil
+		if v.Code == input.Tab && !v.Ctrl && s.tab == 0 {
+			return s.openBuilder(c, "")
 		}
 		if s.tab == 2 {
-			if v.Code == input.Esc {
-				s.tab = 1
-				return nil
-			}
-			if _, submit := s.build.HandleKey(v); submit {
-				return s.writeSpec(c)
-			}
-			return nil
+			return s.wizardKey(c, v, busy)
 		}
 		if s.tab == 1 {
 			if v.Code == input.Esc {
@@ -255,7 +318,19 @@ func (s *vastScreen) update(c *Console, m Msg) Cmd {
 		case isBack(v):
 			c.scr = scrHome
 		case v.Code == input.Rune && v.Rune == 'n':
+			return s.openBuilder(c, "")
+		case v.Code == input.Rune && v.Rune == 'f':
 			s.tab = 1
+		case v.Code == input.Rune && v.Rune == 'o' && s.prog != nil:
+			for _, o := range s.prog.outputs() {
+				if o.Report != "" {
+					if err := openFile(o.Report); err != nil {
+						c.setFlash(err.Error(), true)
+					}
+					return nil
+				}
+			}
+			c.setFlash("no report yet", true)
 		case v.Code == input.Rune && v.Rune == 'b':
 			return s.openBuilder(c, "")
 		case v.Code == input.Rune && v.Rune == 'r':
@@ -394,18 +469,7 @@ func (s *vastScreen) startRun(c *Console) Cmd {
 	if dry {
 		args = append(args, "--dry-run")
 	}
-	launch := func() Cmd {
-		env, err := s.env(c)
-		if err != nil {
-			c.setFlash(err.Error(), true)
-			return nil
-		}
-		s.tab = 0
-		s.job = newJob("vast run " + spec)
-		return c.start(s.job, func(ctx context.Context, out io.Writer) (any, int, error) {
-			return vastPipeline(ctx, c.d.RunsDir, args, env, limit, out)
-		})
-	}
+	launch := func() Cmd { return s.launch(c, spec, args, limit, nil) }
 	if dry {
 		return launch()
 	}
@@ -429,6 +493,22 @@ func (s *vastScreen) startRun(c *Console) Cmd {
 	return nil
 }
 
+// launch starts `bbvastl80 run` as a job, parsing its step lines.
+func (s *vastScreen) launch(c *Console, spec string, args []string, limit time.Duration, steps []vast.Step) Cmd {
+	env, err := s.env(c)
+	if err != nil {
+		c.setFlash(err.Error(), true)
+		return nil
+	}
+	s.tab = 0
+	s.job = newJob("vast run " + filepath.Base(spec))
+	s.prog = newRentProgress(steps)
+	prog := s.prog
+	return c.start(s.job, func(ctx context.Context, out io.Writer) (any, int, error) {
+		return vastPipeline(ctx, c.d.RunsDir, args, env, limit, &rentWriter{out: out, p: prog})
+	})
+}
+
 // vastPipeline runs `bbvastl80 run`, enforces the watchdog, and reports any
 // instance from this run that may still be billing.
 func vastPipeline(ctx context.Context, runsDir string, args, env []string, limit time.Duration, out io.Writer) (any, int, error) {
@@ -437,6 +517,8 @@ func vastPipeline(ctx context.Context, runsDir string, args, env []string, limit
 	defer cancel()
 	var fired atomic.Bool
 	if limit > 0 {
+		// bbvastl80 tells QualityBench to stop starting work before this.
+		env = append(append([]string{}, env...), fmt.Sprintf("BBVASTL80_DEADLINE=%d", start.Add(limit).Unix()))
 		t := time.AfterFunc(limit, func() {
 			fired.Store(true)
 			fmt.Fprintf(out, "\nL80: watchdog reached (%s); stopping the run and destroying its instance\n", limit)
@@ -463,7 +545,7 @@ func vastPipeline(ctx context.Context, runsDir string, args, env []string, limit
 
 func (s *vastScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	t := c.th
-	tabs := []string{" Runs ", " New run ", " Build spec "}
+	tabs := []string{" Runs ", " Spec file ", " New rental "}
 	for i := range tabs {
 		if i == s.tab {
 			tabs[i] = t.R(t.Selected, tabs[i])
@@ -479,26 +561,32 @@ func (s *vastScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	var keys []widgets.Binding
 	switch s.tab {
 	case 2:
-		for _, l := range style.Wrap("Describe the GPU and model you want. Saving writes the spec file to "+specsDir(c)+
-			" and costs nothing; you rent from New run, after a dry run and a confirmation.", w) {
-			out = append(out, t.R(t.Muted, l))
+		out = append(out, s.wiz.view(c, w)...)
+		keys = []widgets.Binding{{Keys: "tab", Desc: "next field"}, {Keys: "←→", Desc: "choose"}, {Keys: "enter", Desc: "next"}, {Keys: "esc", Desc: "previous page"}}
+		if s.wiz.page == pgHardware {
+			keys = append(keys, widgets.Binding{Keys: "s", Desc: "search offers"})
 		}
-		out = append(out, "")
-		out = append(out, s.build.View(t, w, true)...)
-		keys = []widgets.Binding{{Keys: "tab", Desc: "next field"}, {Keys: "←→", Desc: "choose"}, {Keys: "enter", Desc: "save"}, {Keys: "esc", Desc: "new run"}}
 	case 1:
 		out = append(out, s.form.View(t, w, true)...)
-		keys = []widgets.Binding{{Keys: "tab", Desc: "next field"}, {Keys: "ctrl+b", Desc: "build spec"}, {Keys: "enter", Desc: "start"}, {Keys: "esc", Desc: "runs"}}
+		keys = []widgets.Binding{{Keys: "tab", Desc: "next field"}, {Keys: "ctrl+b", Desc: "new rental"}, {Keys: "enter", Desc: "start"}, {Keys: "esc", Desc: "runs"}}
 	default:
 		if s.err != "" {
 			out = append(out, t.R(t.Bad, clip(s.err, w)))
 		}
 		tableH := min(len(s.runs)+2, max(4, h/3))
 		out = append(out, s.table.View(t, w, tableH, true)...)
-		keys = []widgets.Binding{{Keys: "n", Desc: "new run"}, {Keys: "b", Desc: "build spec"}, {Keys: "s", Desc: "search offers"}, {Keys: "d", Desc: "destroy"}, {Keys: "x", Desc: "ssh"}, {Keys: "esc", Desc: "back"}, {Keys: "D", Desc: "doctor"}, {Keys: "R", Desc: "reap"}, {Keys: "r", Desc: "refresh"}}
+		keys = []widgets.Binding{{Keys: "n", Desc: "new rental"}, {Keys: "f", Desc: "run a spec file"}, {Keys: "s", Desc: "search offers"}, {Keys: "d", Desc: "destroy"}, {Keys: "x", Desc: "ssh"}, {Keys: "esc", Desc: "back"}, {Keys: "D", Desc: "doctor"}, {Keys: "R", Desc: "reap"}, {Keys: "r", Desc: "refresh"}}
 	}
 	if s.job != nil {
 		out = append(out, "", jobHeader(c, s.job, w))
+		if s.prog != nil && len(s.prog.steps) > 0 && s.tab == 0 {
+			out = append(out, s.prog.view(c.th, w, c.tick)...)
+			for _, o := range s.prog.outputs() {
+				if o.Results != "" {
+					out = append(out, c.th.R(c.th.Muted, "  "+style.Sanitize(o.Label+": "+o.Results)))
+				}
+			}
+		}
 		out = append(out, s.job.log.View(t, w, max(3, h-len(out)))...)
 	}
 	for i := range out {
