@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.2 (2026-11-06)
 
 ### History: publish QualityBench reports; the Jobs screen is gone
 
