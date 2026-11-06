@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -58,6 +59,8 @@ func runQualitybench(e env, args []string) int {
 	out := fs.String("out", "", "results file (default ./qualitybench-<model>-<time>.json); the HTML report goes beside it")
 	var scan multiFlag
 	fs.Var(&scan, "scan", "with no --endpoint, also probe this host:port or URL; repeatable")
+	yes := fs.Bool("yes", false, "start without asking, whatever the estimate (see `L80 settings` qualitybench.confirm)")
+	estimateOnly := fs.Bool("estimate-only", false, "print how long the run would take (JSON with --json) and exit without running")
 
 	results := fs.String("results", "", "publish this existing results file instead of running")
 	dryRun := fs.Bool("dry-run", false, "run (or read) and prepare the payload, but do not publish")
@@ -151,22 +154,54 @@ func runQualitybench(e env, args []string) int {
 		if info, err := os.Stat(resultsPath); err == nil && info.IsDir() {
 			return fail(e, api.Newf("E_USAGE", "Pass --out with a file path such as ./results.json.", "--out %s is a directory", resultsPath))
 		}
-		mins, unmeasured := qualitybench.EstimateMinutes(scope.Tasks, scope.Tier == qualitybench.TierQuick)
 		output.Detailf(e.stderr, "%s run: %s", scope.Tier, strings.Join(scope.Tasks, ", "))
-		est := fmt.Sprintf("roughly %d min with thinking off on the reference run (%s)", mins, qualitybench.RefRun)
-		if unmeasured > 0 {
-			est += fmt.Sprintf(", plus %d task(s) not timed", unmeasured)
-		}
-		output.Detailf(e.stderr, "%s", est)
-
 		opts := qualitybench.RunOptions{
 			Endpoint: ep, Model: *model, Out: resultsPath, Scope: scope, Thinking: *thinking,
 			Reference: *reference, Thresholds: *thresholds, Deadline: *deadline, Notes: notes, Extra: extra, APIKey: key,
 			Tokenizer: *tokenizer, Sandbox: *sandbox,
 		}
+		if !*estimateOnly {
+			output.Detailf(e.stderr, "checking how long this will take…")
+		}
+		ectx, estop := signal.NotifyContext(context.Background(), os.Interrupt)
+		est := estimateQuality(ectx, opts)
+		estop()
+		if *estimateOnly {
+			if *asJSON {
+				return emitJSON(e, map[string]any{"estimate": est, "endpoint_found": ep != "", "model": *model,
+					"scope": scope.Tier, "tasks": scope.Tasks})
+			}
+			printEstimate(e.stdout, est)
+			return api.ExitOK
+		}
+		printEstimate(e.stderr, est)
+		gate := qualityGate(e.stderr, est, *yes)
+		if !gate.Run {
+			output.Detailf(e.stderr, "not started. Rerun with --yes to skip the question, or `L80 settings set qualitybench.confirm over:30m` to ask only for longer runs")
+			return api.ExitOK
+		}
+		if !gate.Asked && gate.Reason != "" {
+			output.Detailf(e.stderr, "starting (%s)", gate.Reason)
+		}
+		// The tool would ask again on its own terminal; L80 has asked. Only
+		// QualityBench 0.2.0+ (which answered the estimate) knows --yes.
+		opts.Yes = est.FromTool
+
+		var sinkW io.Writer = e.stderr
+		var sw *statusWriter
+		if !*asJSON && stderrIsTTY() {
+			tr := qualitybench.NewTracker(scope.Tasks)
+			tr.SetEstimate(est)
+			tr.SetDeadline(parseDeadline(*deadline, time.Now()))
+			sw = newStatusWriter(e.stderr, tr)
+			sinkW = sw
+		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-		res, apiErr := app.RunQuality(ctx, opts, app.WriterSink{W: e.stderr})
+		res, apiErr := app.RunQuality(ctx, opts, app.WriterSink{W: sinkW})
 		stop()
+		if sw != nil {
+			sw.Close()
+		}
 		if apiErr != nil {
 			return fail(e, apiErr)
 		}
@@ -451,6 +486,9 @@ Run flags:
   --out <path>            results file (default ./qualitybench-<model>-<time>.json)
   --api-key <key>         endpoint key (or L80_QUALITYBENCH_API_KEY); sent by environment
   --no-publish            keep the results local
+  --yes                   start without asking (L80 shows the estimate first and, by
+                          default, asks on a terminal; see `+"`L80 settings`"+` qualitybench.confirm)
+  --estimate-only         print how long the run would take and exit (JSON with --json)
   Rerunning the same command resumes: finished tasks and shards are skipped.
   If a task fails, the rest are kept (and published); the page lists what is
   missing, and the exit status is 1.

@@ -102,3 +102,18 @@ func SetupQuality(ctx context.Context, tasks []string, sandbox string, s Sink) (
 	}
 	return code, nil
 }
+
+// EstimateQuality asks QualityBench how long the run in o would take. It
+// always returns an estimate: when the tool is missing, older than 0.2.0 or
+// cannot reach the server, it is the reference table with Warning set.
+func EstimateQuality(ctx context.Context, o qualitybench.RunOptions, noProbe bool) qualitybench.Estimate {
+	eo := qualitybench.EstimateOptions{Endpoint: o.Endpoint, Model: o.Model, Scope: o.Scope, Thinking: o.Thinking,
+		NoProbe: noProbe, APIKey: o.APIKey}
+	runner, err := qualitybench.ResolveRunner()
+	if err != nil {
+		e := qualitybench.StaticEstimate(o.Scope, o.Thinking)
+		e.Warning = "QualityBench is not available yet"
+		return e
+	}
+	return qualitybench.RunEstimate(ctx, runner, eo)
+}

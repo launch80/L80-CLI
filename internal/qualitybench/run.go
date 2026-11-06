@@ -64,6 +64,9 @@ type RunOptions struct {
 	// code directly and is only for disposable rented boxes.
 	Sandbox string
 	Extra   []string // passed through after the named flags
+	// Yes passes --yes: L80 has already asked. Only QualityBench 0.2.0+
+	// knows the flag, so set it only when the tool proved it (Estimate.FromTool).
+	Yes bool
 	// APIKey reaches the child as QUALITYBENCH_API_KEY, never on the command line.
 	APIKey string
 }
@@ -107,6 +110,9 @@ func (o RunOptions) Args() []string {
 	}
 	for _, n := range o.Notes {
 		args = append(args, "--note", n)
+	}
+	if o.Yes {
+		args = append(args, "--yes")
 	}
 	return append(args, o.Extra...)
 }

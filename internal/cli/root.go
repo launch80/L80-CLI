@@ -54,6 +54,8 @@ func Run(args []string) int {
 		return runHistory(e, args[2:])
 	case "tools":
 		return runTools(e, args[2:])
+	case "settings":
+		return runSettings(e, args[2:])
 	case "vast":
 		return runVast(e, args[2:])
 	case "pwdet":
@@ -151,6 +153,7 @@ Usage:
   Setup and maintenance:
   L80 auth status                                Show the resolved endpoint and key
   L80 doctor                                     Check connectivity, config and tools
+  L80 settings [list|get|set <key> <value>]      Preferences, e.g. qualitybench.confirm always|over:30m|never
   L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
   L80 version                                    Print the version
 
@@ -160,6 +163,7 @@ Environment:
   L80_BETTERBENCH          Command to run instead of the pinned BetterBench
   L80_BETTERBENCH_API_KEY  Bearer key for the endpoint under test (never recorded)
   L80_VAST, L80_PWDET, L80_DASHBOARD   Commands to run instead of the pinned tools
+  L80_QUALITYBENCH_CONFIRM always|over:30m|never: overrides the qualitybench.confirm setting
   VAST_API_KEY             Vast.ai key for L80 vast (or ~/.config/bbvastl80/credentials)
 
 `
