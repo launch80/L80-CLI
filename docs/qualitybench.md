@@ -1,14 +1,12 @@
 # QualityBench ↔ L80 contract
 
-`L80 qualitybench` runs the `qualitybench` console script from
-[launch80/QualityBench](https://github.com/launch80/QualityBench). L80 owns
+`L80 qualitybench` runs the `qualitybench` console script from [launch80/QualityBench](https://github.com/launch80/QualityBench). L80 owns
 task selection, endpoint discovery and publishing. The tool owns generation,
 scoring, statistics and the HTML report. This file is what each side may rely on.
 A change to it is a change to both.
 
-Status: **draft**, written before QualityBench's first release. The manifest
-lists the tool unpinned until then (`L80 tools check` shows `unreleased`).
-`L80_QUALITYBENCH` runs a local build.
+Status: implemented by QualityBench 0.1.0, which L80 1.3.0 pins in its tool manifest;
+`L80_QUALITYBENCH` runs a local build. The same file lives in QualityBench as `docs/contract.md`.
 
 ## Invocation
 
@@ -19,7 +17,22 @@ qualitybench run --endpoint URL --model ID --out PATH
     [--reference REF.json] [--thresholds T.md] [--deadline T]
     [--note KEY=VALUE]...  [extra flags passed through]
 qualitybench compare REF.json TEST.json [--thresholds T.md] [--out PATH]
+qualitybench setup [--tasks a,b,c] [--sandbox docker|native]
+qualitybench tasks [--json]
 ```
+
+Flags L80 does not send by name, but may pass through: `--title`, `--concurrency N`
+(default 16), `--sandbox docker|native`, `--tokenizer`, `--eval-set`, `--arm`,
+`--arm-label`, `--thinking-max-tokens`.
+
+- `--reference REF.json`: when the reference is the same model with thinking off
+  and this run has `--thinking on`, the two are paired task by task (`on`/`paired`).
+  Otherwise this run becomes an arm of the reference's document. Either way `--out`
+  holds the combined document and this run's own results go to `<name>.qb/run.json`.
+  The reference's `<ref>.qb/` folder must sit next to it.
+- `--note precision=…`, `engine=…` and `gpu=…` fill `env`; other notes become caveats.
+- `run` installs the harness environments it needs on first use (`setup` does it
+  ahead of time); a run without network after setup needs no downloads.
 
 - `--endpoint` is a base URL including `/v1`.
 - `--tasks` takes ids from the suite table below, in any order. L80 sends it
@@ -33,8 +46,9 @@ qualitybench compare REF.json TEST.json [--thresholds T.md] [--out PATH]
 - Environment: `QUALITYBENCH_API_KEY` is the endpoint's bearer key, which never
   arrives as a flag. `QUALITYBENCH_NO_UPDATE_CHECK=1` means L80 owns version alignment.
 
-Exit status: 0 when the results file is complete or partial by deadline; 1 on
-failure; 2 on usage. On any exit the tool keeps what it finished.
+Exit status: 0 when the results file is complete or partial by deadline; 1 when
+a task failed (the results file is still written, with the task in `partials`);
+2 on usage; 130 when interrupted. On any exit the tool keeps what it finished.
 
 ## Suite (v1)
 
@@ -80,8 +94,9 @@ These come from the 2026-11 Qwopus study, where each one failed at least once:
 - `--out PATH`: the results file, described below.
 - `PATH` with `.json` replaced by `.html`: a self-contained HTML report that
   works offline.
-- Per-item records and graded text go in a sidecar directory next to the
-  results file. They are never part of the publish payload.
+- Per-item records, graded text, logprob arrays and `run.log` go in `<name>.qb/`
+  next to the results file. They are never part of the publish payload, and
+  `compare` needs them.
 
 ### Results file
 
@@ -96,6 +111,10 @@ validates it**, minus `$template`, which L80 adds. Requirements:
   home-directory path (`/home/`, `/Users/`, `~/`, `C:\Users\`) or a URL to
   localhost, a private address or a `.local` host anywhere in it.
 - `partials` lists every task cut short.
+
+Today the server requires at least one scored task and the `logprobs` block, so a
+run of only `needle` (for example) writes a valid local file that launch80 will not
+accept yet; the tool says so at the end of the run.
 
 The schema itself lives with the server template
 (`lib/artifacts/schemas/bench-qualitybench-v1.ts` in the launch80 repo).
