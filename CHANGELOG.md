@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### QualityBench: how long, then a yes
+
+- **The estimate comes first.** `L80 qualitybench` asks QualityBench 0.2.0
+  (`qualitybench estimate`) how long the run will take, measured on the server
+  you point it at, and prints the total, a range and each task's minutes. With
+  an older QualityBench it shows the reference-run table, labelled as such.
+- **Then it asks** on a terminal (`Start? [y/N]`), per the new
+  `qualitybench.confirm` setting: `always` (default), `over:<duration>` to ask
+  only for longer runs, or `never`. `--yes` skips it once;
+  `L80_QUALITYBENCH_CONFIRM` overrides; without a terminal L80 prints the
+  estimate and starts, as before. `--estimate-only [--json]` prints the
+  estimate and runs nothing, for agents to quote before they run.
+- **`L80 settings list|get|set|unset`** reads and writes
+  `~/.config/L80/settings.json`.
+- **Progress with time left.** On a terminal the CLI keeps one status line
+  (`48% · 23 min left · IFEval 31/55`). The console adds an overall bar
+  weighted by each task's estimated minutes, the time left (QualityBench's own
+  figure from 0.2.0, else worked out from the run so far), per-task time left,
+  and a warning naming the tasks a deadline will cut.
+- **Console:** Run shows "Checking how long this will take…", then Start /
+  Start, don't ask again / Cancel. Settings cycles the question. The Scope row
+  shows the tool's estimate for the picked server without sending it requests.
+  Job titles on Home and Jobs carry the live percentage and time left.
+- **Rentals:** the consent dialog lists each step's time; the run view shows the
+  QualityBench step's overall bar and time left against the watchdog's
+  deadline. A rental never asks a second time once it is billing.
+
 ## 1.3.0
 
 ### QualityBench

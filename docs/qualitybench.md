@@ -135,6 +135,48 @@ qb:progress {"task":"lcb","state":"partial","done":88,"total":175}
 The console's QualityBench screen parses these for its per-task progress
 view. Any other output is shown as log text.
 
+From QualityBench 0.2.0 (all additive; L80 works with 0.1.x without them):
+
+- Per-task lines carry `"elapsed_s"`, and code tasks report `"state":"scoring"`
+  between generation and their scores.
+- A run-level line every ~10 s and at each task change:
+  `qb:progress {"run":{"task":"ifeval","task_index":2,"tasks":9,"elapsed_s":812,"eta_s":1460,"est_total_s":2300,"fraction":0.36}}`.
+  L80 uses its `eta_s` and `fraction` while the line is under two minutes old,
+  and otherwise works the time left out itself (each task weighted by its
+  estimated minutes, the running task at its observed rate, the rest scaled by
+  how finished tasks compared with their estimates).
+- `qb:estimate {…}` once before the first task: the estimate below.
+
+### Estimate and approval (QualityBench 0.2.0+)
+
+`qualitybench estimate --endpoint URL --model M [--quick] [--tasks a,b]
+[--thinking on|off] [--json] [--no-probe]` prints:
+
+```json
+{"source":"probe","total_min":38.2,"range_min":[27.0,57.0],
+ "tasks":[{"id":"gsm8k","label":"GSM8K","min":6.1,"items":132,"source":"probe"}],
+ "probe":{"decode_tps":2140.0,"prefill_tps":9800.0,"speed":1.9},
+ "setup_min":0.0,"basis":"measured on this server just now"}
+```
+
+- `source` is `history`, `probe` or `reference`. `--no-probe` sends nothing
+  to the server (L80's quiet Scope-row estimate uses it, so it never loads a
+  model). If the server cannot be reached it still exits 0, with `reference`
+  and a `warning`.
+- `run --yes` skips the tool's own prompt; L80 passes it after asking, and only
+  to a tool that answered `estimate` (0.1.x does not know the flag). The tool
+  never prompts without a terminal on stdin, which is how L80 runs it.
+  `run --max-minutes N` refuses to start (exit 3) when the upper bound is over N.
+- The estimate and the wall time go in the sidecar's `ENV.json`
+  (`estimate`, `wall_min`), not the results file: the launch80 schema's `env`
+  takes no extra keys.
+
+L80 asks per `qualitybench.confirm` (`L80 settings`): `always` (default),
+`over:<duration>`, or `never`; `L80_QUALITYBENCH_CONFIRM` overrides, `--yes`
+skips once, and without a terminal L80 prints the estimate and proceeds.
+For an older tool L80 falls back to the RefMinutes table, labelled "on the
+reference run".
+
 ## Not in this contract yet
 
 - Running on rented GPUs. That comes through `L80 vast` with a

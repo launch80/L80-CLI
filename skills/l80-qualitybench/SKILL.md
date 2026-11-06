@@ -53,6 +53,26 @@ L80 qualitybench --model <id> --no-publish --note precision=BF16 --note engine="
 A full run takes hours: about 2h40 with thinking off on the reference run.
 Suggest `--quick` first.
 
+## How long it takes: ask before running
+
+Runs are long, so **quote the estimate to the user and get a yes before you
+start one**:
+
+```sh
+L80 qualitybench --model <id> --quick --estimate-only --json   # measures the server, runs nothing
+```
+
+- Read `estimate.total_min`, `estimate.range_min` and `estimate.basis` and tell
+  the user, e.g. "about 38 min (27–57), measured on this server just now".
+  `estimate.setup_min` > 0 is a one-off first-run setup. A `warning` (an older
+  QualityBench, or the server not reachable) means the figure is only the
+  reference table: say so.
+- Once they agree, run with `--yes`. Without a terminal L80 prints the estimate
+  and starts anyway, so the yes is yours to get.
+- People who do not want the question set
+  `L80 settings set qualitybench.confirm never` (or `over:30m` to be asked only
+  for longer runs). Only change it when the user asks you to.
+
 ## Compare
 
 ```sh
@@ -93,7 +113,10 @@ Each step's results land in the run's folder.
 ## In the console
 
 `L80 tui` → QualityBench:
-- **Run:** pick a scope, a server and a model; live per-task progress; `p`
+- **Run:** pick a scope, a server and a model. Run measures the server and
+  shows how long the run will take, then asks (Start / Start, don't ask again /
+  Cancel; Settings changes it). While it runs: an overall bar with the time
+  left, per-task bars, and the job title shows `48% · 23 min left`. `p`
   publishes and `o` opens the report.
 - **Compare:** pick two local runs.
 - **Rent via Vast:** hands the model to Rent with a QualityBench step.
