@@ -128,3 +128,22 @@ func TestParseEstimateSkipsLogLines(t *testing.T) {
 		t.Error("garbage parsed")
 	}
 }
+
+func TestOverallNeverMovesBackAndSaysDone(t *testing.T) {
+	tr := NewTracker([]string{"gsm8k", "bfcl"})
+	now := time.Unix(1000, 0)
+	tr.Now = func() time.Time { return now }
+	tr.Parse(`qb:progress {"task":"gsm8k","done":0,"total":100}`)
+	tr.Parse(`qb:progress {"task":"gsm8k","done":60,"total":100}`)
+	a := tr.Overall().Fraction
+	// the tool's run line is older than L80's own count and says less
+	tr.Parse(`qb:progress {"run":{"task":"gsm8k","task_index":1,"tasks":2,"elapsed_s":30,"eta_s":40,"est_total_s":100,"fraction":0.2}}`)
+	if b := tr.Overall().Fraction; b < a {
+		t.Fatalf("fraction went back: %v then %v", a, b)
+	}
+	tr.Parse(`qb:progress {"task":"gsm8k","state":"scored","correct":50,"total":100}`)
+	tr.Parse(`qb:progress {"task":"bfcl","state":"scored","correct":5,"total":10}`)
+	if s := tr.Overall().Status(); s != "100% · done" {
+		t.Fatalf("status at the end = %q", s)
+	}
+}

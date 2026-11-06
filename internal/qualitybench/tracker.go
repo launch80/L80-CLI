@@ -29,6 +29,9 @@ type Tracker struct {
 	runAt    time.Time
 	start    time.Time
 	deadline time.Time
+	// shown is the highest fraction reported so far: the bar never moves back
+	// when the tool's 10-second run line lags L80's own count.
+	shown float64
 	// Now is the clock, swapped in tests.
 	Now func() time.Time
 }
@@ -304,9 +307,7 @@ func (t *Tracker) Overall() Overall {
 		since := now.Sub(t.runAt)
 		o.Left = max(0, time.Duration(t.run.ETAS*float64(time.Second))-since)
 		o.Known, o.FromTool = true, true
-		if t.run.Fraction > 0 {
-			o.Fraction = t.run.Fraction
-		}
+		o.Fraction = math.Max(o.Fraction, t.run.Fraction)
 		if t.run.EstTotalS > 0 && o.EstTotal == 0 {
 			o.EstTotal = time.Duration(t.run.EstTotalS * float64(time.Second))
 		}
@@ -317,6 +318,8 @@ func (t *Tracker) Overall() Overall {
 	if o.Fraction > 1 {
 		o.Fraction = 1
 	}
+	o.Fraction = math.Max(o.Fraction, t.shown)
+	t.shown = o.Fraction
 
 	// Which tasks a deadline cuts: walk the remaining tasks in order.
 	if !t.deadline.IsZero() && o.Known {
@@ -364,6 +367,9 @@ func Duration(d time.Duration) string { return Minutes(d.Minutes()) }
 // "48% · 23 min left · IFEval 31/55".
 func (o Overall) Status() string {
 	parts := []string{strings.TrimSpace(percent(o.Fraction))}
+	if o.Fraction >= 1 {
+		return "100% · done"
+	}
 	if o.Known {
 		parts = append(parts, Duration(o.Left)+" left")
 	}
