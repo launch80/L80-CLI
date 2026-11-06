@@ -293,7 +293,7 @@ func isolateSync(t *testing.T, profile string) {
 	profileFiles = func() []string { return []string{rc} }
 	uvToolDir = func() (string, error) { return "", errors.New("no uv in tests") }
 	t.Cleanup(func() { profileFiles, uvToolDir = oldP, oldD })
-	for _, n := range []string{"L80_VAST", "L80_PWDET", "L80_DASHBOARD"} {
+	for _, n := range []string{"L80_VAST", "L80_PWDET", "L80_DASHBOARD", "L80_QUALITYBENCH"} {
 		t.Setenv(n, "true") // resolve the other tools without probing or downloading
 	}
 }
