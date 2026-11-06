@@ -35,26 +35,9 @@ type Deps struct {
 	Usage string
 	// Onboard opens the console on onboarding (first run, or `L80 onboard`).
 	Onboard bool
+	// Update runs `L80 update` with args, in process; nil where it cannot.
+	Update func(args []string, stdout, stderr io.Writer) int
 }
-
-type screenID int
-
-const (
-	scrHome screenID = iota
-	scrBench
-	scrVast
-	scrPwdet
-	scrDash
-	scrHistory
-	scrVerify
-	scrTools
-	scrHelp
-	scrAbout
-	scrOnboard
-	scrRecs
-	scrTrain
-	scrQuality
-)
 
 // Console is the root model.
 type Console struct {
@@ -76,24 +59,27 @@ type Console struct {
 	dialog   *widgets.Dialog
 	onDialog func(choice int) Cmd
 
-	home    homeScreen
-	bench   benchScreen
-	vast    vastScreen
-	pw      pwdetScreen
-	dash    dashScreen
-	hist    histScreen
-	verify  verifyScreen
-	tools   toolsScreen
-	about   aboutScreen
-	onb     onboardScreen
-	qb      qualityScreen
+	home   homeScreen
+	bench  benchScreen
+	vast   vastScreen
+	pw     pwdetScreen
+	dash   dashScreen
+	hist   histScreen
+	verify verifyScreen
+	tools  toolsScreen
+	about  aboutScreen
+	onb    onboardScreen
+	qb     qualityScreen
+	// pages holds the state of screens that register from their own file.
+	pages   map[screenID]any
 	redraw  atomic.Bool
-	running int // jobs in flight, for the spinner tick
+	running int    // jobs in flight, for the spinner tick
+	jobs    []*job // every job started, oldest first (see track)
 }
 
 // Run starts the console. It returns ErrNoTTY when there is no terminal.
 func Run(d Deps) error {
-	c := &Console{d: d}
+	c := &Console{d: d, scr: scrHome}
 	p := NewProgram(c)
 	c.prog = p
 	unicodeOK := !strings.Contains(strings.ToLower(os.Getenv("LANG")+os.Getenv("LC_ALL")), "c") || strings.Contains(strings.ToLower(os.Getenv("LANG")+os.Getenv("LC_ALL")+os.Getenv("LC_CTYPE")), "utf")
@@ -101,7 +87,7 @@ func Run(d Deps) error {
 		unicodeOK = false
 	}
 	c.th = widgets.DefaultTheme(p.Profile(), unicodeOK)
-	c.side = sidebar
+	c.side = sidebarIDs()
 	c.bench.init()
 	c.vast.init()
 	c.pw.init()
@@ -166,6 +152,7 @@ func (c *Console) start(j *job, fn func(ctx context.Context, out io.Writer) (any
 	ctx, cancel := context.WithCancel(context.Background())
 	j.log.Clear()
 	j.cancel, j.started, j.running, j.err, j.code = cancel, time.Now(), true, nil, 0
+	c.track(j)
 	c.running++
 	out := paneWriter{pane: j.log, c: c}
 	first := c.running == 1
@@ -178,6 +165,25 @@ func (c *Console) start(j *job, fn func(ctx context.Context, out io.Writer) (any
 		return Batch(run, c.tickCmd())
 	}
 	return run
+}
+
+// maxJobs bounds the jobs list; the oldest finished ones go first.
+const maxJobs = 50
+
+// track records j in the console's jobs list, so a job stays visible (and
+// cancellable) from the Jobs screen after its own screen moves on.
+func (c *Console) track(j *job) {
+	if slices.Contains(c.jobs, j) {
+		return
+	}
+	c.jobs = append(c.jobs, j)
+	for len(c.jobs) > maxJobs {
+		i := slices.IndexFunc(c.jobs, func(j *job) bool { return !j.running })
+		if i < 0 {
+			break
+		}
+		c.jobs = slices.Delete(c.jobs, i, i+1)
+	}
 }
 
 func (c *Console) tickCmd() Cmd {
@@ -292,18 +298,12 @@ func (c *Console) Update(m Msg) (Model, Cmd) {
 }
 
 func (c *Console) cancelAll() {
-	for _, j := range []*job{c.bench.job, c.qb.job, c.vast.job, c.pw.job, c.tools.job, c.verify.job} {
-		if j != nil && j.running && j.cancel != nil {
+	for _, j := range c.jobs {
+		if j.running && j.cancel != nil {
 			j.cancel()
 		}
 	}
 }
-
-// sidebar is the console's navigation: Home, then the rest A to Z by label
-// (a test keeps it that way). The number keys jump to the first nine.
-// Recommendations (scrRecs) and Train & Tune (scrTrain) are deferred, so
-// they stay out of the sidebar until they ship.
-var sidebar = []screenID{scrHome, scrAbout, scrBench, scrDash, scrHistory, scrOnboard, scrPwdet, scrQuality, scrVast, scrTools, scrVerify}
 
 // route sends input to the sidebar or the focused pane, and everything else
 // (load results, finished jobs) to every screen, since a result can arrive
@@ -320,7 +320,7 @@ func (c *Console) route(m Msg) Cmd {
 		}
 	default:
 		var cmds []Cmd
-		for _, s := range append([]screenID{scrHelp}, sidebar...) {
+		for _, s := range allIDs() {
 			if cmd := c.routeTo(s, m); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -359,14 +359,10 @@ func (c *Console) sideKey(k KeyMsg) Cmd {
 		return move(len(c.side) - 1)
 	case k.Code == input.Rune && k.Rune >= '1' && k.Rune <= '9' && int(k.Rune-'1') < len(c.side):
 		cmd := move(int(k.Rune - '1'))
-		if c.side[c.sel] != scrHome {
-			c.paneFocus = true
-		}
+		c.paneFocus = true
 		return cmd
 	case k.Code == input.Enter || k.Code == input.Right || k.Code == input.Tab:
-		if c.side[c.sel] != scrHome {
-			c.paneFocus = true
-		}
+		c.paneFocus = true
 		return nil
 	case k.Code == input.Rune && k.Rune == '?':
 		c.scr, c.paneFocus = scrHelp, true
@@ -381,112 +377,44 @@ func (c *Console) sideKey(k KeyMsg) Cmd {
 
 // routeTo delivers a message to one screen.
 func (c *Console) routeTo(s screenID, m Msg) Cmd {
-	switch s {
-	case scrBench:
-		return c.bench.update(c, m)
-	case scrVast:
-		return c.vast.update(c, m)
-	case scrPwdet:
-		return c.pw.update(c, m)
-	case scrDash:
-		return c.dash.update(c, m)
-	case scrHistory:
-		return c.hist.update(c, m)
-	case scrVerify:
-		return c.verify.update(c, m)
-	case scrTools:
-		return c.tools.update(c, m)
-	case scrAbout:
-		return c.about.update(c, m)
-	case scrOnboard:
-		return c.onb.update(c, m)
-	case scrQuality:
-		return c.qb.update(c, m)
-	case scrHelp, scrRecs, scrTrain:
-		if k, ok := m.(KeyMsg); ok && isBack(k) {
-			c.scr = scrHome
-		}
-		return nil
+	d := def(s)
+	if d == nil {
+		d = def(scrHome)
 	}
-	return c.home.update(c, m)
+	return d.get(c).update(c, m)
 }
 
 func isBack(k KeyMsg) bool {
 	return k.Code == input.Esc || (k.Code == input.Rune && k.Rune == 'q' && !k.Ctrl && !k.Alt)
 }
 
+// goTo shows screen s on its sidebar item; focus gives it the keyboard.
+func (c *Console) goTo(s screenID, focus bool) Cmd {
+	c.sel = max(0, slices.Index(c.side, s))
+	c.paneFocus = focus
+	return c.open(s)
+}
+
 func (c *Console) open(s screenID) Cmd {
 	c.scr = s
-	switch s {
-	case scrHome:
-		return c.home.load(c)
-	case scrHistory:
-		return c.hist.load(c)
-	case scrVerify:
-		return c.verify.load(c)
-	case scrTools:
-		return c.tools.load(c, false)
-	case scrDash:
-		return c.dash.load(c)
-	case scrVast:
-		return c.vast.loadRuns(c)
-	case scrAbout:
-		c.about.off = 0
-	case scrOnboard:
-		return c.onb.start(c)
-	case scrQuality:
-		return c.qb.load(c)
+	if d := def(s); d != nil && d.open != nil {
+		return d.open(c)
 	}
 	return nil
 }
 
 // --- frame ------------------------------------------------------------------------
 
-// labels name each screen in the sidebar and at the top of the pane.
-var labels = map[screenID]string{
-	scrHome: "Home", scrBench: "Benchmark", scrVast: "Rent (vast)", scrPwdet: "Poison Detector",
-	scrDash: "Dashboard", scrHistory: "History", scrVerify: "Verify", scrTools: "Tools", scrHelp: "Help",
-	scrAbout: "About", scrOnboard: "Onboarding", scrRecs: "Recommendations", scrTrain: "Train & Tune", scrQuality: "QualityBench",
-}
-
-// titles override the pane title where the sidebar label is a short form.
-var titles = map[screenID]string{scrTrain: "Train, Tune, Quantize"}
-
-func title(s screenID) string {
-	if t, ok := titles[s]; ok {
-		return t
-	}
-	return labels[s]
-}
-
-// blurbs is the one line under each pane title.
-var blurbs = map[screenID]string{
-	scrHome:    "Server, token and tools at a glance.",
-	scrBench:   "Run BetterBench against an endpoint and publish the result.",
-	scrVast:    "Rent a Vast.ai GPU, serve, benchmark, publish, tear down.",
-	scrPwdet:   "Check model weights for tampering.",
-	scrDash:    "GPU and inference telemetry for this machine.",
-	scrHistory: "What this key has published, and each page's tier.",
-	scrVerify:  "Review others' runs: reproduce them, and stamp them if you are a verifier.",
-	scrTools:   "The pinned tools and how each resolves here.",
-	scrHelp:    "Keys, commands and environment.",
-	scrAbout:   "Who we are, where to find us, and every command.",
-	scrOnboard: "A short tour that sets L80 up on this machine.",
-	scrRecs:    "Coming soon: what to run a model on, from the community's results.",
-	scrTrain:   "Coming soon: train, fine-tune and quantize models, then benchmark them.",
-	scrQuality: "Measure quality and quality loss on a local server, or plan a rented run.",
-}
-
 const sideW = 22
 
 // narrowSideW fits the longest label with the selection bar, and no more.
-var narrowSideW = func() int {
+func narrowSideW() int {
 	n := 0
-	for _, s := range sidebar {
-		n = max(n, style.Width(labels[s]))
+	for _, s := range sidebarIDs() {
+		n = max(n, style.Width(label(s)))
 	}
 	return n + 4
-}()
+}
 
 func (c *Console) View(w, h int) []string {
 	if w < 60 || h < 16 {
@@ -508,24 +436,29 @@ func (c *Console) View(w, h int) []string {
 	innerW, innerH := w-2, bodyH-2
 	sw := sideW
 	if innerW < 80 {
-		sw = narrowSideW
+		sw = narrowSideW()
 	}
 	pw := innerW - sw - 1
 	padW := pw - 4
 
 	// Sidebar: the selected item gets an accent bar; brighter while it has focus.
+	// When the list is taller than the pane it scrolls to keep the selection in view.
 	var side []string
 	side = append(side, "")
-	for i, s := range c.side {
-		label := style.Truncate(labels[s], sw-4, "…")
-		if i == c.sel && c.scr != scrHelp {
+	first, last := sideWindow(len(c.side), c.sel, innerH-1)
+	for i := first; i < last; i++ {
+		name := style.Truncate(label(c.side[i]), sw-4, "…")
+		switch {
+		case (i == first && first > 0) || (i == last-1 && last < len(c.side)):
+			side = append(side, "   "+t.R(t.Muted, "⋮"))
+		case i == c.sel && c.scr != scrHelp:
 			bar, st := t.R(t.Accent, "▌"), t.Selected
 			if c.paneFocus {
 				st = t.Title
 			}
-			side = append(side, " "+bar+t.R(st, style.PadRight(" "+label, sw-3)))
-		} else {
-			side = append(side, "   "+t.R(t.Muted, label))
+			side = append(side, " "+bar+t.R(st, style.PadRight(" "+name, sw-3)))
+		default:
+			side = append(side, "   "+t.R(t.Muted, name))
 		}
 	}
 
@@ -533,35 +466,12 @@ func (c *Console) View(w, h int) []string {
 	var body []string
 	var keys []widgets.Binding
 	contentH := innerH - 4
-	switch c.scr {
-	case scrBench:
-		body, keys = c.bench.view(c, padW, contentH)
-	case scrVast:
-		body, keys = c.vast.view(c, padW, contentH)
-	case scrPwdet:
-		body, keys = c.pw.view(c, padW, contentH)
-	case scrDash:
-		body, keys = c.dash.view(c, padW, contentH)
-	case scrHistory:
-		body, keys = c.hist.view(c, padW, contentH)
-	case scrVerify:
-		body, keys = c.verify.view(c, padW, contentH)
-	case scrTools:
-		body, keys = c.tools.view(c, padW, contentH)
-	case scrHelp:
-		body, keys = helpView(c, padW, contentH)
-	case scrAbout:
-		body, keys = c.about.view(c, padW, contentH)
-	case scrOnboard:
-		body, keys = c.onb.view(c, padW, contentH)
-	case scrQuality:
-		body, keys = c.qb.view(c, padW, contentH)
-	case scrRecs, scrTrain:
-		body, keys = soonView(c, c.scr, padW, contentH)
-	default:
-		body, keys = c.home.view(c, padW, contentH)
+	d := def(c.scr)
+	if d == nil {
+		d = def(scrHome)
 	}
-	pane := []string{"", t.R(t.Title, title(c.scr)), t.R(t.Muted, style.Truncate(blurbs[c.scr], padW, "…")), ""}
+	body, keys = d.get(c).view(c, padW, contentH)
+	pane := []string{"", t.R(t.Title, title(c.scr)), t.R(t.Muted, style.Truncate(blurb(c.scr), padW, "…")), ""}
 	pane = append(pane, body...)
 	for i := range pane {
 		pane[i] = "  " + pane[i]
@@ -600,6 +510,18 @@ func (c *Console) View(w, h int) []string {
 		}
 	}
 	return frame
+}
+
+// sideWindow is the [first, last) slice of n sidebar items that fits in h
+// rows with sel inside it. A clipped end shows "⋮" in place of its item, so
+// sel is kept one row away from a clipped edge.
+func sideWindow(n, sel, h int) (first, last int) {
+	if h <= 0 || n <= h {
+		return 0, n
+	}
+	first = max(0, min(sel-h/2, n-h))
+	last = first + h
+	return first, last
 }
 
 // overlay replaces cells [col, col+width(top)) of base with top. Colour in

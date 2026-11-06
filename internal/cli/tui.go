@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"flag"
+	"io"
 	"os"
 
 	"github.com/launch80/L80-CLI/internal/api"
@@ -31,6 +32,9 @@ func runTUI(e env, args []string) int {
 		Version: Version, Config: cfg, Client: newClient(cfg),
 		VastEnv: vastEnv, RunsDir: vast.RunsDir(), DashboardState: dashboardState(),
 		Usage: usageText, Onboard: *onboarding || config.LoadState().NeedsOnboarding(),
+		Update: func(args []string, stdout, stderr io.Writer) int {
+			return runUpdate(env{stdout: stdout, stderr: stderr}, args)
+		},
 	})
 	switch {
 	case errors.Is(err, tui.ErrNoTTY), errors.Is(err, term.ErrUnsupported):

@@ -96,34 +96,37 @@ func newerThan(candidate, current string) bool {
 	return false
 }
 
-func (s releaseSource) latestTag() (string, *api.Error) {
+// latestTag is the newest release's tag and its notes (the changelog entry
+// the release workflow writes), which `update --check --json` passes on.
+func (s releaseSource) latestTag() (string, string, *api.Error) {
 	req, err := http.NewRequest(http.MethodGet, s.apiBase+"/releases/latest", nil)
 	if err != nil {
-		return "", api.Newf("E_INTERNAL", "Retry once.", "could not build request: %v", err)
+		return "", "", api.Newf("E_INTERNAL", "Retry once.", "could not build request: %v", err)
 	}
 	req.Header.Set("User-Agent", fmt.Sprintf("L80/%s (%s/%s)", Version, runtime.GOOS, runtime.GOARCH))
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := updateHTTP.Do(req)
 	if err != nil {
-		return "", api.Newf("E_NETWORK",
+		return "", "", api.Newf("E_NETWORK",
 			"Check the network and retry. If GitHub is unreachable, reinstall with `curl -fsSL https://www.launch80.com/install.sh | sh`.",
 			"could not reach the release index: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", api.Newf("E_NETWORK",
+		return "", "", api.Newf("E_NETWORK",
 			"Retry in a few minutes. If it persists, reinstall with `curl -fsSL https://www.launch80.com/install.sh | sh`.",
 			"release index returned HTTP %d", resp.StatusCode)
 	}
 
 	var rel struct {
 		TagName string `json:"tag_name"`
+		Body    string `json:"body"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&rel); err != nil || rel.TagName == "" {
-		return "", api.Newf("E_NETWORK", "Retry once.", "release index returned an unreadable response")
+		return "", "", api.Newf("E_NETWORK", "Retry once.", "release index returned an unreadable response")
 	}
-	return rel.TagName, nil
+	return rel.TagName, rel.Body, nil
 }
 
 func (s releaseSource) fetch(tag, name string) ([]byte, *api.Error) {
@@ -221,6 +224,7 @@ type binaryState struct {
 	UpdateAvailable bool   `json:"update_available"`
 	Installed       bool   `json:"installed"`
 	Path            string `json:"path,omitempty"`
+	Notes           string `json:"notes,omitempty"` // the latest release's notes
 }
 
 // reexecUpdate runs the binary that was just installed, so the tools and
@@ -269,11 +273,11 @@ func runUpdate(e env, args []string) int {
 			"prebuilt binaries are not published for %s/%s", runtime.GOOS, runtime.GOARCH))
 	}
 
-	latest, apiErr := updateSource.latestTag()
+	latest, notes, apiErr := updateSource.latestTag()
 	if apiErr != nil {
 		return fail(e, apiErr)
 	}
-	bin := binaryState{Current: Version, Latest: strings.TrimPrefix(latest, "v"), UpdateAvailable: newerThan(latest, Version)}
+	bin := binaryState{Current: Version, Latest: strings.TrimPrefix(latest, "v"), UpdateAvailable: newerThan(latest, Version), Notes: notes}
 	if *checkOnly || !bin.UpdateAvailable {
 		return finishUpdate(e, bin, opts, *asJSON)
 	}
@@ -360,7 +364,7 @@ func emitUpdate(e env, bin binaryState, res syncResult, asJSON, checkOnly bool) 
 	if asJSON {
 		emitJSON(e, map[string]any{
 			"current": bin.Current, "latest": bin.Latest,
-			"update_available": bin.UpdateAvailable, "installed": bin.Installed, "path": bin.Path,
+			"update_available": bin.UpdateAvailable, "installed": bin.Installed, "path": bin.Path, "notes": bin.Notes,
 			"tools": res.Tools, "skills": res.Skills, "actions": actions, "up_to_date": upToDate,
 		})
 		return code

@@ -26,10 +26,7 @@ func openQuality(t *testing.T, eps []discover.Endpoint) *Console {
 	c := newTestConsole(t)
 	c.qb.scan = func(context.Context) []discover.Endpoint { return eps }
 	feed(c, SizeMsg{120, 44})
-	feed(c, key('8'))
-	if c.scr != scrQuality || !c.paneFocus {
-		t.Fatalf("scr=%v focus=%v", c.scr, c.paneFocus)
-	}
+	jumpTo(t, c, scrQuality)
 	return c
 }
 
@@ -210,7 +207,7 @@ func TestQualityVastPlansButDoesNotRent(t *testing.T) {
 		return []models.Model{{ID: "Jackrong/Qwopus-dir", Source: models.SrcSearch, Detail: "12 downloads"}}, nil
 	}
 	feed(c, SizeMsg{120, 44})
-	feed(c, key('8'))
+	jumpTo(t, c, scrQuality)
 	c.qb.focus = qsTarget
 	feed(c, code(input.Right))
 	view := screen(t, c)

@@ -76,7 +76,7 @@ func fakeRelease(t *testing.T, tag string, tgz []byte, checksums string) (target
 		if r.Header.Get("User-Agent") == "" {
 			t.Error("GitHub requires a User-Agent; none was sent")
 		}
-		fmt.Fprintf(w, `{"tag_name":%q}`, tag)
+		fmt.Fprintf(w, `{"tag_name":%q,"body":"- notes for %s"}`, tag, tag)
 	})
 	mux.HandleFunc("/releases/download/"+tag+"/"+assetName(), func(w http.ResponseWriter, r *http.Request) {
 		w.Write(tgz)
@@ -177,7 +177,8 @@ func TestUpdateCheckOnlyReportsWithoutInstalling(t *testing.T) {
 	}
 
 	code, out, _ = run(t, "--check", "--json")
-	if code != 0 || !strings.Contains(out, `"update_available": true`) || !strings.Contains(out, `"installed": false`) {
+	if code != 0 || !strings.Contains(out, `"update_available": true`) || !strings.Contains(out, `"installed": false`) ||
+		!strings.Contains(out, `"notes": "- notes for v99.0.0"`) {
 		t.Fatalf("json: exit %d, out: %s", code, out)
 	}
 }

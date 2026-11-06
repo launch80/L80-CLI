@@ -58,6 +58,19 @@ func SaveCredentials(token string) error {
 	return writePrivate(CredentialsPath(), credentials{KeyID: KeyIDOf(token), Token: token})
 }
 
+// RemoveCredentials deletes the credentials file. It is not an error when
+// there is none. L80_TOKEN, if set, still wins until it is unset.
+func RemoveCredentials() error {
+	path := CredentialsPath()
+	if path == "" {
+		return errors.New("no config directory")
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // writePrivate writes v as JSON, readable only by this user, replacing the
 // file atomically so a crash never leaves half a credential behind.
 func writePrivate(path string, v any) error {
