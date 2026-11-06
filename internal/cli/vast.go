@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"sync/atomic"
@@ -66,7 +68,7 @@ func runVast(e env, args []string) int {
 	}
 
 	if verb == "status" && isTrue(mine["json"]) && len(rest) == 0 {
-		return vastStatusJSON(e, runsDir)
+		return vastStatusJSON(e, r, runsDir)
 	}
 
 	childEnv, envErr := vastEnv(runsDir)
@@ -150,6 +152,9 @@ func vastRun(e env, r pytool.Runner, rest []string, childEnv []string, runsDir s
 		runs, _ = vast.List(runsDir)
 		mineRuns = vast.Since(runs, start)
 	}
+	if len(vast.Billing(mineRuns)) > 0 {
+		reconcileLive(r, childEnv, mineRuns) // best effort: unchecked runs keep their warning
+	}
 	billing := vast.Billing(mineRuns)
 	for _, run := range billing {
 		fmt.Fprintln(e.stderr, "  warning: "+run.Reminder(time.Now()))
@@ -168,12 +173,46 @@ func vastRun(e env, r pytool.Runner, rest []string, childEnv []string, runsDir s
 	return code
 }
 
-func vastStatusJSON(e env, runsDir string) int {
+func vastStatusJSON(e env, r pytool.Runner, runsDir string) int {
 	runs, err := vast.List(runsDir)
 	if err != nil {
 		return fail(e, api.Newf("E_INPUT_INVALID", "Check the directory's permissions.", "could not read %s: %v", runsDir, err))
 	}
-	return emitJSON(e, map[string]any{"runs_dir": runsDir, "runs": jsonRuns(runs), "may_be_billing": jsonRuns(vast.Billing(runs))})
+	doc := map[string]any{"runs_dir": runsDir}
+	if len(vast.Billing(runs)) > 0 {
+		// State files can be stale (a box destroyed on the website, a crash before
+		// teardown): only Vast's own list says what is still rented.
+		if lerr := reconcileLive(r, nil, runs); lerr != nil {
+			doc["checked_with_vast"], doc["check_error"] = false, lerr.Error()
+		} else {
+			doc["checked_with_vast"] = true
+		}
+	}
+	doc["runs"], doc["may_be_billing"] = jsonRuns(runs), jsonRuns(vast.Billing(runs))
+	return emitJSON(e, doc)
+}
+
+// liveList runs `bbvastl80 list --json`; tests swap it.
+var liveList = func(r pytool.Runner, childEnv []string) (vast.Live, error) {
+	var buf bytes.Buffer
+	res, err := runChild(env{stdout: &buf, stderr: io.Discard}, r, []string{"list", "--json"}, childEnv, nil)
+	if err != nil {
+		return nil, err
+	}
+	if res.code != 0 {
+		return nil, fmt.Errorf("bbvastl80 list exited %d", res.code)
+	}
+	return vast.ParseLive(buf.Bytes())
+}
+
+// reconcileLive marks runs whose instance Vast no longer lists as gone.
+func reconcileLive(r pytool.Runner, childEnv []string, runs []vast.RunState) error {
+	live, err := liveList(r, childEnv)
+	if err != nil {
+		return err
+	}
+	vast.Reconcile(runs, live)
+	return nil
 }
 
 func jsonRuns(runs []vast.RunState) []map[string]any {
@@ -183,7 +222,7 @@ func jsonRuns(runs []vast.RunState) []map[string]any {
 		row := map[string]any{
 			"id": r.RunID, "status": r.Status, "spec": r.SpecName, "created_at": r.Created().UTC().Format(time.RFC3339),
 			"instance": r.InstanceID, "dph": r.DPH, "publish_url": r.PublishURL, "results": r.ResultsPath,
-			"may_be_billing": r.MayBeBilling(), "dir": r.Dir,
+			"may_be_billing": r.MayBeBilling(), "gone": r.Gone, "dir": r.Dir,
 		}
 		if r.StartedBillingAt != nil {
 			row["billing_minutes"] = int(r.BillingFor(now).Minutes())

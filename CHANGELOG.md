@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Rentals: no more false "may still be billing"
+
+- The Rent screen, `L80 vast status --json` and the end of `L80 vast run`
+  check runs whose state file still says "rented" against Vast's own instance
+  list (`bbvastl80 list --json`, bbvastl80 0.2.2). A run whose box is no
+  longer on the account shows as **gone** and is not counted as billing. Before,
+  boxes destroyed on the Vast website, or by a crash before teardown, were
+  reported as billing forever. If Vast can't be asked (no key, no network, an
+  older bbvastl80), the warning stays and says why it is unsure.
+
 ### QualityBench: how long, then a yes
 
 - **The estimate comes first.** `L80 qualitybench` asks QualityBench 0.2.0

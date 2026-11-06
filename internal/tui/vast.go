@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -20,14 +21,15 @@ import (
 )
 
 type vastScreen struct {
-	tab   int // 0 runs, 1 run a spec file, 2 new rental (the wizard)
-	form  widgets.Form
-	wiz   rentWizard
-	prog  *rentProgress
-	runs  []vast.RunState
-	table widgets.Table
-	job   *job
-	err   string
+	liveErr error // why the runs could not be checked against Vast, if they could not
+	tab     int   // 0 runs, 1 run a spec file, 2 new rental (the wizard)
+	form    widgets.Form
+	wiz     rentWizard
+	prog    *rentProgress
+	runs    []vast.RunState
+	table   widgets.Table
+	job     *job
+	err     string
 }
 
 var upTo = []string{"reap", "publish", "bench", "connect", "provision", "rent"}
@@ -226,14 +228,56 @@ type vastRunsLoaded struct {
 	runs  []vast.RunState
 	err   error
 	specs []string // newest first
+	// liveErr is why the runs could not be checked against Vast's own list.
+	liveErr error
 }
 
 func (s *vastScreen) loadRuns(c *Console) Cmd {
 	dir := specsDir(c)
 	return func() Msg {
 		runs, err := vast.List(c.d.RunsDir)
-		return vastRunsLoaded{runs, err, vast.ListSpecs(dir)}
+		m := vastRunsLoaded{runs: runs, err: err, specs: vast.ListSpecs(dir)}
+		if len(vast.Billing(runs)) > 0 {
+			// The state files can be stale; only Vast knows what is still rented.
+			m.liveErr = s.reconcile(c, runs)
+		}
+		return m
 	}
+}
+
+// liveCheck lists the account's instances; tests swap it.
+var liveCheck = func(ctx context.Context, env []string) (vast.Live, error) {
+	var buf bytes.Buffer
+	code, err := runTool(ctx, "vast", []string{"list", "--json"}, env, &buf)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("bbvastl80 list exited %d: %s", code, lastLine(buf.String()))
+	}
+	return vast.ParseLive(buf.Bytes())
+}
+
+// reconcile marks runs whose instance Vast no longer lists; it returns why it
+// could not check, if it could not.
+func (s *vastScreen) reconcile(c *Console, runs []vast.RunState) error {
+	env, err := s.env(c)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	live, err := liveCheck(ctx, env)
+	if err != nil {
+		return err
+	}
+	vast.Reconcile(runs, live)
+	return nil
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
 }
 
 func (s *vastScreen) env(c *Console) ([]string, error) { return c.d.VastEnv(c.d.RunsDir) }
@@ -241,7 +285,7 @@ func (s *vastScreen) env(c *Console) ([]string, error) { return c.d.VastEnv(c.d.
 func (s *vastScreen) update(c *Console, m Msg) Cmd {
 	switch v := m.(type) {
 	case vastRunsLoaded:
-		s.runs, s.err = v.runs, ""
+		s.runs, s.err, s.liveErr = v.runs, "", v.liveErr
 		if len(v.specs) > 0 && s.form.Get("spec") == "" {
 			s.form.Fields[0].Input.Set(v.specs[0])
 		}
@@ -264,7 +308,7 @@ func (s *vastScreen) update(c *Console, m Msg) Cmd {
 					bill = d.String()
 				}
 			}
-			s.table.Rows = append(s.table.Rows, []string{r.RunID, r.Status, inst, dph, bill, orDash(r.PublishURL)})
+			s.table.Rows = append(s.table.Rows, []string{r.RunID, r.ShownStatus(), inst, dph, bill, orDash(r.PublishURL)})
 		}
 	case jobDone:
 		if v.j == s.job {
@@ -545,6 +589,13 @@ func vastPipeline(ctx context.Context, runsDir string, args, env []string, limit
 		runs, _ = vast.List(runsDir)
 		mine = vast.Since(runs, start)
 	}
+	if b := vast.Billing(mine); len(b) > 0 {
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+		if live, lerr := liveCheck(ctx2, env); lerr == nil {
+			vast.Reconcile(mine, live)
+		}
+		cancel2()
+	}
 	for _, r := range vast.Billing(mine) {
 		fmt.Fprintln(out, "warning: "+r.Reminder(time.Now()))
 	}
@@ -564,7 +615,12 @@ func (s *vastScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	out := []string{strings.Join(tabs, " ") + t.R(t.Muted, "   runs in "+clip(c.d.RunsDir, w-30)), ""}
 	billing := vast.Billing(s.runs)
 	if len(billing) > 0 {
-		out = append(out, t.R(t.Bad, fmt.Sprintf("%d instance(s) may still be billing. Select one and press d to destroy it.", len(billing))), "")
+		msg := fmt.Sprintf("%d instance(s) still billing on Vast. Select one and press d to destroy it.", len(billing))
+		if s.liveErr != nil {
+			msg = fmt.Sprintf("%d instance(s) may still be billing: their runs never tore down, and Vast could not be checked (%s). Press r to check again, or d to destroy one.",
+				len(billing), clip(s.liveErr.Error(), 80))
+		}
+		out = append(out, t.R(t.Bad, msg), "")
 	}
 	var keys []widgets.Binding
 	switch s.tab {

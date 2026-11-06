@@ -241,3 +241,38 @@ func TestPwdetPublishAnEarlierReport(t *testing.T) {
 		t.Errorf("not a report: %d", code)
 	}
 }
+
+func TestVastStatusChecksStaleRunsWithVast(t *testing.T) {
+	runs := t.TempDir()
+	t.Setenv("BBVASTL80_RUNS_DIR", runs)
+	for i, id := range []string{"stale", "live"} {
+		d := filepath.Join(runs, id)
+		os.MkdirAll(d, 0o755)
+		os.WriteFile(filepath.Join(d, "state.json"), []byte(fmt.Sprintf(`{"run_id":%q,"created_at":%d,"status":"rented","instance_id":%d}`, id, i+1, i+1)), 0o644)
+	}
+	decode := func(out string) map[string]any {
+		var d map[string]any
+		if err := json.Unmarshal([]byte(out), &d); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		return d
+	}
+	// Vast lists instance 2 only.
+	fakeTool(t, "L80_VAST", `[ "$1 $2" = "list --json" ] && echo '[{"id": 2, "status": "running"}]' && exit 0; exit 2`+"\n")
+	code, out, errOut := runCmd(t, runVast, "status", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	d := decode(out)
+	b := d["may_be_billing"].([]any)
+	if d["checked_with_vast"] != true || len(b) != 1 || b[0].(map[string]any)["id"] != "live" {
+		t.Fatalf("want only the live run billing: %s", out)
+	}
+	// An older bbvastl80 without list --json: keep both warnings, and say it wasn't checked.
+	fakeTool(t, "L80_VAST", "echo 'No such option: --json' >&2; exit 2\n")
+	_, out, _ = runCmd(t, runVast, "status", "--json")
+	d = decode(out)
+	if d["checked_with_vast"] != false || len(d["may_be_billing"].([]any)) != 2 {
+		t.Fatalf("an unchecked list must keep its warnings: %s", out)
+	}
+}
