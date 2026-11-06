@@ -94,11 +94,13 @@ anything you do here you can script later.
 - **Skills** installs or links L80's skills for each agent found. **Templates**
   lists the page templates. **Doctor** runs `L80 doctor`, each check with its
   remedy.
-- **Bench - History** lists every page this key published, with its trust tier (`v`
-  requests verification). Above them are the QualityBench reports on this
-  machine that are not published yet (the current directory, rental step
-  folders), read from disk so they are there after a restart: `p` publishes
-  one, `o` opens its HTML report.
+- **Bench - History** has two tabs (`tab` or `←→` switch). **Published** lists
+  every page this key published, with its trust tier (`v` requests
+  verification). **Unpublished** lists the QualityBench reports on this
+  machine not published yet (the QualityBench results folder, rental step
+  folders, and the current directory for older runs),
+  read from disk so they are there after a restart: `p` publishes one, `o`
+  opens its HTML report.
 - About has our story, the [Discord](https://discord.gg/launch80), the
   [Supporter](https://www.launch80.com/supporter) page and every command.
 
@@ -185,8 +187,10 @@ llama-swap 8000, llama.cpp 8080, SGLang 30000, Ollama 11434, LM Studio 1234,
 and 8001/8002/5000), identifies the engine and lists each server's models;
 `--scan host:port` adds others. It only reads: on llama-swap a listed model is
 not loaded until the run starts, and the tool's warmup request is never
-scored. A run writes `results.json`, an HTML report and a `.qb/` folder beside
-them; rerunning the same command resumes it. `--deadline 6h` caps the time,
+scored. A run writes its results file, an HTML report and a `.qb/` folder
+beside them, all in one folder whichever directory you run from:
+`~/.local/state/L80/qualitybench/` (`$L80_QUALITYBENCH_DIR` to change it,
+`--out` for one run). Rerunning the same command resumes it. `--deadline 6h` caps the time,
 and tasks it cuts are marked partial. If a task fails, the rest are kept and
 published (unless `--no-publish`), the page lists the failed task under
 partials, and L80 exits 1.

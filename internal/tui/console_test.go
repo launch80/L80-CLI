@@ -35,6 +35,8 @@ func newTestConsole(t *testing.T) *Console {
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("L80_QUALITYBENCH_DIR", "")
 	t.Setenv("L80_QUALITYBENCH_CONFIRM", "")
 	cfg := config.Config{BaseURL: srv.URL}
 	c := &Console{d: Deps{Version: "0.7.0", Config: cfg, Client: api.NewClient(srv.URL, "", "test"),

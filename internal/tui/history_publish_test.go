@@ -75,12 +75,31 @@ func TestHistoryPublishesALocalQualityBenchReport(t *testing.T) {
 		}
 	}
 	jumpTo(t, c, scrHistory)
+	// Two tabs; Published first.
 	v := screen(t, c)
-	for _, want := range []string{"1 QualityBench report(s) on this machine not published", "local", "Qwopus INT4 BFCL · not published", "Older run", "p publish", "o open report"} {
+	for _, want := range []string{"Published (1)", "Unpublished (1)", "Older run", "v verify", "tab published / unpublished"} {
 		if !strings.Contains(v, want) {
-			t.Errorf("history missing %q:\n%s", want, v)
+			t.Errorf("published tab missing %q:\n%s", want, v)
 		}
 	}
+	if strings.Contains(v, "Qwopus INT4 BFCL") || strings.Contains(v, "p publish") {
+		t.Errorf("the unpublished report belongs on its own tab:\n%s", v)
+	}
+	feed(c, code(input.Tab))
+	v = screen(t, c)
+	for _, want := range []string{"Qwopus INT4 BFCL", "full", "p publish", "o open report"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("unpublished tab missing %q:\n%s", want, v)
+		}
+	}
+	if strings.Contains(v, "Older run") {
+		t.Errorf("published pages belong on the other tab:\n%s", v)
+	}
+	feed(c, code(input.Left))
+	if c.hist.tab != histPublished {
+		t.Error("← switches back")
+	}
+	feed(c, code(input.Right))
 	feed(c, key('o'))
 	if opened != qualitybench.ReportPath(results) {
 		t.Errorf("opened %q", opened)
@@ -108,8 +127,8 @@ func TestHistoryPublishesALocalQualityBenchReport(t *testing.T) {
 	if !strings.Contains(c.flash, "published: https://launch80.com/a/g1") {
 		t.Errorf("flash %q", c.flash)
 	}
-	// Published: it is in this machine's record now, so it is no longer listed as local.
-	if v := screen(t, c); strings.Contains(v, "not published") {
-		t.Errorf("published report still listed as local:\n%s", v)
+	// Published: it is in this machine's record now, so it leaves Unpublished.
+	if v := screen(t, c); !strings.Contains(v, "Unpublished (0)") || !strings.Contains(v, "Nothing unpublished") {
+		t.Errorf("published report still listed as unpublished:\n%s", v)
 	}
 }

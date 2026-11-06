@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.3 (2026-11-06)
+
+### QualityBench results land in one folder
+
+- `L80 qualitybench` and the console's Bench Quality screen now write the
+  results file, the HTML report and the `.qb/` folder to
+  `~/.local/state/L80/qualitybench/` (`$XDG_STATE_HOME/L80/qualitybench`),
+  whichever directory you run from. `L80_QUALITYBENCH_DIR` changes the folder;
+  `--out` still sets one run's path. Before, they went to the current
+  directory, so the console only found a run when started where it ran.
+
+### Bench - History: Published and Unpublished tabs
+
+- Bench - History has two tabs, switched with `tab` or `←→`, each with its
+  count. **Published** is the pages this key published (`v` requests
+  verification). **Unpublished** is the QualityBench reports not published yet,
+  from the results folder, rental runs and the current directory (for runs
+  before 1.3.3): `p` publishes one, `o` opens its report, enter shows its
+  scores. A report moves to Published once it is.
+
 ## 1.3.2 (2026-11-06)
 
 ### Console: screens renamed

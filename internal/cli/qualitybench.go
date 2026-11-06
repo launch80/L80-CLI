@@ -20,8 +20,10 @@ import (
 )
 
 // defaultQualityPath mirrors defaultResultsPath for QualityBench runs.
+// defaultQualityPath is the results file in the QualityBench results
+// directory, so the console lists the run whichever directory it starts in.
 func defaultQualityPath(model string, now time.Time) string {
-	return "qualitybench-" + strings.TrimPrefix(defaultResultsPath(model, now), "betterbench-")
+	return qualitybench.ResultsPath("qualitybench-" + strings.TrimPrefix(defaultResultsPath(model, now), "betterbench-"))
 }
 
 func runQualitybench(e env, args []string) int {
@@ -56,7 +58,7 @@ func runQualitybench(e env, args []string) int {
 	tokenizer := fs.String("tokenizer", "", "Hugging Face repo (or local dir) for logprobs and needle when the served id is not one")
 	sandbox := fs.String("sandbox", "", "docker (default) | native: native runs model-written code on this machine; only for a disposable box")
 	apiKey := fs.String("api-key", "", "bearer key for the endpoint (or L80_QUALITYBENCH_API_KEY); passed by environment, never recorded")
-	out := fs.String("out", "", "results file (default ./qualitybench-<model>-<time>.json); the HTML report goes beside it")
+	out := fs.String("out", "", "results file (default ~/.local/state/L80/qualitybench/qualitybench-<model>-<time>.json, or $L80_QUALITYBENCH_DIR); the HTML report goes beside it")
 	var scan multiFlag
 	fs.Var(&scan, "scan", "with no --endpoint, also probe this host:port or URL; repeatable")
 	yes := fs.Bool("yes", false, "start without asking, whatever the estimate (see `L80 settings` qualitybench.confirm)")
@@ -483,7 +485,8 @@ Run flags:
   --note KEY=VALUE        recorded in the run (repeatable)
   --tokenizer org/repo    tokenizer for logprobs and needle, if the served id is not a HF repo
   --sandbox docker|native native runs model code on this machine: only on a disposable box
-  --out <path>            results file (default ./qualitybench-<model>-<time>.json)
+  --out <path>            results file (default in ~/.local/state/L80/qualitybench,
+                          or $L80_QUALITYBENCH_DIR)
   --api-key <key>         endpoint key (or L80_QUALITYBENCH_API_KEY); sent by environment
   --no-publish            keep the results local
   --yes                   start without asking (L80 shows the estimate first and, by

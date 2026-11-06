@@ -6,7 +6,8 @@ description: Measure a model's answer quality, or how much quality a quantized b
 # Measure quality: `L80 qualitybench`
 
 `L80 qualitybench` runs QualityBench, pinned in this L80 release, against an
-OpenAI-compatible endpoint. It writes three things:
+OpenAI-compatible endpoint. It writes three things, by default in
+`~/.local/state/L80/qualitybench/` (`$L80_QUALITYBENCH_DIR`, or `--out` for one run):
 - a results file;
 - an HTML report beside it;
 - a `<name>.qb/` folder of per-item records, which compare needs.

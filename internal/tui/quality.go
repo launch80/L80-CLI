@@ -212,8 +212,9 @@ func (s *qualityScreen) ensure() {
 	s.buildResults()
 }
 
-// localResults finds QualityBench results this machine can compare: files
-// it published, the current directory, and rental step folders.
+// localResults finds QualityBench results on this machine: files it
+// published, the QualityBench results directory, rental step folders, and
+// the current directory (where runs before 1.3.3 wrote theirs).
 func localResults(c *Console) []qualitybench.ResultFile {
 	var files []string
 	if entries, err := history.Read(); err == nil {
@@ -224,7 +225,7 @@ func localResults(c *Console) []qualitybench.ResultFile {
 		}
 	}
 	cwd, _ := os.Getwd()
-	return qualitybench.FindResults(files, cwd, c.d.RunsDir)
+	return qualitybench.FindResults(files, qualitybench.ResultsDir(), c.d.RunsDir, cwd)
 }
 
 func (s *qualityScreen) buildResults() {
@@ -961,14 +962,13 @@ func (s *qualityScreen) submit(c *Console) Cmd {
 	if s.thinking.Choice > 0 {
 		thinking = s.thinking.Value()
 	}
-	cwd, _ := os.Getwd()
 	safe := strings.Map(func(r rune) rune {
 		if r == '/' || r == ' ' || r == ':' {
 			return '_'
 		}
 		return r
 	}, model)
-	out := filepath.Join(cwd, fmt.Sprintf("qualitybench-%s-%s.json", safe, time.Now().Format("20060102-1504")))
+	out := qualitybench.ResultsPath(fmt.Sprintf("qualitybench-%s-%s.json", safe, time.Now().Format("20060102-1504")))
 	tok := s.tokenizer.Value()
 	if tok == "" {
 		tok = s.guessTokenizer()

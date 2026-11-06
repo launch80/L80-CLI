@@ -240,11 +240,18 @@ func helpView(c *Console, w, h int) ([]string, []widgets.Binding) {
 
 // --- history --------------------------------------------------------------------------
 
+// Bench - History has two tabs: Published (pages this key published) and
+// Unpublished (QualityBench results on this machine, read from disk).
+const (
+	histPublished = iota
+	histUnpublished
+)
+
 type histScreen struct {
-	table   widgets.Table
+	tab     int
+	table   widgets.Table // published pages
+	ltable  widgets.Table // unpublished reports
 	entries []history.Entry
-	// local are QualityBench results on this machine not yet published; they
-	// lead the table, so the table's row i is local[i], then entries.
 	local   []qualitybench.ResultFile
 	source  string
 	err     string
@@ -351,16 +358,27 @@ func (s *histScreen) load(c *Console) Cmd {
 	}
 }
 
-// selected is the row under the cursor: a local report, or a published page.
+// selected is the row under the cursor on the open tab: an unpublished
+// report, or a published page.
 func (s *histScreen) selected() (*qualitybench.ResultFile, *history.Entry) {
-	i := s.table.Cursor
-	switch {
-	case i < len(s.local):
-		return &s.local[i], nil
-	case i-len(s.local) < len(s.entries):
-		return nil, &s.entries[i-len(s.local)]
+	if s.tab == histUnpublished {
+		if i := s.ltable.Cursor; i >= 0 && i < len(s.local) {
+			return &s.local[i], nil
+		}
+		return nil, nil
+	}
+	if i := s.table.Cursor; i >= 0 && i < len(s.entries) {
+		return nil, &s.entries[i]
 	}
 	return nil, nil
+}
+
+// cur is the open tab's table.
+func (s *histScreen) cur() *widgets.Table {
+	if s.tab == histUnpublished {
+		return &s.ltable
+	}
+	return &s.table
 }
 
 // publishLocal asks, then publishes a local QualityBench results file.
@@ -396,16 +414,9 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 			return s.load(c)
 		}
 	case histLoaded:
-		cur := s.table.Cursor
+		pc, lc := s.table.Cursor, s.ltable.Cursor
 		s.loading, s.entries, s.local, s.source, s.err = false, v.entries, v.local, v.source, v.err
 		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Class", Width: 6}, {Title: "Title"}}}
-		for _, r := range v.local {
-			class := "full"
-			if r.Quick {
-				class = "quick"
-			}
-			s.table.Rows = append(s.table.Rows, []string{whenOf(r), qualitybench.TemplateID, "local", class, orDash(r.Title) + " · not published"})
-		}
 		for _, e := range v.entries {
 			when := strings.Replace(e.CreatedAt, "T", " ", 1)
 			if len(when) > 16 {
@@ -413,15 +424,24 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 			}
 			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.RunClass), orDash(e.Title)})
 		}
-		s.table.Cursor = min(cur, max(0, len(s.table.Rows)-1))
+		s.ltable = widgets.Table{Columns: []widgets.Column{{Title: "Run", Width: 16}, {Title: "Class", Width: 6}, {Title: "Tasks", Width: 5, Right: true}, {Title: "Model", Width: 34}, {Title: "Title"}}}
+		for _, r := range v.local {
+			class := "full"
+			if r.Quick {
+				class = "quick"
+			}
+			s.ltable.Rows = append(s.ltable.Rows, []string{whenOf(r), class, fmt.Sprint(r.Tasks), r.Model, orDash(r.Title)})
+		}
+		s.table.Cursor = min(pc, max(0, len(s.table.Rows)-1))
+		s.ltable.Cursor = min(lc, max(0, len(s.ltable.Rows)-1))
+		if s.tab == histUnpublished && len(s.local) == 0 {
+			s.detail = false
+		}
 	case KeyMsg:
 		r, e := s.selected()
 		switch {
 		case v.Code == input.Rune && v.Rune == 'v' && e != nil:
 			return s.verify(c, *e)
-		case v.Code == input.Rune && v.Rune == 'v' && r != nil:
-			c.setFlash("publish it first (p); then it can be verified", true)
-			return nil
 		case v.Code == input.Rune && v.Rune == 'p' && r != nil:
 			return s.publishLocal(c, *r)
 		case v.Code == input.Rune && v.Rune == 'o' && r != nil:
@@ -439,13 +459,18 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 			}
 			return nil
 		}
-		if s.table.HandleKey(v) {
+		// tab and ←→ switch between Published and Unpublished.
+		if (v.Code == input.Tab && !v.Ctrl) || v.Code == input.Backtab || v.Code == input.Left || v.Code == input.Right {
+			s.tab = 1 - s.tab
+			return nil
+		}
+		if s.cur().HandleKey(v) {
 			return nil
 		}
 		switch {
 		case isBack(v):
 			c.scr = scrHome
-		case v.Code == input.Enter && len(s.table.Rows) > 0:
+		case v.Code == input.Enter && len(s.cur().Rows) > 0:
 			s.detail = true
 		case v.Code == input.Rune && v.Rune == 'r':
 			return s.load(c)
@@ -459,12 +484,21 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	if s.loading {
 		return []string{t.R(t.Muted, widgets.Spin(c.tick)+" loading…")}, nil
 	}
-	head := t.R(t.Muted, fmt.Sprintf("%d page(s), from the %s record", len(s.entries), s.source))
-	if len(s.local) > 0 {
-		head += t.R(t.Muted, fmt.Sprintf(" · %d QualityBench report(s) on this machine not published", len(s.local)))
+	tabs := []string{fmt.Sprintf(" Published (%d) ", len(s.entries)), fmt.Sprintf(" Unpublished (%d) ", len(s.local))}
+	for i := range tabs {
+		if i == s.tab {
+			tabs[i] = t.R(t.Selected, tabs[i])
+		} else {
+			tabs[i] = t.R(t.Muted, tabs[i])
+		}
 	}
-	if s.err != "" {
-		head += t.R(t.Warn, "  "+clip(s.err, w-40))
+	head := strings.Join(tabs, " ")
+	sub := t.R(t.Muted, "Pages this key published, from the "+s.source+" record.")
+	if s.tab == histUnpublished {
+		sub = t.R(t.Muted, "QualityBench reports not published yet, from "+clip(qualitybench.ResultsDir(), 60)+" and rental step folders.")
+	}
+	if s.err != "" && s.tab == histPublished {
+		sub += t.R(t.Warn, "  "+clip(s.err, w-60))
 	}
 	r, sel := s.selected()
 	if s.detail && r != nil {
@@ -496,14 +530,20 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 		lines = append(lines, "", t.R(t.Muted, "Pages are public. A page is self-reported until launch80 verifies it."))
 		return lines, []widgets.Binding{{Keys: "v", Desc: "request verification"}, {Keys: "esc", Desc: "back"}}
 	}
-	keys := []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "details"}}
-	if r != nil {
-		keys = append(keys, widgets.Binding{Keys: "p", Desc: "publish"}, widgets.Binding{Keys: "o", Desc: "open report"})
+	out := []string{head, sub, ""}
+	keys := []widgets.Binding{{Keys: "tab", Desc: "published / unpublished"}, {Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "details"}}
+	if s.tab == histUnpublished {
+		if len(s.local) == 0 {
+			out = append(out, t.R(t.Muted, "Nothing unpublished. Finished QualityBench runs show here until you publish them."))
+		} else {
+			out = append(out, s.ltable.View(t, w, h-len(out), true)...)
+			keys = append(keys, widgets.Binding{Keys: "p", Desc: "publish"}, widgets.Binding{Keys: "o", Desc: "open report"})
+		}
 	} else {
+		out = append(out, s.table.View(t, w, h-len(out), true)...)
 		keys = append(keys, widgets.Binding{Keys: "v", Desc: "verify"})
 	}
-	return append([]string{head, ""}, s.table.View(t, w, h-2, true)...),
-		append(keys, widgets.Binding{Keys: "r", Desc: "refresh"}, widgets.Binding{Keys: "esc", Desc: "back"})
+	return out, append(keys, widgets.Binding{Keys: "r", Desc: "refresh"}, widgets.Binding{Keys: "esc", Desc: "back"})
 }
 
 // --- tools --------------------------------------------------------------------------
