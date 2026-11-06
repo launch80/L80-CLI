@@ -338,14 +338,10 @@ func (c *Console) sideKey(k KeyMsg) Cmd {
 		return move(len(c.side) - 1)
 	case k.Code == input.Rune && k.Rune >= '1' && k.Rune <= '9' && int(k.Rune-'1') < len(c.side):
 		cmd := move(int(k.Rune - '1'))
-		if c.side[c.sel] != scrHome {
-			c.paneFocus = true
-		}
+		c.paneFocus = true
 		return cmd
 	case k.Code == input.Enter || k.Code == input.Right || k.Code == input.Tab:
-		if c.side[c.sel] != scrHome {
-			c.paneFocus = true
-		}
+		c.paneFocus = true
 		return nil
 	case k.Code == input.Rune && k.Rune == '?':
 		c.scr, c.paneFocus = scrHelp, true
@@ -369,6 +365,13 @@ func (c *Console) routeTo(s screenID, m Msg) Cmd {
 
 func isBack(k KeyMsg) bool {
 	return k.Code == input.Esc || (k.Code == input.Rune && k.Rune == 'q' && !k.Ctrl && !k.Alt)
+}
+
+// goTo shows screen s on its sidebar item; focus gives it the keyboard.
+func (c *Console) goTo(s screenID, focus bool) Cmd {
+	c.sel = max(0, slices.Index(c.side, s))
+	c.paneFocus = focus
+	return c.open(s)
 }
 
 func (c *Console) open(s screenID) Cmd {

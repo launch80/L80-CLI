@@ -129,7 +129,7 @@ func (f screenFunc) view(c *Console, w, h int) ([]string, []widgets.Binding) { r
 // The screens that predate the registry. Their state stays a field of
 // Console; new screens register from their own file.
 func init() {
-	register(screenDef{id: scrHome, label: "Home", side: true, blurb: "Server, token and tools at a glance.",
+	register(screenDef{id: scrHome, label: "Home", side: true, blurb: "Server, token and tools at a glance, and where to start.",
 		get: func(c *Console) screenModel { return &c.home }, open: func(c *Console) Cmd { return c.home.load(c) }})
 	register(screenDef{id: scrBench, label: "Benchmark", side: true, blurb: "Run BetterBench against an endpoint and publish the result.",
 		get: func(c *Console) screenModel { return &c.bench }})

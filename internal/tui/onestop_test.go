@@ -14,11 +14,12 @@ import (
 	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/tui/input"
+	"github.com/launch80/L80-CLI/internal/tui/style"
 )
 
 func view(t *testing.T, c *Console) string {
 	t.Helper()
-	return checkFrame(t, c.View(110, 34), 110, 34)
+	return style.Strip(checkFrame(t, c.View(110, 34), 110, 34))
 }
 
 func TestSettingsLoginLogoutNeverShowsTheToken(t *testing.T) {
@@ -192,5 +193,38 @@ func TestDoctorChecksAndRemedies(t *testing.T) {
 		if !strings.Contains(v, want) {
 			t.Errorf("doctor missing %q:\n%s", want, v)
 		}
+	}
+}
+
+func TestHomeLauncherOpensScreens(t *testing.T) {
+	c := newTestConsole(t)
+	feed(c, SizeMsg{110, 34})
+	drain(c, c.Init(), 0)
+	feed(c, input.Key{Code: input.Enter})
+	v := view(t, c)
+	for _, want := range []string{"What do you want to do?", "▸ Benchmark speed", "Scan weights", "server", "reachable", "Last publishes"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("home missing %q:\n%s", want, v)
+		}
+	}
+	rent := -1
+	for i, l := range launch {
+		if def(l.to) == nil {
+			t.Errorf("launcher %q goes to unregistered %s", l.title, l.to)
+		}
+		if l.title == "Rent a GPU" {
+			rent = i
+		}
+	}
+	for range rent {
+		feed(c, input.Key{Code: input.Down})
+	}
+	feed(c, input.Key{Code: input.Enter})
+	if c.scr != scrVast || !c.paneFocus || c.side[c.sel] != scrVast {
+		t.Fatalf("launch: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
+	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.paneFocus || c.scr != scrVast {
+		t.Errorf("back: scr=%v focus=%v", c.scr, c.paneFocus)
 	}
 }

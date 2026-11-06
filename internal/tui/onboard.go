@@ -55,9 +55,7 @@ type onboardTools struct{ rows []app.ToolStatus }
 
 // startOnboarding opens onboarding with the keyboard, on its sidebar item.
 func (c *Console) startOnboarding() Cmd {
-	c.sel = max(0, slices.Index(c.side, scrOnboard))
-	c.paneFocus = true
-	return c.open(scrOnboard)
+	return c.goTo(scrOnboard, true)
 }
 
 func (o *onboardScreen) start(c *Console) Cmd {
@@ -189,9 +187,7 @@ func (o *onboardScreen) finish(c *Console, skipped bool) Cmd {
 	if it, ok := o.goals.Selected(); ok && !skipped {
 		dest = it.Value.(screenID)
 	}
-	c.sel = max(0, slices.Index(c.side, dest))
-	c.paneFocus = false
-	return c.open(dest)
+	return c.goTo(dest, false)
 }
 
 func (o *onboardScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {

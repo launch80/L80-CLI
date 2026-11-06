@@ -219,12 +219,16 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	if c.paneFocus || c.scr != scrVast || c.sel != vastAt {
 		t.Fatalf("esc: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
 	}
-	// Up from the top wraps to the bottom; enter on Home keeps the sidebar.
+	// Home's launcher takes the keyboard like any screen; esc hands it back.
 	feed(c, input.Key{Code: input.Rune, Rune: '1'})
-	feed(c, input.Key{Code: input.Enter})
-	if c.paneFocus {
-		t.Error("Home has nothing to operate; the sidebar keeps focus")
+	if !c.paneFocus || c.scr != scrHome {
+		t.Error("1 opens Home's launcher")
 	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.paneFocus || c.scr != scrHome || c.sel != 0 {
+		t.Fatalf("esc from Home: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
+	}
+	// Up from the top wraps to the bottom.
 	feed(c, input.Key{Code: input.Up})
 	if c.scr != scrVerify {
 		t.Errorf("wrap: scr=%v", c.scr)

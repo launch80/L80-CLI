@@ -22,12 +22,28 @@ import (
 // --- home ----------------------------------------------------------------------
 
 type homeScreen struct {
+	cursor    int // in launch
 	loaded    bool
 	reachable bool
 	reachErr  string
 	templates []string
 	tools     []app.ToolStatus
 	recent    []history.Entry
+}
+
+// launch is Home's "What do you want to do?": each entry opens a screen.
+var launch = []struct {
+	title, desc string
+	to          screenID
+}{
+	{"Benchmark speed", "BetterBench against an endpoint you serve", scrBench},
+	{"Measure quality", "QualityBench on a local server, or a rented one", scrQuality},
+	{"Compare two runs", "QualityBench: a reference run against a test run", scrQuality},
+	{"Rent a GPU", "Serve and benchmark on Vast.ai, then tear it down", scrVast},
+	{"Scan weights", "Check model weights for tampering", scrPwdet},
+	{"Publish", "Your pages, and requesting verification", scrHistory},
+	{"Verify", "Reproduce and review others' runs", scrVerify},
+	{"Settings", "Token, server and updates", scrSettings},
 }
 
 type homeLoaded struct {
@@ -61,13 +77,50 @@ func (h *homeScreen) update(c *Console, m Msg) Cmd {
 	switch v := m.(type) {
 	case homeLoaded:
 		h.loaded, h.reachable, h.reachErr, h.templates, h.tools, h.recent = true, v.reachable, v.err, v.templates, v.tools, v.recent
+	case KeyMsg:
+		switch {
+		case isBack(v):
+			c.paneFocus = false // Home is the sidebar's own item
+		case v.Code == input.Up || (v.Code == input.Rune && v.Rune == 'k'):
+			h.cursor = (h.cursor + len(launch) - 1) % len(launch)
+		case v.Code == input.Down || (v.Code == input.Rune && v.Rune == 'j'):
+			h.cursor = (h.cursor + 1) % len(launch)
+		case v.Code == input.Home:
+			h.cursor = 0
+		case v.Code == input.End:
+			h.cursor = len(launch) - 1
+		case v.Code == input.Enter:
+			return c.goTo(launch[h.cursor].to, true)
+		case v.Code == input.Rune && v.Rune == 'r':
+			return h.load(c)
+		}
 	}
 	return nil
 }
 
+// launcher draws the menu; the cursor shows only while Home has the keyboard.
+func (h *homeScreen) launcher(c *Console, w int) []string {
+	t := c.th
+	out := []string{t.R(t.Title, "What do you want to do?")}
+	tw := 0
+	for _, l := range launch {
+		tw = max(tw, len(l.title))
+	}
+	for i, l := range launch {
+		name := style.PadRight(l.title, tw)
+		if i == h.cursor && c.paneFocus {
+			out = append(out, t.R(t.Accent, "▸ ")+t.R(t.Selected, name)+"  "+t.R(t.Muted, l.desc))
+		} else {
+			out = append(out, "  "+name+"  "+t.R(t.Muted, l.desc))
+		}
+	}
+	return out
+}
+
 func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 	t := c.th
-	var st []string
+	st := h.launcher(c, w)
+	st = append(st, "")
 	if !h.loaded {
 		st = append(st, t.R(t.Muted, widgets.Spin(c.tick)+" checking…"))
 	} else {
@@ -75,11 +128,19 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 		if !h.reachable {
 			server = t.R(t.Bad, "unreachable") + t.R(t.Muted, " "+clip(h.reachErr, 40))
 		}
-		st = append(st, kv(t, "launch80", c.d.Config.BaseURL), kv(t, "server", server))
 		tok := t.R(t.Warn, "none") + t.R(t.Muted, " (tools are free; publishing needs one)")
 		if c.d.Config.HasToken() {
 			tok = t.R(t.OK, masked(c.d.Config)) + t.R(t.Muted, " from "+string(c.d.Config.TokenSource))
 		}
+		if len(st)+5 > ht {
+			// Too short for the status block: one line of it, above the menu.
+			st = append([]string{t.R(t.Muted, "server ") + server + t.R(t.Muted, " · token ") + tok}, st[:len(st)-1]...)
+			for i := range st {
+				st[i] = style.Truncate(st[i], w, "…")
+			}
+			return style.Fit(st, w, ht), homeKeys
+		}
+		st = append(st, kv(t, "launch80", c.d.Config.BaseURL), kv(t, "server", server))
 		st = append(st, kv(t, "token", tok), "")
 		st = append(st, t.R(t.Title, "Tools"))
 		for _, ts := range h.tools {
@@ -105,8 +166,10 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 	for i := range st {
 		st[i] = style.Truncate(st[i], w, "…")
 	}
-	return style.Fit(st, w, ht), []widgets.Binding{{Keys: "r", Desc: "refresh"}}
+	return style.Fit(st, w, ht), homeKeys
 }
+
+var homeKeys = []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "go"}, {Keys: "r", Desc: "refresh"}, {Keys: "esc", Desc: "back"}}
 
 func kv(t widgets.Theme, k, v string) string { return t.R(t.Muted, style.PadRight(k, 13)) + v }
 
