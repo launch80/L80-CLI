@@ -2,8 +2,9 @@
 
 A local CLI (`L80`) plus a skill bundle that lets any LLM agent publish
 structured results to launch80 and get back a shareable URL, and that puts the
-Launch80 toolset behind one command: BetterBench, rented-GPU benchmarking on
-Vast.ai, the Poisoned Weights Detector and a telemetry dashboard. Only
+Launch80 toolset behind one command: BetterBench for speed, QualityBench for
+quality, rented-GPU benchmarking on Vast.ai, the Poisoned Weights Detector and
+a telemetry dashboard. Only
 publishing needs a token; every tool is free.
 
 ![Six capabilities in one binary: betterbench, vast, pwdet, dashboard, tui, verify](docs/media/02-capabilities.gif)
@@ -46,8 +47,8 @@ sets up publishing and installs L80's skills for the AI agents it finds.
 L80 ships skills in the open Agent Skills format (a folder with a `SKILL.md`),
 so your coding agent can benchmark, rent, scan and publish for you without you
 touching the console or the commands. The `l80` skill teaches the whole command
-surface; `l80-test-report`, `l80-vast` and `l80-pwdet` go deep on publishing,
-renting and scanning.
+surface; `l80-test-report`, `l80-qualitybench`, `l80-vast` and `l80-pwdet` go
+deep on publishing, measuring quality, renting and scanning.
 
 ```sh
 L80 skills targets                             # the agent harnesses found here, and what is installed
@@ -77,31 +78,45 @@ L80 skills agents-md >> AGENTS.md              # for an agent that reads instruc
 L80 tui
 ```
 
-A full-screen console over everything below. A sidebar lists Home, then A to Z:
-About, Benchmark, Dashboard, History, Onboarding, Poison Detector (pwdet),
-QualityBench, Rent (vast), Tools and Verify. Moving through it previews each screen live,
-enter opens it and esc comes back; `1`-`9` jump. About has our story, the
-[Discord](https://discord.gg/launch80), the
-[Supporter](https://www.launch80.com/supporter) page and every command. From it you can benchmark an
-endpoint, rent a GPU and benchmark it, scan weights, open the dashboard, browse
-published pages and check the tools. Each screen drives the same code as the matching command, so
-anything you do here you can script later. Runs stream into a scrollable log;
-renting, destroying and publishing ask first, with the cost caps or the
-privacy note in front of you. `vast ssh` and the dashboard take over the
-terminal and hand it back when they exit.
+A full-screen console over everything below. Home is a launcher: "What do
+you want to do?" lists benchmark speed, measure quality, compare runs, rent a
+GPU, scan weights, publish, verify and settings, with the server, token and
+tool status and your latest jobs below it. A sidebar lists Home, then A to Z:
+About, Benchmark, Dashboard, Doctor, History, Jobs, Onboarding, Poison
+Detector, QualityBench, Rent (vast), Settings, Skills, Templates, Tools and
+Verify. Moving through it previews each screen live, enter opens it and esc
+comes back; `1`-`9` jump to the first nine, and the sidebar scrolls on a short
+terminal. Each screen drives the same code as the matching command, so
+anything you do here you can script later.
 
-QualityBench (preview) is a form with nothing to type in the normal path. Pick
-**Full**, **Quick** or **Custom**: Custom ticks tasks from the suite, each with
-its item count and measured run time, and the total updates as you tick. Pick
-**Local GPUs** and choose from the servers found on this machine (engine and
-version shown) and the models each one lists, with llama-swap models that are
-not loaded yet marked as such. Pick **Rent via Vast** and choose the engine and a
-model from the ones you rented or published before, your Hugging Face cache and
-`~/models`, or a Hugging Face search. Every list ends in "Other…" for a typed
-value. A local run shows per-task progress above its log, then the headline
-scores, `p` to publish and `o` to open the HTML report. Rented QualityBench runs
-are not wired up yet: the Vast choice shows the `L80 vast spec` command to
-prepare one and rents nothing.
+- **Settings** shows the server and token, logs in through a masked input and
+  logs out, and checks for an update, shows its release notes and runs it.
+- **Skills** installs or links L80's skills for each agent found. **Templates**
+  lists the page templates. **Doctor** runs `L80 doctor`, each check with its
+  remedy.
+- **Jobs** lists every run started from the console, newest first, with its
+  state and log. A run stays listed after you leave its screen, and you can
+  stop it from here.
+- About has our story, the [Discord](https://discord.gg/launch80), the
+  [Supporter](https://www.launch80.com/supporter) page and every command.
+
+Runs stream into a scrollable log; renting, destroying and publishing ask
+first, with the cost caps or the privacy note in front of you. `vast ssh` and
+the dashboard take over the terminal and hand it back when they exit.
+
+The QualityBench screen has two modes. **Run** is a form with nothing to type
+in the normal path. Pick **Full**, **Quick** or **Custom**: Custom ticks tasks
+from the suite, each with its item count and measured run time, and the total
+updates as you tick. Pick **Local GPUs** and choose from the servers found on
+this machine (engine and version shown) and the models each one lists, with
+llama-swap models that are not loaded yet marked as such. "Compare to" picks a
+reference from local results, and Tokenizer sets the tokenizer. Thinking is
+off unless you turn it on. Setup runs before each run. A run shows per-task
+progress above its log, then the headline scores, `p` to publish and `o` to
+open the HTML report. **Compare** compares two local results. **Rent via
+Vast** picks the engine and a model (from your rentals and publishes, your
+Hugging Face cache, `~/models` or a Hugging Face search) and hands it to Rent
+with a QualityBench step. Every list ends in "Other…" for a typed value.
 
 It is built on the standard library alone (Linux and macOS). Without a
 terminal it refuses rather than guessing; `L80` with no arguments still prints
@@ -141,7 +156,7 @@ fields never leave the machine: `env.endpoint` and `env.host`; the server
 refuses a file that still carries them. Flags after `--` are passed to
 `betterbench run` untouched.
 
-## QualityBench: quality and quality loss (preview)
+## QualityBench: quality and quality loss
 
 `L80 qualitybench` runs [QualityBench](https://github.com/launch80/QualityBench),
 BetterBench's sibling for **quality**: GSM8K, IFEval, MMLU-Pro, HumanEval+ and
@@ -150,15 +165,12 @@ retrieval, against an OpenAI-compatible endpoint. With a reference run it also
 reports what a quantization or an engine change costs: paired per-task deltas
 with confidence intervals, KLD and top-1 agreement, and pass/fail against a
 pre-registered thresholds file. Results publish to the `bench.qualitybench.v1`
-template.
-
-QualityBench has not had its first release, so this L80 does not pin it yet:
-`L80 tools check` shows it as `unreleased`, and nothing is downloaded. Point
-`L80_QUALITYBENCH` at a local build to use it now.
+template. This release pins QualityBench 0.1.1.
 
 ```sh
 L80 qualitybench endpoints                               # local servers, their engine and models
 L80 qualitybench tasks                                   # the suite, item counts, measured run times
+L80 qualitybench setup                                   # prepare what the tasks need (once)
 L80 qualitybench --model Qwen/Qwen3-8B --quick           # finds the local server serving the model
 L80 qualitybench --model Qwen/Qwen3-8B --tasks gsm8k,bfcl --thinking on
 L80 qualitybench --model my/int4 --reference bf16.json --thresholds THRESHOLDS.md
@@ -166,16 +178,42 @@ L80 qualitybench compare bf16.json int4.json             # locally, no token
 L80 qualitybench --results results.json --dry-run        # publish an existing file
 ```
 
-With no `--endpoint`, L80 probes the usual local ports (vLLM and llama-swap
-8000, llama.cpp 8080, SGLang 30000, Ollama 11434, LM Studio 1234, and
-8001/8002/5000), identifies the engine and lists each server's models; `--scan
-host:port` adds others. It only reads: on llama-swap a listed model is not
-loaded until the run starts, and the tool's warmup request is never scored. A
-run writes `results.json` and an HTML report beside it; rerunning the same
-command resumes it. As for BetterBench, `env.endpoint` and `env.host` never
-leave the machine, and L80 refuses to publish a file that still carries a home
-directory path or a LAN URL. [docs/qualitybench.md](docs/qualitybench.md) is
-the contract between L80 and the tool.
+**Run.** With no `--endpoint`, L80 probes the usual local ports (vLLM and
+llama-swap 8000, llama.cpp 8080, SGLang 30000, Ollama 11434, LM Studio 1234,
+and 8001/8002/5000), identifies the engine and lists each server's models;
+`--scan host:port` adds others. It only reads: on llama-swap a listed model is
+not loaded until the run starts, and the tool's warmup request is never
+scored. A run writes `results.json`, an HTML report and a `.qb/` folder beside
+them; rerunning the same command resumes it. `--deadline 6h` caps the time,
+and tasks it cuts are marked partial. If a task fails, the rest are kept and
+published (unless `--no-publish`), the page lists the failed task under
+partials, and L80 exits 1.
+
+**Compare.** `--reference` and `compare` take results files QualityBench
+wrote, each with its `.qb/` folder beside it. Both runs must be the same tier
+(both full or both quick) with the same tokenizer.
+
+**Setup.** `setup` installs the harness environments, the LiveCodeBench image
+and the datasets ahead of time (`--tasks` limits it); a run also does it on its
+own. The code tasks run model-written code in Docker on this machine.
+`--sandbox native` runs it without Docker: only on a disposable box.
+
+**Server requirements.**
+
+- logprobs needs vLLM's prompt logprobs: start vLLM with `--max-logprobs 64`
+  and speculative decoding off.
+- BFCL scores the server's tool parser (`--enable-auto-tool-choice
+  --tool-call-parser …`).
+- needle needs a 128k context; a shorter one skips that length.
+- `--thinking on` needs a reasoning parser.
+- logprobs and needle need a tokenizer. `--tokenizer org/repo` sets it; by
+  default L80 uses the weights the local vLLM server reports (its `root`).
+
+As for BetterBench, `env.endpoint` and `env.host` never leave the machine, and
+L80 refuses to publish a file that still carries a home directory path or a
+LAN URL. In the console, the QualityBench screen does all of this (see above).
+[docs/qualitybench.md](docs/qualitybench.md) is the contract between L80 and
+the tool.
 
 ## Tools
 
@@ -195,33 +233,56 @@ L80 tools path betterbench  # the exact command L80 would run
 ![The console's Tools screen: each pinned tool, its version and how it resolves on this machine](docs/media/tui-tools.gif)
 
 A tool is found in this order: its override variable (`L80_BETTERBENCH`,
-`L80_VAST`, `L80_PWDET`, `L80_DASHBOARD`), a copy on PATH that is at least the
+`L80_QUALITYBENCH`, `L80_VAST`, `L80_PWDET`, `L80_DASHBOARD`), a copy on PATH that is at least the
 pinned version, then `uvx --from <pkg> @ git+<repo>@<commit> <exe>`.
 Installing [uv](https://docs.astral.sh/uv/) is the only prerequisite. See
 [docs/tools.md](docs/tools.md) for how pins are bumped and released.
 
 ## Rent a GPU and benchmark it: `L80 vast`
 
-`L80 vast` runs [bbvastl80](https://github.com/launch80/BB-VAST-L80): rent a
-Vast.ai GPU, serve a model on it with vLLM or llama.cpp, run BetterBench from
-this machine against it, publish, and destroy the box. Every bbvastl80 command
-works through it.
+`L80 vast` runs [bbvastl80](https://github.com/launch80/BB-VAST-L80) (pinned
+0.2.0): rent a Vast.ai GPU, serve a model on it with vLLM or llama.cpp, run
+BetterBench and QualityBench from this machine against it, publish, and
+destroy the box. Every bbvastl80 command works through it.
 
 ```sh
 L80 vast doctor                                   # Vast key, SSH key, the L80 and BetterBench it will call
 L80 vast spec --model Qwen/Qwen3-8B --gpu "RTX 4090" --max-dph 0.6   # write run.yaml for you
+L80 vast spec --model Qwen/Qwen3-8B --steps betterbench,qualitybench \
+  --tool-parser hermes --qb-deadline 3h          # speed, then quality, on one rental
 L80 vast search --spec run.yaml                   # matching offers and prices; does not bill
-L80 vast run --spec run.yaml --max-hours 2        # rent, serve, benchmark, publish, tear down
+L80 vast run --spec run.yaml --max-hours 4        # rent, serve, run the steps, publish, tear down
 L80 vast status --json                            # every run L80 knows about, and which may be billing
 L80 vast destroy --run <id>                       # asks before destroying
 ```
 
-L80 points bbvastl80 at this L80 for publishing and at the pinned BetterBench
-for measuring, and keeps runs in `~/.local/state/L80/vast/runs`
+**Steps.** A spec's `steps:` lists the operations to run on one rental, in
+order: `betterbench` and `qualitybench`. `--steps` takes `betterbench`,
+`qualitybench` (thinking off) and `qualitybench-thinking` (needs
+`--reasoning-parser`); the default is one BetterBench step. Other flags:
+`--qb-tasks`, `--reference` and `--thresholds` for a compare, `--qb-deadline`,
+`--tool-parser`, `--reasoning-parser` and `--no-publish`. Steps run on this
+machine through the tunnel, so the code tasks need Docker here. Each step
+writes to `runs/<id>/<NN>-<label>/`. A failed step does not stop the next one,
+and the run exits 1 if any step failed. vLLM gets `--max-logprobs 64` when a
+step scores logprobs.
+
+L80 points bbvastl80 at this L80 for publishing and at the pinned tools for
+measuring, and keeps runs in `~/.local/state/L80/vast/runs`
 (`BBVASTL80_RUNS_DIR` overrides). After a run it names any instance that may
 still be billing. `--max-hours N` is a watchdog: when it fires, L80 stops the
-run and destroys its instance. L80 never answers a confirmation prompt for you.
-The Vast key comes from `VAST_API_KEY` or `~/.config/bbvastl80/credentials`.
+run and destroys its instance. QualityBench stops starting work 15 minutes
+before the cap, so its results are written. L80 never answers a confirmation
+prompt for you. The Vast key comes from `VAST_API_KEY` or
+`~/.config/bbvastl80/credentials`.
+
+In the console, Rent (vast) has three tabs: Runs, Spec file and New rental.
+New rental is a wizard: Model, Hardware, Operations, Review. Operations offers
+presets (Speed + quality, Quality baseline, Speed only, Compare to a run,
+Custom). Review shows a time plan for each step and the cost cap, which is max
+hours times the $/hr ceiling; the budget defaults to it. One consent dialog
+rents the box. Then a live step list shows each step, with per-task progress
+for QualityBench, and `o` opens a step's report.
 
 ## Check weights for tampering: `L80 pwdet`
 
@@ -351,11 +412,16 @@ configured key from any machine. Each successful publish is also appended to
 there is no token or no network, and the only record of which file each page
 came from.
 
-## Later: setup intelligence
+## Later
+
+**Coming in 1.4.0:** distillation data, and training and quantizing as rental
+steps, then pushing the trained weights to Hugging Face.
+
+**Setup intelligence.**
 
 ![Coming soon: detect, match, plan, measure, give back](docs/media/07-horizon.gif)
 
-Planned for a release after 1.1.0: L80 will read this machine's hardware (read-only), match it against the
+Planned for a later release: L80 will read this machine's hardware (read-only), match it against the
 [Launch80 AwesomeList](https://github.com/launch80/AwesomeList) catalog pinned
 to a commit, and shortlist the community projects that fit, ranked by maturity,
 verification, fit and setup friction, never by tokens per second. It hands the
@@ -438,8 +504,9 @@ L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
             [--json] [--dry-run]
 L80 betterbench --endpoint <url> --model <m>   Run BetterBench, publish results as written
 L80 betterbench --results <results.json>       Publish an existing results.json
-L80 qualitybench --model <m> [--quick|--tasks] Run QualityBench on the local server for <m> (preview)
+L80 qualitybench --model <m> [--quick|--tasks] Run QualityBench on the local server for <m>
 L80 qualitybench endpoints|tasks|compare       Local servers and models; the suite; compare two runs
+L80 qualitybench setup [--sandbox docker|native] Prepare what the tasks need
 L80 templates list [--json]                    List available templates
 L80 verify check|request|status|mine           "Verified by Launch80": pre-checks and your requests
 L80 verify queue|show|reproduce <id>           Review others' runs and reproduce them (any key)
@@ -452,6 +519,8 @@ L80 history [--limit N] [--json] [--local]     List the share URLs this key has 
 L80 auth status                                Show the resolved endpoint and key
 L80 vast <command> [args]                      Rent a GPU, serve, benchmark, publish (bbvastl80)
 L80 vast spec --model <hf repo> [--max-dph N]  Write a run spec: model, GPUs, price ceiling, budget
+              [--steps betterbench,qualitybench] Operations to run on the rental, in order
+L80 vast run --spec run.yaml [--max-hours N]   The whole pipeline, with a cost watchdog
 L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering
 L80 pwdet publish <report.json|dir>            Publish a report from an earlier scan
 L80 dashboard [tui|serve]                      GPU and inference telemetry

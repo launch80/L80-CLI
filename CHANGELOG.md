@@ -1,31 +1,81 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
-- **`L80 qualitybench` (preview).** Runs QualityBench against an
-  OpenAI-compatible endpoint, writes results and an HTML report, and publishes
-  to `bench.qualitybench.v1`. `--quick` and `--tasks a,b` choose the scope,
-  `--thinking on|off`, `--reference` and `--thresholds` set up a quality-loss
-  comparison, and `compare` runs one locally. With no `--endpoint`, L80 finds
-  the local server serving `--model`. QualityBench is not released yet, so it
-  is listed unpinned: `L80 tools check` and `L80 update` show it as
-  `unreleased` and ask nobody to install it; `L80_QUALITYBENCH` runs a local build.
-- **`L80 qualitybench endpoints`** lists the inference servers running on this
-  machine (vLLM, llama.cpp, llama-swap, SGLang, Ollama, LM Studio), their
-  versions and models, and whether each llama-swap model is loaded.
+### QualityBench
+
+- **`L80 qualitybench`** runs [QualityBench](https://github.com/launch80/QualityBench)
+  against an OpenAI-compatible endpoint, writes results and an HTML report, and
+  publishes to `bench.qualitybench.v1`. `--quick` and `--tasks a,b` choose the
+  scope; `--thinking on|off`, `--reference` and `--thresholds` set up a
+  quality-loss comparison; `--deadline` caps the time. With no `--endpoint`, L80
+  finds the local server serving `--model`. Rerunning the same command resumes.
+- QualityBench is released and pinned: v0.1.1 (`e1664cf`). It is no longer
+  listed as unreleased; `L80_QUALITYBENCH` still runs a local build.
+- `--tokenizer org/repo` names the tokenizer for logprobs and needle. It
+  defaults to the weights the local vLLM server reports (`root`).
+- `--sandbox docker|native` chooses where the code tasks run. `native` runs
+  model code on this machine: only use it on a disposable box.
+- `L80 qualitybench setup [--tasks a,b] [--sandbox …]` installs the harness
+  environments, the LiveCodeBench image and the datasets ahead of a run.
+- If a task fails, the rest are kept and published (unless `--no-publish`),
+  the failed task is listed under `partials`, and L80 exits 1.
+- `--reference` and `compare` need each results file's `.qb/` folder beside it,
+  and say so when it is missing.
+- `L80 qualitybench endpoints` lists the inference servers on this machine
+  (vLLM, llama.cpp, llama-swap, SGLang, Ollama, LM Studio), their versions and
+  models, and whether each llama-swap model is loaded. `tasks` lists the
+  suite with item counts and measured run times. `compare` runs locally.
 - `L80 publish --template bench.qualitybench.v1` strips `env.endpoint` and
   `env.host`, as for BetterBench files, and refuses home-directory paths and
   LAN URLs anywhere in the file.
-- **Console: a QualityBench screen (preview).** Scope is Full, Quick or a Custom
-  checklist of tasks with a live run-time estimate. Local runs pick a server
-  found on this machine and one of its models from lists; Vast picks an engine
-  and a model from recent runs, the Hugging Face cache, `~/models` or a
-  Hugging Face search. A run shows per-task progress parsed from QualityBench's
-  `qb:progress` lines, then the scores, publish (`p`) and open report (`o`).
-  The Vast path shows how to prepare a rental and rents nothing yet. The
-  sidebar gains QualityBench between Poison Detector and Rent (vast), so Rent
-  (vast) moves to `9`.
-- README: a Community section (Discord and supporter page).
+
+### Rentals: steps
+
+- bbvastl80 is pinned at v0.2.0 (`5587e1f`). A spec's `steps:` lists operations
+  to run in order on one rental: `betterbench` and `qualitybench`. They run on
+  this machine through the tunnel, each into `runs/<id>/<NN>-<label>/`. A
+  failed step does not stop the next one; the run exits 1 if any failed.
+  Progress comes as `bbvastl80:step` lines.
+- vLLM gets `--max-logprobs 64` when a step scores logprobs. New spec fields
+  `tool_call_parser` and `reasoning_parser`.
+- `L80 vast spec --steps betterbench,qualitybench,qualitybench-thinking` writes
+  such a spec, with `--qb-tasks`, `--reference`, `--thresholds`,
+  `--qb-deadline`, `--tool-parser`, `--reasoning-parser` and `--no-publish`.
+  QualityBench steps run with thinking off unless they are
+  `qualitybench-thinking`.
+- The `--max-hours` watchdog passes `BBVASTL80_DEADLINE`, so QualityBench stops
+  starting work 15 minutes before the cap and its results are written.
+
+### Console
+
+- **QualityBench screen.** Run or Compare (two local results). Scope is Full,
+  Quick or a Custom checklist with a live run-time estimate. Pick a server
+  found on this machine and one of its models, a "Compare to" reference from
+  local results, and a tokenizer. Thinking defaults to off. Setup runs before
+  each run. A run shows per-task progress, then the scores, publish (`p`) and
+  open report (`o`). "Rent via Vast" hands the model and a QualityBench step
+  to Rent.
+- **Rent (vast)** has three tabs: Runs, Spec file and New rental. New rental is
+  a wizard: Model, Hardware, Operations, Review. Presets are Speed + quality,
+  Quality baseline, Speed only, Compare to a run and Custom. Review shows a
+  time plan per step and the cost cap (max hours × the $/hr ceiling); the
+  budget defaults to the cap. One consent dialog, then a live step list with
+  per-task QualityBench progress; `o` opens a step's report.
+- **Home is a launcher.** "What do you want to do?" opens benchmark speed,
+  measure quality, compare runs, rent a GPU, scan weights, publish, verify or
+  settings. Status and the latest jobs sit below it.
+- New screens: **Settings** (log in with a masked input, log out, check for an
+  update with its release notes and run it), **Skills** (install or link per
+  agent), **Templates**, **Doctor** and **Jobs** (every run, its log, and stop).
+- Screens come from a registry. The sidebar scrolls when it is taller than the
+  pane, and `1`-`9` jump to the first nine entries.
+- `L80 update --check --json` carries the release notes (`notes`).
+
+### Skills
+
+- New skill `l80-qualitybench`: run, compare and publish QualityBench.
+- `l80` covers QualityBench; `l80-vast` covers steps and the New rental wizard.
 
 ## 1.2.2
 
