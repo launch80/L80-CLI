@@ -39,7 +39,7 @@ func newTestConsole(t *testing.T) *Console {
 		Usage: "L80 — test\n\nUsage:\n  Tools (free, no token):\n  L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering (Poisoned Weights Detector)\n"}}
 	c.prog = NewProgram(c)
 	c.th = widgets.DefaultTheme(style.NoColor, true)
-	c.side = sidebar
+	c.side = sidebarIDs()
 	c.bench.init()
 	c.vast.init()
 	c.pw.init()
@@ -399,21 +399,81 @@ func TestVerifyScreenScanNeedsAReScan(t *testing.T) {
 }
 
 func TestSidebarIsAlphabetical(t *testing.T) {
+	sidebar := sidebarIDs()
 	if sidebar[0] != scrHome {
 		t.Fatal("Home stays on top")
 	}
 	names := []string{}
 	for _, s := range sidebar[1:] {
-		names = append(names, strings.ToLower(labels[s]))
+		names = append(names, strings.ToLower(label(s)))
 	}
 	if !slices.IsSorted(names) {
 		t.Errorf("sidebar after Home is not A-Z: %v", names)
+	}
+	for _, s := range []screenID{scrHelp, scrRecs, scrTrain} {
+		if slices.Contains(sidebar, s) {
+			t.Errorf("%s must stay out of the sidebar", s)
+		}
+	}
+}
+
+// Every registered screen can be drawn and says what it is.
+func TestRegistryIsComplete(t *testing.T) {
+	c := newTestConsole(t)
+	feed(c, SizeMsg{100, 30})
+	for _, id := range allIDs() {
+		d := def(id)
+		if d.label == "" || d.blurb == "" || d.get == nil {
+			t.Errorf("%s: label %q blurb %q get %v", id, d.label, d.blurb, d.get != nil)
+			continue
+		}
+		c.scr, c.paneFocus = id, true
+		view := checkFrame(t, c.View(100, 30), 100, 30)
+		if !strings.Contains(view, title(id)) {
+			t.Errorf("%s: pane title %q missing:\n%s", id, title(id), view)
+		}
+	}
+}
+
+func TestSideWindowKeepsSelectionVisible(t *testing.T) {
+	for _, tc := range []struct{ n, sel, h, first, last int }{
+		{5, 4, 10, 0, 5},
+		{20, 0, 10, 0, 10},
+		{20, 19, 10, 10, 20},
+		{20, 10, 10, 5, 15},
+	} {
+		f, l := sideWindow(tc.n, tc.sel, tc.h)
+		if f != tc.first || l != tc.last || tc.sel < f || tc.sel >= l {
+			t.Errorf("sideWindow(%d,%d,%d) = %d,%d; want %d,%d", tc.n, tc.sel, tc.h, f, l, tc.first, tc.last)
+		}
+	}
+}
+
+// jumpTo opens screen s with the keyboard, the way a person would: a number
+// key for the first nine, otherwise down the sidebar and enter.
+func jumpTo(t *testing.T, c *Console, s screenID) {
+	t.Helper()
+	i := slices.Index(c.side, s)
+	if i < 0 {
+		t.Fatalf("%s is not in the sidebar", s)
+	}
+	if i < 9 {
+		feed(c, input.Key{Code: input.Rune, Rune: rune('1' + i)})
+	} else {
+		feed(c, input.Key{Code: input.Home})
+		for range i {
+			feed(c, input.Key{Code: input.Down})
+		}
+		feed(c, input.Key{Code: input.Enter})
+	}
+	if c.scr != s || !c.paneFocus {
+		t.Fatalf("jumpTo %s: scr=%v focus=%v", s, c.scr, c.paneFocus)
 	}
 }
 
 func TestAboutAndDeferredPages(t *testing.T) {
 	c := newTestConsole(t)
-	c.side = sidebar
+	c.side = sidebarIDs()
 	feed(c, SizeMsg{80, 24})
 	feed(c, input.Key{Code: input.Rune, Rune: '2'})
 	if c.scr != scrAbout || !c.paneFocus {

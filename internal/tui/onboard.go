@@ -331,7 +331,7 @@ func (o *onboardScreen) view(c *Console, w, h int) ([]string, []widgets.Binding)
 	case obDone:
 		dest := "Home"
 		if it, ok := o.goals.Selected(); ok {
-			dest = labels[it.Value.(screenID)]
+			dest = label(it.Value.(screenID))
 		}
 		para("You are set up. A few things worth knowing:")
 		out = append(out, "",
