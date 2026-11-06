@@ -35,6 +35,7 @@ func newTestConsole(t *testing.T) *Console {
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("L80_QUALITYBENCH_CONFIRM", "")
 	cfg := config.Config{BaseURL: srv.URL}
 	c := &Console{d: Deps{Version: "0.7.0", Config: cfg, Client: api.NewClient(srv.URL, "", "test"),
 		VastEnv: func(string) ([]string, error) { return nil, nil }, RunsDir: t.TempDir(), DashboardState: t.TempDir(),
@@ -49,6 +50,10 @@ func newTestConsole(t *testing.T) *Console {
 	c.qb.scan = func(context.Context) []discover.Endpoint { return nil }
 	c.qb.sources = func(*Console) []models.Model { return nil }
 	c.qb.find = func(context.Context, string) ([]models.Model, error) { return nil, nil }
+	// Nor run the tool to estimate: the reference table stands in.
+	c.qb.estimateFn = func(_ context.Context, o qualitybench.RunOptions, _ bool) qualitybench.Estimate {
+		return qualitybench.StaticEstimate(o.Scope, o.Thinking)
+	}
 	return c
 }
 

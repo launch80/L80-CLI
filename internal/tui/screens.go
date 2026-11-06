@@ -493,7 +493,7 @@ func jobHeader(c *Console, j *job, w int) string {
 	t := c.th
 	switch {
 	case j.running:
-		return t.R(t.Accent, widgets.Spin(c.tick)+" "+j.title) + t.R(t.Muted, "  "+elapsed(j)+"  (ctrl+x stops it)")
+		return t.R(t.Accent, widgets.Spin(c.tick)+" "+j.label()) + t.R(t.Muted, "  "+elapsed(j)+"  (ctrl+x stops it)")
 	case j.err != nil:
 		return t.R(t.Bad, "✗ "+j.title+": "+clip(j.err.Error(), w-len(j.title)-6))
 	case j.code != 0:

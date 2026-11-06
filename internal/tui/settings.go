@@ -64,7 +64,46 @@ func (s *settingsScreen) ensure() {
 		{Title: "Log out", Desc: "Remove the saved token", Value: "logout"},
 		{Title: "Check for updates", Desc: "What `L80 update --check` finds, with the release notes", Value: "check"},
 		{Title: "Update L80", Desc: "Install the latest release and refresh tools and skills (`L80 update`)", Value: "update"},
+		{Title: "Ask before QualityBench runs", Desc: "Enter cycles: always · only over 30 min · never", Value: "confirm"},
 	}}
+}
+
+// confirmCycle is the order Enter steps qualitybench.confirm through.
+var confirmCycle = []string{"always", "over:30m", "never"}
+
+// confirmLabel says what qualitybench.confirm means, for the screen.
+func confirmLabel(v string) string {
+	c, err := config.ParseConfirm(v)
+	switch {
+	case err != nil:
+		return v + " (not understood: asking)"
+	case c.Mode == "never":
+		return "never: runs start straight away"
+	case c.Mode == "over":
+		return "only for runs over " + strings.TrimPrefix(c.String(), "over:")
+	}
+	return "always: shows the estimate and asks"
+}
+
+// cycleConfirm steps qualitybench.confirm to its next value and saves it.
+func (c *Console) cycleConfirm() (string, bool) {
+	cur, _ := config.Get(config.KeyQualityConfirm)
+	if c, err := config.ParseConfirm(cur); err == nil {
+		cur = c.String()
+	}
+	next := confirmCycle[0]
+	for i, v := range confirmCycle {
+		if v == cur {
+			next = confirmCycle[(i+1)%len(confirmCycle)]
+		}
+	}
+	if err := config.Set(config.KeyQualityConfirm, next); err != nil {
+		return "Could not save it: " + err.Error(), false
+	}
+	if v, src := config.Get(config.KeyQualityConfirm); src != "file" {
+		return "Saved " + next + ", but " + src + " sets " + v + " and wins until it is unset.", false
+	}
+	return "Ask before QualityBench runs: " + confirmLabel(next) + ".", true
 }
 
 // login checks a token's shape, saves it where config.Load finds it, and
@@ -228,6 +267,9 @@ func (s *settingsScreen) update(c *Console, m Msg) Cmd {
 				return s.runCheck(c)
 			case "update":
 				return s.runUpdate(c)
+			case "confirm":
+				msg, ok := c.cycleConfirm()
+				s.msg, s.bad = msg, !ok
 			}
 		}
 	}
@@ -277,6 +319,16 @@ func (s *settingsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding
 			for _, l := range style.Wrap(style.Sanitize(a), w-4) {
 				out = append(out, t.R(t.Muted, "  "+l))
 			}
+		}
+	}
+	qv, qsrc := config.Get(config.KeyQualityConfirm)
+	for i := range s.menu.Items {
+		if s.menu.Items[i].Value == "confirm" {
+			desc := "Now " + confirmLabel(qv)
+			if qsrc != "file" && qsrc != "default" {
+				desc += " (" + qsrc + ")"
+			}
+			s.menu.Items[i].Desc = desc + ". Enter cycles always · over 30 min · never"
 		}
 	}
 	out = append(out, "")

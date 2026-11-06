@@ -425,6 +425,30 @@ type rentProgress struct {
 	state map[int]stepLine
 	qb    *qbProgress
 	phase string // the last pipeline line worth showing (renting, provisioning…)
+	// qbDeadline is when bbvastl80 tells QualityBench to stop starting work
+	// (the watchdog less its margin); zero without a watchdog.
+	qbDeadline time.Time
+}
+
+// qbDeadlineMargin mirrors bbvastl80's DEADLINE_MARGIN_S.
+const qbDeadlineMargin = 15 * time.Minute
+
+// status is the rental job title's live part while a QualityBench step runs.
+func (p *rentProgress) status() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.steps {
+		if s, ok := p.state[i+1]; ok && s.State == "running" {
+			out := fmt.Sprintf("step %d/%d", i+1, len(p.steps))
+			if s.Type == vast.StepQualityBench && p.qb != nil {
+				if q := p.qb.status(); q != "" {
+					out += " · QualityBench " + q
+				}
+			}
+			return out
+		}
+	}
+	return ""
 }
 
 type stepLine struct {
@@ -459,15 +483,27 @@ func (p *rentProgress) parse(line string) {
 					tasks = sc.Tasks
 				}
 				p.qb = newQBProgress(tasks)
+				if !p.qbDeadline.IsZero() {
+					p.qb.tr.SetDeadline(p.qbDeadline)
+				}
+				if st.Deadline != "" {
+					if d, err := time.ParseDuration(st.Deadline); err == nil {
+						if at := time.Now().Add(d); p.qbDeadline.IsZero() || at.Before(p.qbDeadline) {
+							p.qb.tr.SetDeadline(at)
+						}
+					}
+				}
 			}
 		}
 		return
 	}
-	if strings.Contains(line, progressPrefix) {
-		if p.qb != nil {
-			p.qb.parse(line[strings.Index(line, progressPrefix):])
+	for _, pre := range []string{progressPrefix, qualitybench.EstimatePrefix} {
+		if i := strings.Index(line, pre); i >= 0 {
+			if p.qb != nil {
+				p.qb.parse(line[i:])
+			}
+			return
 		}
-		return
 	}
 	l := strings.TrimSpace(line)
 	for _, k := range []string{"renting offer", "instance ", "waiting", "provision", "endpoint verified", "destroying", "destroyed"} {

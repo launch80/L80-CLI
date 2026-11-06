@@ -180,7 +180,11 @@ func (s *vastScreen) startRental(c *Console) Cmd {
 		}
 		fmt.Fprintf(&b, "GPU: %s × %d, at most $%s/hr\n", gpu, sp.GPUCount, strconv.FormatFloat(sp.MaxDPH, 'f', -1, 64))
 		for i, st := range sp.Steps {
-			fmt.Fprintf(&b, "%d. %s\n", i+1, st.Describe())
+			fmt.Fprintf(&b, "%d. %s", i+1, st.Describe())
+			if m, _ := stepMinutes(st); m > 0 {
+				fmt.Fprintf(&b, " · about %s", humanMinutes(m))
+			}
+			b.WriteString("\n")
 		}
 		fmt.Fprintf(&b, "\nAbout %s; hard cap %.1f h, so at most $%.2f.\n", humanMinutes(p.minutes), hrs, hrs*sp.MaxDPH)
 		b.WriteString("The box is destroyed when the run ends or the cap is hit; nothing waits on you.")
@@ -503,6 +507,10 @@ func (s *vastScreen) launch(c *Console, spec string, args []string, limit time.D
 	s.tab = 0
 	s.job = newJob("vast run " + filepath.Base(spec))
 	s.prog = newRentProgress(steps)
+	if limit > 0 {
+		s.prog.qbDeadline = time.Now().Add(limit - qbDeadlineMargin)
+	}
+	s.job.status = s.prog.status
 	prog := s.prog
 	return c.start(s.job, func(ctx context.Context, out io.Writer) (any, int, error) {
 		return vastPipeline(ctx, c.d.RunsDir, args, env, limit, &rentWriter{out: out, p: prog})

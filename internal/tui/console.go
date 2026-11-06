@@ -136,6 +136,19 @@ type job struct {
 	running bool
 	code    int
 	err     error
+	// status, when set, adds live progress to the title while the job runs
+	// ("48% · 23 min left").
+	status func() string
+}
+
+// label is the job's title with its live status while it runs.
+func (j *job) label() string {
+	if j.running && j.status != nil {
+		if s := j.status(); s != "" {
+			return j.title + " · " + s
+		}
+	}
+	return j.title
 }
 
 type jobDone struct {

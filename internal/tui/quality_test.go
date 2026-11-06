@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/qualitybench"
 	"github.com/launch80/L80-CLI/internal/vast"
 	"os"
@@ -43,7 +44,7 @@ var swap = []discover.Endpoint{{URL: "http://127.0.0.1:8000/v1", Engine: discove
 func TestQualityScreenScopeAndChecklist(t *testing.T) {
 	c := openQuality(t, swap)
 	view := screen(t, c)
-	for _, want := range []string{"QualityBench", "Scope", "‹Full›", "Target", "‹Local GPUs›", "Run QualityBench", "about 2h41 with thinking off"} {
+	for _, want := range []string{"QualityBench", "Scope", "‹Full›", "Target", "‹Local GPUs›", "Run QualityBench", "about 2h41 on the reference run"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q:\n%s", want, view)
 		}
@@ -142,6 +143,7 @@ func TestQualityRunShowsProgressAndSummary(t *testing.T) {
 	defer func() { openFile = old }()
 
 	c := openQuality(t, swap)
+	c.qb.estimateFn = app.EstimateQuality // the fake has no estimate command: the reference table
 	c.qb.scope.Choice = scopeCustom
 	for i := range c.qb.tasks.Items {
 		c.qb.tasks.Items[i].On = i == 0
@@ -149,6 +151,13 @@ func TestQualityRunShowsProgressAndSummary(t *testing.T) {
 	c.qb.thinking.Choice = 2
 	c.qb.focus = qsSubmit
 	feed(c, code(input.Enter))
+	if c.dialog == nil || c.dialog.Title != "Start QualityBench?" {
+		t.Fatalf("no approval dialog; flash %q", c.flash)
+	}
+	if body := c.dialog.Body; !strings.Contains(body, "on the reference run") || !strings.Contains(body, "GSM8K 1h16") {
+		t.Errorf("dialog body:\n%s", body)
+	}
+	feed(c, code(input.Enter)) // Start
 	if c.qb.job == nil {
 		t.Fatalf("no job; flash %q", c.flash)
 	}
@@ -187,6 +196,7 @@ func TestQualityToolUnavailable(t *testing.T) {
 	c := openQuality(t, swap)
 	c.qb.focus = qsSubmit
 	feed(c, code(input.Enter))
+	feed(c, code(input.Enter)) // Start, in the approval dialog
 	deadline := time.Now().Add(5 * time.Second)
 	for c.qb.job != nil && c.qb.job.running && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)

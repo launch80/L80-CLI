@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,11 +9,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/app"
+	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/discover"
 	"github.com/launch80/L80-CLI/internal/history"
 	"github.com/launch80/L80-CLI/internal/models"
@@ -106,6 +105,18 @@ type qualityScreen struct {
 	searching bool
 	searched  string
 
+	// estimate asks the tool how long a run takes; swapped out by tests.
+	estimateFn func(ctx context.Context, o qualitybench.RunOptions, noProbe bool) qualitybench.Estimate
+	// estimating is the "checking how long this will take" step after Run;
+	// estCancel stops it.
+	estimating bool
+	estCancel  context.CancelFunc
+	// scopeEst is a quiet estimate for the Scope row (history or the
+	// reference table: no requests to the server), for scopeKey.
+	scopeEst  *qualitybench.Estimate
+	scopeKey  string
+	scopeBusy bool
+
 	job     *job
 	prog    *qbProgress
 	result  *app.QualityResult
@@ -126,7 +137,14 @@ type (
 		art *api.Artifact
 		err *api.Error
 	}
-	qbResults struct{ rs []qualitybench.ResultFile }
+	qbResults   struct{ rs []qualitybench.ResultFile }
+	qbEstimated struct {
+		key    string
+		est    qualitybench.Estimate
+		forRun bool
+		opts   qualitybench.RunOptions
+		err    error
+	}
 )
 
 func (s *qualityScreen) ensure() {
@@ -182,6 +200,9 @@ func (s *qualityScreen) ensure() {
 	}
 	if s.findResults == nil {
 		s.findResults = localResults
+	}
+	if s.estimateFn == nil {
+		s.estimateFn = app.EstimateQuality
 	}
 	s.buildEndpoints()
 	s.buildVastModels()
@@ -496,7 +517,7 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 	case qbScanned:
 		s.found, s.scanning, s.scanned = v.eps, false, true
 		s.buildEndpoints()
-		return nil
+		return s.quietEstimate()
 	case qbSources:
 		s.cands = v.ms
 		s.buildVastModels()
@@ -505,6 +526,24 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 		s.results = v.rs
 		s.buildResults()
 		return nil
+	case qbEstimated:
+		if !v.forRun {
+			s.scopeBusy = false
+			s.scopeEst, s.scopeKey = &v.est, v.key
+			return s.quietEstimate()
+		}
+		if !s.estimating {
+			return nil // cancelled
+		}
+		s.estimating, s.estCancel = false, nil
+		if v.err != nil {
+			c.setFlash("estimate: "+v.err.Error(), true)
+			return nil
+		}
+		if s.runKey() == v.key {
+			s.scopeEst, s.scopeKey = &v.est, v.key
+		}
+		return s.approve(c, v.opts, v.est)
 	case qbSearched:
 		s.searching, s.searched = false, v.query
 		if v.err != nil {
@@ -549,7 +588,15 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 		}
 	case KeyMsg:
 		if s.phase == 0 {
-			return s.formKey(c, v)
+			if s.estimating {
+				if v.Code == input.Esc || v.Ctrl && v.Rune == 'x' {
+					s.estCancel()
+					s.estimating, s.estCancel = false, nil
+					c.setFlash("not started", false)
+				}
+				return nil
+			}
+			return Batch(s.formKey(c, v), s.quietEstimate())
 		}
 		if s.job.log.HandleKey(v) {
 			return nil
@@ -692,16 +739,123 @@ func (s *qualityScreen) estimate() string {
 	if err != nil {
 		return "no tasks ticked"
 	}
-	mins, un := qualitybench.EstimateMinutes(sc.Tasks, sc.Tier == qualitybench.TierQuick)
 	out := fmt.Sprintf("%d task", len(sc.Tasks))
 	if len(sc.Tasks) != 1 {
 		out += "s"
 	}
-	out += fmt.Sprintf(" · about %s with thinking off", humanMinutes(mins))
+	if s.scopeEst != nil && s.scopeKey == s.runKey() && s.scopeEst.FromTool {
+		return out + " · " + s.scopeEst.Headline()
+	}
+	mins, un := qualitybench.EstimateMinutes(sc.Tasks, sc.Tier == qualitybench.TierQuick)
+	if s.thinking.Value() == "on" {
+		mins *= int(qualitybench.ThinkingFactor)
+		out += fmt.Sprintf(" · about %s with thinking on (a guess)", humanMinutes(mins))
+	} else {
+		out += fmt.Sprintf(" · about %s on the reference run", humanMinutes(mins))
+	}
 	if un > 0 {
 		out += fmt.Sprintf(", +%d untimed", un)
 	}
+	if s.local() {
+		out += "; Run measures this server first"
+	}
 	return out
+}
+
+// thinkingArg is "", "off" or "on" for the Thinking row.
+func (s *qualityScreen) thinkingArg() string {
+	if s.thinking.Choice > 0 {
+		return s.thinking.Value()
+	}
+	return ""
+}
+
+// runKey names what an estimate is for: server, model, scope, thinking.
+// Empty when the form does not name a local run yet.
+func (s *qualityScreen) runKey() string {
+	if !s.local() || s.mode.Choice != modeRun {
+		return ""
+	}
+	sc, err := s.scopeOf()
+	if err != nil {
+		return ""
+	}
+	ep, model, err := s.localTarget()
+	if err != nil {
+		return ""
+	}
+	return strings.Join([]string{ep, model, string(sc.Tier), strings.Join(sc.Tasks, ","), s.thinkingArg()}, "|")
+}
+
+// quietEstimate refreshes the Scope row's estimate from history (no
+// requests to the server: probing would load the model) when the form
+// names a different run than the last estimate. One runs at a time.
+func (s *qualityScreen) quietEstimate() Cmd {
+	key := s.runKey()
+	if key == "" || key == s.scopeKey || s.scopeBusy || s.estimateFn == nil {
+		return nil
+	}
+	sc, _ := s.scopeOf()
+	ep, model, _ := s.localTarget()
+	o := qualitybench.RunOptions{Endpoint: ep, Model: model, Scope: sc, Thinking: s.thinkingArg(), APIKey: s.apikey.Input.String()}
+	s.scopeBusy = true
+	est := s.estimateFn
+	return func() Msg {
+		return qbEstimated{key: key, est: est(context.Background(), o, true)}
+	}
+}
+
+// approve shows the estimate and asks, unless qualitybench.confirm says not
+// to; then the run starts.
+func (s *qualityScreen) approve(c *Console, o qualitybench.RunOptions, e qualitybench.Estimate) Cmd {
+	conf, src, err := config.QualityConfirm()
+	if err != nil {
+		c.setFlash("qualitybench.confirm ("+src+"): "+err.Error()+"; asking", true)
+	}
+	if !conf.Ask(e.Upper()) {
+		return s.begin(c, o, e)
+	}
+	thinking := o.Thinking
+	if thinking == "" {
+		thinking = "server default"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s on %s · %s · thinking %s\n\n", o.Model, o.Endpoint, o.Scope.Tier, thinking)
+	fmt.Fprintf(&b, "%s.\n", capitalize(e.Headline()))
+	if line := e.TaskLine(); line != "" {
+		fmt.Fprintf(&b, "  %s\n", line)
+	}
+	if e.SetupMin > 0 {
+		fmt.Fprintf(&b, "First run: + about %s of setup.\n", qualitybench.Minutes(e.SetupMin))
+	}
+	if e.Warning != "" {
+		fmt.Fprintf(&b, "(%s)\n", e.Warning)
+	}
+	b.WriteString("\n\"Don't ask again\" starts now and turns this question off (Settings turns it back on).")
+	c.confirm(&widgets.Dialog{Title: "Start QualityBench?", Body: b.String(),
+		Buttons: []string{"Start", "Start, don't ask again", "Cancel"}}, func(ch int) Cmd {
+		switch ch {
+		case 0:
+			return s.begin(c, o, e)
+		case 1:
+			if err := config.Set(config.KeyQualityConfirm, "never"); err != nil {
+				c.setFlash("could not save the setting: "+err.Error(), true)
+			} else {
+				c.setFlash("QualityBench runs now start without asking; Settings changes it", false)
+			}
+			return s.begin(c, o, e)
+		}
+		c.setFlash("not started", false)
+		return nil
+	})
+	return nil
+}
+
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func humanMinutes(m int) string {
@@ -817,8 +971,35 @@ func (s *qualityScreen) submit(c *Console) Cmd {
 	if ref != "" {
 		opts.Thresholds = s.thresholds.Value()
 	}
+	return s.checkTime(c, opts)
+}
+
+// checkTime is the step after Run: ask the tool how long this takes (it
+// measures the server), then approve.
+func (s *qualityScreen) checkTime(c *Console, o qualitybench.RunOptions) Cmd {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.estimating, s.estCancel = true, cancel
+	key, est := s.runKey(), s.estimateFn
+	return func() Msg {
+		e := est(ctx, o, false)
+		var err error
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return qbEstimated{key: key, est: e, forRun: true, opts: o, err: err}
+	}
+}
+
+// begin starts the run the user approved.
+func (s *qualityScreen) begin(c *Console, opts qualitybench.RunOptions, e qualitybench.Estimate) Cmd {
+	// The tool would ask on its own terminal; L80 has asked. Only 0.2.0+,
+	// which answered the estimate, knows --yes.
+	opts.Yes = e.FromTool
+	scope := opts.Scope
 	s.prog = newQBProgress(scope.Tasks)
-	s.job = newJob("QualityBench " + model)
+	s.prog.tr.SetEstimate(e)
+	s.job = newJob("QualityBench " + opts.Model)
+	s.job.status = s.prog.status
 	s.phase, s.result, s.summary, s.url, s.comparing = 1, nil, nil, "", false
 	prog := s.prog
 	return c.start(s.job, func(ctx context.Context, w io.Writer) (any, int, error) {
@@ -962,105 +1143,92 @@ var openFile = func(path string) error {
 
 // --- progress ------------------------------------------------------------------
 
-// qbProgress is the per-task state parsed from the tool's qb:progress lines
-// (docs/qualitybench.md). The job goroutine writes it; the view reads it.
+// qbProgress draws a run from the tool's qb:progress lines: an overall bar
+// with the time left, then one bar per task. The tracker does the counting.
 type qbProgress struct {
-	mu    sync.Mutex
-	order []string
-	rows  map[string]*qbRow
-}
-
-type qbRow struct {
-	done, total, correct int
-	state                string
+	tr *qualitybench.Tracker
 }
 
 func newQBProgress(tasks []string) *qbProgress {
-	p := &qbProgress{rows: map[string]*qbRow{}}
-	for _, t := range tasks {
-		p.order = append(p.order, t)
-		p.rows[t] = &qbRow{state: "queued"}
-	}
-	return p
+	return &qbProgress{tr: qualitybench.NewTracker(tasks)}
 }
 
-const progressPrefix = "qb:progress "
+const progressPrefix = qualitybench.ProgressPrefix
 
-func (p *qbProgress) parse(line string) bool {
-	rest, ok := strings.CutPrefix(line, progressPrefix)
-	if !ok {
-		return false
+func (p *qbProgress) parse(line string) bool { return p.tr.Parse(line) }
+
+// status is the job title's live part: "48% · 23 min left".
+func (p *qbProgress) status() string {
+	o := p.tr.Overall()
+	if o.Current == nil && o.Fraction == 0 {
+		return ""
 	}
-	var u struct {
-		Task    string `json:"task"`
-		Done    *int   `json:"done"`
-		Total   *int   `json:"total"`
-		Correct *int   `json:"correct"`
-		State   string `json:"state"`
+	s := fmt.Sprintf("%d%%", int(o.Fraction*100))
+	if o.Known {
+		s += " · " + qualitybench.Duration(o.Left) + " left"
 	}
-	if json.Unmarshal([]byte(rest), &u) != nil || u.Task == "" {
-		return false
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	r, ok := p.rows[u.Task]
-	if !ok {
-		r = &qbRow{}
-		p.rows[u.Task] = r
-		p.order = append(p.order, u.Task)
-	}
-	if u.Total != nil {
-		r.total = *u.Total
-	}
-	if u.Done != nil {
-		r.done = *u.Done
-	}
-	if u.Correct != nil {
-		r.correct = *u.Correct
-	}
-	switch {
-	case u.State != "":
-		r.state = u.State
-	case r.state == "queued":
-		r.state = "running"
-	}
-	if u.State == "scored" && r.total > 0 {
-		r.done = r.total
-	}
-	return true
+	return s
 }
 
 func (p *qbProgress) view(t widgets.Theme, w int) []string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	var out []string
+	o := p.tr.Overall()
 	barW := max(8, min(30, w-52))
-	for _, id := range p.order {
-		r := p.rows[id]
-		label := id
-		if tk, ok := qualitybench.Lookup(id); ok {
+	var out []string
+	left := t.R(t.Muted, "working out the time left…")
+	if o.Known {
+		st := t.Accent
+		if len(o.Cut) > 0 {
+			st = t.Warn
+		}
+		left = t.R(st, qualitybench.Duration(o.Left)+" left")
+		var meta []string
+		if o.EstTotal > 0 {
+			meta = append(meta, "est. "+strings.TrimSuffix(qualitybench.Duration(o.EstTotal), " min"))
+		}
+		if o.Elapsed > 0 {
+			meta = append(meta, "running "+strings.TrimSuffix(qualitybench.Duration(o.Elapsed), " min"))
+		}
+		if len(meta) > 0 {
+			left += t.R(t.Muted, "  ("+strings.Join(meta, ", ")+")")
+		}
+	}
+	pct := fmt.Sprintf("%3d%%", int(o.Fraction*100))
+	out = append(out, style.Truncate(t.R(t.Title, style.PadRight("Overall", 20))+widgets.Progress(t, o.Fraction, barW)+" "+style.PadRight(pct, 11)+left, w, "…"))
+	if len(o.Cut) > 0 {
+		out = append(out, style.Truncate("  "+t.R(t.Warn, "the deadline will cut "+strings.Join(qualitybench.Labels(o.Cut), ", ")+": they will be listed as partial"), w, "…"))
+	}
+	for _, r := range p.tr.Rows() {
+		label := r.ID
+		if tk, ok := qualitybench.Lookup(r.ID); ok {
 			label = tk.Label
 		}
 		frac := 0.0
-		if r.total > 0 {
-			frac = float64(r.done) / float64(r.total)
+		if r.Total > 0 {
+			frac = float64(r.Done) / float64(r.Total)
 		}
 		count := "—"
-		if r.total > 0 {
-			count = fmt.Sprintf("%d/%d", r.done, r.total)
+		if r.Total > 0 {
+			count = fmt.Sprintf("%d/%d", r.Done, r.Total)
 		}
 		st := t.Muted
-		state := r.state
-		switch r.state {
-		case "running":
+		state := r.State
+		switch r.State {
+		case "running", "scoring":
 			st = t.Accent
+			if d, ok := p.tr.TaskLeft(r.ID); ok && r.State == "running" {
+				state += " · " + qualitybench.Duration(d) + " left"
+			}
 		case "scored":
 			st = t.OK
-			if r.total > 0 {
-				state = fmt.Sprintf("scored %.1f%%", 100*float64(r.correct)/float64(r.total))
+			if r.Total > 0 {
+				state = fmt.Sprintf("scored %.1f%%", 100*float64(r.Correct)/float64(r.Total))
 			}
-		case "partial":
+		case "partial", "failed":
 			st = t.Warn
+		case "queued":
+			if d, ok := p.tr.TaskLeft(r.ID); ok {
+				state += " · ~" + qualitybench.Duration(d)
+			}
 		}
 		line := "  " + style.PadRight(label, 18) + widgets.Progress(t, frac, barW) + " " + style.PadRight(count, 11) + t.R(st, state)
 		out = append(out, style.Truncate(line, w, "…"))
@@ -1210,6 +1378,10 @@ func (s *qualityScreen) view(c *Console, w, h int) ([]string, []widgets.Binding)
 				name = "Set up the rental"
 			}
 			btn := "[ " + name + " ]"
+			if s.estimating {
+				out = append(out, "", strings.Repeat(" ", lw)+t.R(t.Accent, widgets.Spin(c.tick)+" Checking how long this will take…")+t.R(t.Muted, "  (esc cancels)"))
+				continue
+			}
 			if s.focus == q {
 				btn = t.R(t.Selected, btn)
 			} else {

@@ -67,7 +67,7 @@ func jobLine(c *Console, j *job) string {
 	default:
 		mark = t.R(t.Bad, "✗") + t.R(t.Muted, " "+st)
 	}
-	return mark + " " + style.Sanitize(j.title) + t.R(t.Muted, "  "+elapsed(j))
+	return mark + " " + style.Sanitize(j.label()) + t.R(t.Muted, "  "+elapsed(j))
 }
 
 func (s *jobsScreen) stop(c *Console, j *job) {
@@ -143,7 +143,7 @@ func (s *jobsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	}
 	tb := widgets.Table{Columns: []widgets.Column{{Title: "State", Width: 9}, {Title: "Started", Width: 8}, {Title: "Elapsed", Width: 8, Right: true}, {Title: "Job"}}, Cursor: s.cursor}
 	for _, j := range newestFirst(c) {
-		tb.Rows = append(tb.Rows, []string{jobState(j), j.started.Format("15:04:05"), elapsed(j), style.Sanitize(j.title)})
+		tb.Rows = append(tb.Rows, []string{jobState(j), j.started.Format("15:04:05"), elapsed(j), style.Sanitize(j.label())})
 	}
 	running := 0
 	for _, j := range c.jobs {
