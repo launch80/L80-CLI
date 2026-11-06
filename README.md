@@ -241,7 +241,7 @@ Installing [uv](https://docs.astral.sh/uv/) is the only prerequisite. See
 ## Rent a GPU and benchmark it: `L80 vast`
 
 `L80 vast` runs [bbvastl80](https://github.com/launch80/BB-VAST-L80) (pinned
-0.2.0): rent a Vast.ai GPU, serve a model on it with vLLM or llama.cpp, run
+0.2.1): rent a Vast.ai GPU, serve a model on it with vLLM or llama.cpp, run
 BetterBench and QualityBench from this machine against it, publish, and
 destroy the box. Every bbvastl80 command works through it.
 

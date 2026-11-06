@@ -32,7 +32,8 @@
 
 ### Rentals: steps
 
-- bbvastl80 is pinned at v0.2.0 (`5587e1f`). A spec's `steps:` lists operations
+- bbvastl80 is pinned at v0.2.1 (`ad155d7`). A box that never starts is
+  destroyed and the next offer is tried, and specs can set `gpu.min_inet_down`. A spec's `steps:` lists operations
   to run in order on one rental: `betterbench` and `qualitybench`. They run on
   this machine through the tunnel, each into `runs/<id>/<NN>-<label>/`. A
   failed step does not stop the next one; the run exits 1 if any failed.
