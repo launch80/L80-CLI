@@ -112,9 +112,9 @@ validates it**, minus `$template`, which L80 adds. Requirements:
   localhost, a private address or a `.local` host anywhere in it.
 - `partials` lists every task cut short.
 
-Today the server requires at least one scored task and the `logprobs` block, so a
-run of only `needle` (for example) writes a valid local file that launch80 will not
-accept yet; the tool says so at the end of the run.
+`tasks` and `logprobs` are always present but may be empty: a task-only run
+(BFCL only, say) or a logprobs-only run publishes, and the page leaves out
+every section with no data.
 
 The schema itself lives with the server template
 (`lib/artifacts/schemas/bench-qualitybench-v1.ts` in the launch80 repo).

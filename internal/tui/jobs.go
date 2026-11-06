@@ -95,6 +95,9 @@ func (s *jobsScreen) update(c *Console, m Msg) Cmd {
 			s.stop(c, j)
 			return nil
 		}
+		if ok && v.Code == input.Rune && v.Rune == 'p' && !v.Ctrl && canPublish(j) {
+			return j.publish(c)
+		}
 		if s.detail {
 			switch {
 			case isBack(v):
@@ -124,6 +127,9 @@ func (s *jobsScreen) update(c *Console, m Msg) Cmd {
 	return nil
 }
 
+// canPublish: a finished job with a result to publish, not yet published.
+func canPublish(j *job) bool { return !j.running && j.publish != nil && j.url == "" }
+
 func (s *jobsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	t := c.th
 	j, ok := s.selected(c)
@@ -132,12 +138,19 @@ func (s *jobsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 			[]widgets.Binding{{Keys: "esc", Desc: "back"}}
 	}
 	stop := widgets.Binding{Keys: "x", Desc: "stop"}
+	pub := widgets.Binding{Keys: "p", Desc: "publish to launch80"}
 	if s.detail {
 		out := []string{jobHeader(c, j, w), ""}
+		if j.url != "" {
+			out = append(out, t.R(t.OK, "published: "+j.url), "")
+		}
 		out = append(out, j.log.View(t, w, max(3, h-len(out)))...)
 		keys := []widgets.Binding{{Keys: "pgup pgdn", Desc: "scroll"}, {Keys: "end", Desc: "follow"}}
 		if j.running {
 			keys = append(keys, stop)
+		}
+		if canPublish(j) {
+			keys = append(keys, pub)
 		}
 		return out, append(keys, widgets.Binding{Keys: "esc", Desc: "jobs"})
 	}
@@ -162,6 +175,9 @@ func (s *jobsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	keys := []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "log"}}
 	if j.running {
 		keys = append(keys, stop)
+	}
+	if canPublish(j) {
+		keys = append(keys, pub)
 	}
 	return out, append(keys, widgets.Binding{Keys: "esc", Desc: "back"})
 }

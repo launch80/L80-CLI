@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### QualityBench: publish a finished run from Jobs, with or without logprobs
+
+- A finished QualityBench run can be published from the **Jobs** screen with
+  `p`, as well as from the QualityBench screen. It asks first, as
+  before. When the run ends while you are on another screen, the console says
+  so and points to `p`. A published job shows its page link in Jobs.
+- A task-only run (BFCL only, say) publishes once launch80 PR #82 (empty
+  `tasks` or `logprobs`) is in production; the page leaves out the empty
+  sections. QualityBench 0.2.0 still ends such a run with "launch80 will not
+  accept this file yet"; that note goes with the next QualityBench pin.
+
 ## 1.3.1 (2026-11-06)
 
 - Pins QualityBench 0.2.0 (`329daf2`) and bbvastl80 0.2.2 (`ec58eab`).

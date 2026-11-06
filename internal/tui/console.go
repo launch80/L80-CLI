@@ -139,6 +139,10 @@ type job struct {
 	// status, when set, adds live progress to the title while the job runs
 	// ("48% · 23 min left").
 	status func() string
+	// publish, when set on a finished job, asks to publish its result to
+	// launch80; the Jobs screen offers it as p. url is the page once published.
+	publish func(c *Console) Cmd
+	url     string
 }
 
 // label is the job's title with its live status while it runs.

@@ -96,7 +96,8 @@ anything you do here you can script later.
   remedy.
 - **Jobs** lists every run started from the console, newest first, with its
   state and log. A run stays listed after you leave its screen, and you can
-  stop it from here.
+  stop it from here. A finished QualityBench run can be published from here
+  with `p`.
 - About has our story, the [Discord](https://discord.gg/launch80), the
   [Supporter](https://www.launch80.com/supporter) page and every command.
 
