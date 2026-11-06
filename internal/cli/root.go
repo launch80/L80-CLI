@@ -110,8 +110,9 @@ Usage:
                   [--quick] [--note k=v] ...     file as written (see --help)
   L80 betterbench --results <results.json>       Publish an existing results.json
   L80 qualitybench --model <m> [--quick|--tasks] Run QualityBench on the local server for <m>
-                   [--endpoint <url>] ...        and publish (see --help; QualityBench is unreleased)
-  L80 qualitybench endpoints|tasks [--json]      Local servers and their models; the suite
+                   [--endpoint <url>] ...        and publish (see --help)
+  L80 qualitybench --results <results.json>      Publish an existing QualityBench results file
+  L80 qualitybench endpoints|tasks|setup         Local servers; the suite; install the harnesses
   L80 qualitybench compare <ref.json> <test>     Paired deltas, KLD and thresholds, locally
   L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
                           [--json] [--dry-run]
