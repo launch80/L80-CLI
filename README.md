@@ -165,7 +165,7 @@ retrieval, against an OpenAI-compatible endpoint. With a reference run it also
 reports what a quantization or an engine change costs: paired per-task deltas
 with confidence intervals, KLD and top-1 agreement, and pass/fail against a
 pre-registered thresholds file. Results publish to the `bench.qualitybench.v1`
-template. This release pins QualityBench 0.1.1.
+template. This release pins QualityBench 0.2.0.
 
 ```sh
 L80 qualitybench endpoints                               # local servers, their engine and models
@@ -241,7 +241,7 @@ Installing [uv](https://docs.astral.sh/uv/) is the only prerequisite. See
 ## Rent a GPU and benchmark it: `L80 vast`
 
 `L80 vast` runs [bbvastl80](https://github.com/launch80/BB-VAST-L80) (pinned
-0.2.1): rent a Vast.ai GPU, serve a model on it with vLLM or llama.cpp, run
+0.2.2): rent a Vast.ai GPU, serve a model on it with vLLM or llama.cpp, run
 BetterBench and QualityBench from this machine against it, publish, and
 destroy the box. Every bbvastl80 command works through it.
 

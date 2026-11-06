@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 (2026-11-06)
+
+- Pins QualityBench 0.2.0 (`329daf2`) and bbvastl80 0.2.2 (`ec58eab`).
 
 ### Rentals: no more false "may still be billing"
 
