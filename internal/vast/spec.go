@@ -224,6 +224,7 @@ func (s Spec) YAML() string {
 	w("  type: ondemand")
 	w("  verified: true")
 	w("  min_reliability: 0.98")
+	w("  min_inet_down: 500   # Mbps: slow hosts miss the 20 min start limit pulling the engine image")
 	w("  pick: cheapest")
 	w("")
 	w("model:")
