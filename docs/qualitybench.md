@@ -45,6 +45,8 @@ Flags L80 does not send by name, but may pass through: `--title`, `--concurrency
   deadline, and marks cut tasks in `partials` instead of dropping them.
 - Environment: `QUALITYBENCH_API_KEY` is the endpoint's bearer key, which never
   arrives as a flag. `QUALITYBENCH_NO_UPDATE_CHECK=1` means L80 owns version alignment.
+  `QUALITYBENCH_CONTAINER=docker|podman` picks the container CLI for the code tasks
+  (default: docker if installed, else podman); L80 passes its environment through. (0.3.0)
 
 Exit status: 0 when the results file is complete or partial by deadline; 1 when
 a task failed (the results file is still written, with the task in `partials`);
@@ -176,6 +178,19 @@ L80 asks per `qualitybench.confirm` (`L80 settings`): `always` (default),
 skips once, and without a terminal L80 prints the estimate and proceeds.
 For an older tool L80 falls back to the RefMinutes table, labelled "on the
 reference run".
+
+### QualityBench 0.3.0
+
+- GSM8K is graded by the reply's final answer, compared numerically (`$7.00`
+  matches 7); lm-eval's stock score stays per item in the sidecar. Results
+  built or compared by 0.3.0 re-grade older runs from their lm-eval samples, so
+  a 0.2.0 reference pairs fairly. Expect GSM8K about 9 points higher than 0.2.0
+  on chat models; the task's `how` text changed with it.
+- Replies cut at the token cap are counted per task; a task with 1% or more
+  cut gets a caveat, as does a model that reasoned with `--thinking` unset.
+  `--thinking-max-tokens` defaults to 32768 (was 16384).
+- A run without logprobs no longer ends with "launch80 will not accept this
+  file yet"; its results carry an n/a caveat instead.
 
 ## Not in this contract yet
 

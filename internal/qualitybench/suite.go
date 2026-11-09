@@ -35,7 +35,7 @@ const RefRun = "Qwopus3.8-27B INT4 on one Arc Pro B65, vLLM 0.30, thinking off (
 
 // Suite is the v1 suite in the order a run executes it.
 var Suite = []Task{
-	{ID: "gsm8k", Label: "GSM8K", Items: 1319, Measures: "grade-school math, last number in the reply", RefMinutes: 19, Default: true},
+	{ID: "gsm8k", Label: "GSM8K", Items: 1319, Measures: "grade-school math, final answer in the reply, compared numerically", RefMinutes: 19, Default: true},
 	{ID: "ifeval", Label: "IFEval", Items: 541, Measures: "instruction following, prompt-level strict", RefMinutes: 9, Default: true},
 	{ID: "mmlu_pro", Label: "MMLU-Pro", Items: 1000, Measures: "knowledge, fixed 1000-question subset of 14 subjects", RefMinutes: 42, Default: true},
 	{ID: "humaneval", Label: "HumanEval+", Items: 164, Measures: "Python code generation, sandboxed tests", RefMinutes: 22, Default: true},

@@ -56,7 +56,7 @@ func runQualitybench(e env, args []string) int {
 	var notes multiFlag
 	fs.Var(&notes, "note", "KEY=VALUE recorded in the run; repeatable")
 	tokenizer := fs.String("tokenizer", "", "Hugging Face repo (or local dir) for logprobs and needle when the served id is not one")
-	sandbox := fs.String("sandbox", "", "docker (default) | native: native runs model-written code on this machine; only for a disposable box")
+	sandbox := fs.String("sandbox", "", "docker (default; podman with QUALITYBENCH_CONTAINER=podman, or when docker is missing) | native: native runs model-written code on this machine; only for a disposable box")
 	apiKey := fs.String("api-key", "", "bearer key for the endpoint (or L80_QUALITYBENCH_API_KEY); passed by environment, never recorded")
 	out := fs.String("out", "", "results file (default ~/.local/state/L80/qualitybench/qualitybench-<model>-<time>.json, or $L80_QUALITYBENCH_DIR); the HTML report goes beside it")
 	var scan multiFlag

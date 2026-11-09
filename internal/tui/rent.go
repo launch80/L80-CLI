@@ -74,7 +74,7 @@ func (r *rentWizard) init() {
 			Help: "Speed + quality: BetterBench, then QualityBench with thinking off. Quality baseline: QualityBench only, to compare later runs against. Compare to a run: QualityBench against a finished run (pick it under Reference). Custom: tick what you want below."},
 		{Key: "bb", Label: "BetterBench", Kind: widgets.ToggleField, On: true, Help: "Speed: decode, prefill and concurrency, published as a BetterBench page."},
 		{Key: "bbquick", Label: "  quick", Kind: widgets.ToggleField, Help: "A short BetterBench pass: cheaper, less precise; the page says so."},
-		{Key: "qboff", Label: "QualityBench", Kind: widgets.ToggleField, On: true, Help: "Quality with thinking off (or the server's default when the model has no thinking mode): GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle. Code tasks run in Docker on this machine."},
+		{Key: "qboff", Label: "QualityBench", Kind: widgets.ToggleField, On: true, Help: "Quality with thinking off (or the server's default when the model has no thinking mode): GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle. Code tasks run in Docker (or podman) on this machine."},
 		{Key: "qbon", Label: "  + thinking on", Kind: widgets.ToggleField, Help: "A second QualityBench run with thinking forced on. Needs the reasoning parser on the Model page. Much slower: replies are long."},
 		{Key: "qbscope", Label: "  scope", Kind: widgets.ChoiceField, Choices: []string{"Full", "Quick"}, Help: "Quick runs a fixed tenth of each task: a smoke test, and the page says so. Quick runs compare only with quick runs."},
 		text("qbtasks", "  tasks", "Comma-separated task ids (see Bench Quality), or empty for the whole default suite.", "the default suite", ""),
@@ -598,8 +598,8 @@ func contextWarnings(sp vast.Spec) []string {
 			thinking = true
 		}
 	}
-	if thinking && sp.MaxModelLen < 24576 {
-		out = append(out, fmt.Sprintf("context %d: thinking on asks for at least 16384 new tokens; set 32768 or more", sp.MaxModelLen))
+	if thinking && sp.MaxModelLen < 40960 {
+		out = append(out, fmt.Sprintf("context %d: thinking on asks for at least 32768 new tokens; set 65536 or more", sp.MaxModelLen))
 	}
 	switch {
 	case needle && sp.MaxModelLen < 34000:

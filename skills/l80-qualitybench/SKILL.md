@@ -25,13 +25,22 @@ It can then publish the results as a launch80 page. Running is free; only publis
    A run also does it on its own.
 4. Server requirements. Tell the user before starting if one is missing:
    - **logprobs** needs vLLM's `prompt_logprobs`. Start vLLM with
-     `--max-logprobs 64` and speculative decoding off.
+     `--max-logprobs 64` and speculative decoding off. On llama.cpp, radiance or
+     another server without it, leave logprobs out of `--tasks`. The task scores
+     still publish, and the page shows perplexity and KLD as n/a.
    - **bfcl** scores the server's tool parser
      (`--enable-auto-tool-choice --tool-call-parser ...`).
    - **needle** needs a 128k context. A shorter one skips that length and the
      page says so.
    - **--thinking on** needs a reasoning parser.
-   - **The code tasks** (humaneval, mbpp, lcb) need Docker on this machine.
+   - **A model that thinks by default** needs `--thinking off` (the baseline)
+     or `--thinking on`. Without one, the harnesses' short token limits cut its
+     replies off mid-thought. For a large thinking model on code, also pass
+     `--thinking-max-tokens 32768` or more (32768 is the default from
+     QualityBench 0.3.0). If the results carry a "stopped at the token cap"
+     caveat, that task's score understates the model.
+   - **The code tasks** (humaneval, mbpp, lcb) need Docker or podman on this
+     machine. For rootless podman (Fedora), set `QUALITYBENCH_CONTAINER=podman`.
 
 ## Run
 
