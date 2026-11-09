@@ -169,7 +169,7 @@ retrieval, against an OpenAI-compatible endpoint. With a reference run it also
 reports what a quantization or an engine change costs: paired per-task deltas
 with confidence intervals, KLD and top-1 agreement, and pass/fail against a
 pre-registered thresholds file. Results publish to the `bench.qualitybench.v1`
-template. This release pins QualityBench 0.2.0.
+template. This release pins QualityBench 0.3.0.
 
 ```sh
 L80 qualitybench endpoints                               # local servers, their engine and models
@@ -201,8 +201,9 @@ wrote, each with its `.qb/` folder beside it. Both runs must be the same tier
 
 **Setup.** `setup` installs the harness environments, the LiveCodeBench image
 and the datasets ahead of time (`--tasks` limits it); a run also does it on its
-own. The code tasks run model-written code in Docker on this machine.
-`--sandbox native` runs it without Docker: only on a disposable box.
+own. The code tasks run model-written code in Docker on this machine, or in
+podman (`QUALITYBENCH_CONTAINER=podman`, or when Docker is not installed).
+`--sandbox native` runs it without a container: only on a disposable box.
 
 **Server requirements.**
 

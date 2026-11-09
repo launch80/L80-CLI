@@ -38,8 +38,8 @@
     },
     "qualitybench": {
       "repo": "https://github.com/launch80/QualityBench",
-      "ref": "v0.2.0",
-      "commit": "329daf25eb9a5627b34a390b8dba94b4b45de410",
+      "ref": "v0.3.0",
+      "commit": "8f33d1b782552cf642355c7ff9c50e72ee1460a3",
       "package": "qualitybench",
       "exe": "qualitybench",
       "env": "L80_QUALITYBENCH",

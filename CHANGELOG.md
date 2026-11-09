@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Pins QualityBench 0.3.0 (`8f33d1b`)
+
+- **GSM8K scores the final answer.** It is compared numerically, so `$7.00`
+  matches 7 and "Judy makes $7,425 in 1 week." reads 7425. The stock lm-eval
+  scoring undercounted chat models by about 9 points. Older runs are re-graded
+  from their saved samples when built or compared, so a 0.2.0 reference still
+  pairs fairly.
+- **Token-cap caveats.** A task where 1% or more of the replies stopped at the
+  token cap gets a caveat, and so does a model that reasoned with `--thinking`
+  unset. `--thinking-max-tokens` now defaults to 32768. Rent GPUs warns below a
+  40960 context with thinking on, and suggests 65536.
+- **Podman.** `QUALITYBENCH_CONTAINER=podman`, or no Docker installed, runs the
+  code tasks in podman (rootless and SELinux work). L80 passes the variable
+  through.
+- **Task-only runs** no longer end with "launch80 will not accept this file
+  yet", so the 1.3.2 note to ignore it no longer applies.
+
 ## 1.3.3 (2026-11-06)
 
 ### QualityBench results land in one folder
