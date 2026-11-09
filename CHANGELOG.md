@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### Pins QualityBench 0.3.0 (`8f33d1b`)
+### Pins QualityBench 0.3.0 (`951ecd1`)
 
 - **GSM8K scores the final answer.** It is compared numerically, so `$7.00`
   matches 7 and "Judy makes $7,425 in 1 week." reads 7425. The stock lm-eval
