@@ -53,9 +53,29 @@ type Verification struct {
 	// never sees its own requests in the queue and may not decide on them.
 	Mine         bool          `json:"mine,omitempty"`
 	Reproduction *Reproduction `json:"reproduction,omitempty"`
+	// RunClass is full or quick, derived by the server from the stored page
+	// (servers before 1.1 leave it out).
+	RunClass     string        `json:"run_class,omitempty"`
 	TrustTier    string        `json:"trust_tier,omitempty"`
 	ClientChecks []ClientCheck `json:"client_checks,omitempty"`
 	ServerChecks []ClientCheck `json:"server_checks,omitempty"`
+}
+
+// Checks are the server's checks, then the client's that the server did not
+// also run: the server recomputes most of them from the stored page, and
+// showing both would list each warning twice.
+func (v Verification) Checks() []ClientCheck {
+	out := append([]ClientCheck{}, v.ServerChecks...)
+	seen := map[string]bool{}
+	for _, c := range v.ServerChecks {
+		seen[c.Name] = true
+	}
+	for _, c := range v.ClientChecks {
+		if !seen[c.Name] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Requester names who asked for the review: the key's label, else its id.
@@ -154,12 +174,38 @@ type Reproduction struct {
 	Model              string            `json:"model"`
 	Notes              map[string]string `json:"notes,omitempty"`
 	RunsPerCategory    int               `json:"runs_per_category"`
+	RunClass           string            `json:"run_class,omitempty"` // full | quick
 	Phases             []string          `json:"phases"`
 	Metrics            []MetricDelta     `json:"metrics"`
 	WithinTolerance    bool              `json:"within_tolerance"`
 	ResultsSHA256      string            `json:"results_sha256"`
 	RanAt              string            `json:"ran_at"`
 	L80Version         string            `json:"l80_version"`
+	// Template is the page's template; empty means bench.betterbench.v1.
+	Template string `json:"template,omitempty"`
+	// Scan is set for a scan.pwdet.v1 page: pwdet reproduce's comparison of
+	// the verifier's re-run with the published report. ResultsSHA256 is then
+	// the hash of the re-run's report.json.
+	Scan *ScanComparison `json:"scan,omitempty"`
+}
+
+// ScanComparison is `pwdet reproduce --json`: a re-run is within tolerance
+// when the files hash the same, the deterministic findings match the
+// published digest, and the same behavioural findings are significant.
+// Pairs are [published, re-run].
+type ScanComparison struct {
+	WithinTolerance   bool                  `json:"within_tolerance"`
+	Subject           string                `json:"subject,omitempty"` // repo@revision re-scanned
+	Profile           string                `json:"profile,omitempty"`
+	Verdict           [2]*string            `json:"verdict"`
+	Level             [2]*string            `json:"level"`
+	FilesMatch        bool                  `json:"files_match"`
+	FileDifferences   []string              `json:"file_differences,omitempty"`
+	DigestMatch       bool                  `json:"digest_match"`
+	CheckDifferences  map[string][2]*string `json:"check_differences,omitempty"`
+	Behaviour         map[string][]string   `json:"behaviour,omitempty"`
+	ToolVersion       [2]*string            `json:"tool_version"`
+	InputsHashesMatch bool                  `json:"inputs_hashes_match"`
 }
 
 // MetricDelta compares one headline figure.

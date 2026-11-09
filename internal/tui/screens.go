@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/history"
+	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/pytool"
+	"github.com/launch80/L80-CLI/internal/qualitybench"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
@@ -21,12 +24,28 @@ import (
 // --- home ----------------------------------------------------------------------
 
 type homeScreen struct {
+	cursor    int // in launch
 	loaded    bool
 	reachable bool
 	reachErr  string
 	templates []string
 	tools     []app.ToolStatus
 	recent    []history.Entry
+}
+
+// launch is Home's "What do you want to do?": each entry opens a screen.
+var launch = []struct {
+	title, desc string
+	to          screenID
+}{
+	{"Benchmark speed", "BetterBench against an endpoint you serve", scrBench},
+	{"Measure quality", "QualityBench on a local server, or a rented one", scrQuality},
+	{"Compare two runs", "QualityBench: a reference run against a test run", scrQuality},
+	{"Rent a GPU", "Serve and benchmark on Vast.ai, then tear it down", scrVast},
+	{"Scan weights", "Check model weights for tampering", scrPwdet},
+	{"Publish", "Your pages, and requesting verification", scrHistory},
+	{"Verify", "Reproduce and review others' runs", scrVerify},
+	{"Settings", "Token, server and updates", scrSettings},
 }
 
 type homeLoaded struct {
@@ -60,13 +79,59 @@ func (h *homeScreen) update(c *Console, m Msg) Cmd {
 	switch v := m.(type) {
 	case homeLoaded:
 		h.loaded, h.reachable, h.reachErr, h.templates, h.tools, h.recent = true, v.reachable, v.err, v.templates, v.tools, v.recent
+	case KeyMsg:
+		switch {
+		case isBack(v):
+			c.paneFocus = false // Home is the sidebar's own item
+		case v.Code == input.Up || (v.Code == input.Rune && v.Rune == 'k'):
+			h.cursor = (h.cursor + len(launch) - 1) % len(launch)
+		case v.Code == input.Down || (v.Code == input.Rune && v.Rune == 'j'):
+			h.cursor = (h.cursor + 1) % len(launch)
+		case v.Code == input.Home:
+			h.cursor = 0
+		case v.Code == input.End:
+			h.cursor = len(launch) - 1
+		case v.Code == input.Enter:
+			l := launch[h.cursor]
+			if l.to == scrQuality {
+				c.qb.ensure()
+				c.qb.mode.Choice = modeRun
+				c.qb.focus = qsScope
+				if strings.HasPrefix(l.title, "Compare") {
+					c.qb.mode.Choice, c.qb.focus = modeCompare, qsCmpRef
+				}
+			}
+			return c.goTo(l.to, true)
+		case v.Code == input.Rune && v.Rune == 'r':
+			return h.load(c)
+		}
 	}
 	return nil
 }
 
+// launcher draws the menu; the cursor shows only while Home has the keyboard.
+func (h *homeScreen) launcher(c *Console, w int) []string {
+	t := c.th
+	out := []string{t.R(t.Title, "What do you want to do?")}
+	tw := 0
+	for _, l := range launch {
+		tw = max(tw, len(l.title))
+	}
+	for i, l := range launch {
+		name := style.PadRight(l.title, tw)
+		if i == h.cursor && c.paneFocus {
+			out = append(out, t.R(t.Accent, "▸ ")+t.R(t.Selected, name)+"  "+t.R(t.Muted, l.desc))
+		} else {
+			out = append(out, "  "+name+"  "+t.R(t.Muted, l.desc))
+		}
+	}
+	return out
+}
+
 func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 	t := c.th
-	var st []string
+	st := h.launcher(c, w)
+	st = append(st, "")
 	if !h.loaded {
 		st = append(st, t.R(t.Muted, widgets.Spin(c.tick)+" checking…"))
 	} else {
@@ -74,19 +139,34 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 		if !h.reachable {
 			server = t.R(t.Bad, "unreachable") + t.R(t.Muted, " "+clip(h.reachErr, 40))
 		}
-		st = append(st, kv(t, "launch80", c.d.Config.BaseURL), kv(t, "server", server))
 		tok := t.R(t.Warn, "none") + t.R(t.Muted, " (tools are free; publishing needs one)")
 		if c.d.Config.HasToken() {
 			tok = t.R(t.OK, masked(c.d.Config)) + t.R(t.Muted, " from "+string(c.d.Config.TokenSource))
 		}
+		if len(st)+5 > ht {
+			// Too short for the status block: one line of it, above the menu.
+			st = append([]string{t.R(t.Muted, "server ") + server + t.R(t.Muted, " · token ") + tok}, st[:len(st)-1]...)
+			for i := range st {
+				st[i] = style.Truncate(st[i], w, "…")
+			}
+			return style.Fit(st, w, ht), homeKeys
+		}
+		st = append(st, kv(t, "launch80", c.d.Config.BaseURL), kv(t, "server", server))
 		st = append(st, kv(t, "token", tok), "")
+		if js := newestFirst(c); len(js) > 0 {
+			st = append(st, t.R(t.Title, "This session")+t.R(t.Muted, "  (finished QualityBench runs: Bench - History)"))
+			for _, j := range js[:min(3, len(js))] {
+				st = append(st, "  "+jobLine(c, j))
+			}
+			st = append(st, "")
+		}
 		st = append(st, t.R(t.Title, "Tools"))
 		for _, ts := range h.tools {
 			st = append(st, kv(t, ts.Name, toolState(t, ts)))
 		}
 		st = append(st, "", t.R(t.Title, "Last publishes"))
 		if len(h.recent) == 0 {
-			st = append(st, t.R(t.Muted, "  nothing yet: open Benchmark to publish your first run"))
+			st = append(st, t.R(t.Muted, "  nothing yet: open Bench Speed to publish your first run"))
 		}
 		for _, e := range h.recent {
 			tier := e.TrustTier
@@ -104,8 +184,10 @@ func (h *homeScreen) view(c *Console, w, ht int) ([]string, []widgets.Binding) {
 	for i := range st {
 		st[i] = style.Truncate(st[i], w, "…")
 	}
-	return style.Fit(st, w, ht), []widgets.Binding{{Keys: "r", Desc: "refresh"}}
+	return style.Fit(st, w, ht), homeKeys
 }
+
+var homeKeys = []widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "go"}, {Keys: "r", Desc: "refresh"}, {Keys: "esc", Desc: "back"}}
 
 func kv(t widgets.Theme, k, v string) string { return t.R(t.Muted, style.PadRight(k, 13)) + v }
 
@@ -158,9 +240,19 @@ func helpView(c *Console, w, h int) ([]string, []widgets.Binding) {
 
 // --- history --------------------------------------------------------------------------
 
+// Bench - History has two tabs: Published (pages this key published) and
+// Unpublished (QualityBench results on this machine, read from disk).
+const (
+	histPublished = iota
+	histUnpublished
+)
+
 type histScreen struct {
-	table   widgets.Table
+	tab     int
+	table   widgets.Table // published pages
+	ltable  widgets.Table // unpublished reports
 	entries []history.Entry
+	local   []qualitybench.ResultFile
 	source  string
 	err     string
 	loading bool
@@ -175,8 +267,8 @@ type verifyResult struct {
 // verify runs the pre-checks for the selected page, shows them, and on
 // confirmation asks launch80 to review it.
 func (s *histScreen) verify(c *Console, e history.Entry) Cmd {
-	if e.TemplateID != betterbench.RawTemplateID {
-		c.setFlash("only BetterBench pages (bench.betterbench.v1) can be verified", true)
+	if !app.Verifiable(e.TemplateID) && e.TemplateID != pwdet.TemplateID {
+		c.setFlash("only BetterBench runs and pwdet scans can be verified", true)
 		return nil
 	}
 	t, apiErr := app.ResolveTarget(e.GUID)
@@ -192,14 +284,14 @@ func (s *histScreen) verify(c *Console, e history.Entry) Cmd {
 	blocked := betterbench.Blocking(t.Checks)
 	body := strings.Join(lines, "\n")
 	if blocked {
-		c.confirm(&widgets.Dialog{Title: "Not verifiable yet", Body: body + "\n\nFix the failed checks and publish a new run.", Buttons: []string{"OK"}}, nil)
+		c.confirm(&widgets.Dialog{Title: "Not verifiable yet", Body: body + "\n\nFix the failed checks and publish again.", Buttons: []string{"OK"}}, nil)
 		return nil
 	}
 	if !c.d.Config.HasToken() {
 		c.setFlash("requesting verification needs the key that published the page", true)
 		return nil
 	}
-	c.confirm(&widgets.Dialog{Title: "Request verification", Body: body + "\n\nA launch80 reviewer checks the run; if it holds up the page is marked verified.",
+	c.confirm(&widgets.Dialog{Title: "Request verification", Body: body + "\n\nA launch80 reviewer checks it; if it holds up the page is marked verified.",
 		Buttons: []string{"Request", "Cancel"}, Choice: 1}, func(ch int) Cmd {
 		if ch != 0 {
 			return nil
@@ -220,28 +312,93 @@ func (s *histScreen) verify(c *Console, e history.Entry) Cmd {
 
 type histLoaded struct {
 	entries []history.Entry
+	local   []qualitybench.ResultFile
 	source  string
 	err     string
+}
+
+// unpublishedQuality is every QualityBench results file the QualityBench
+// screen can find on this machine that this machine has not published.
+var unpublishedQuality = func(c *Console) []qualitybench.ResultFile {
+	published := map[string]bool{}
+	if entries, err := history.Read(); err == nil {
+		for _, e := range entries {
+			if e.TemplateID == qualitybench.TemplateID && e.SourcePath != "" {
+				published[e.SourcePath] = true
+			}
+		}
+	}
+	var out []qualitybench.ResultFile
+	for _, r := range localResults(c) {
+		if !published[r.Path] {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func (s *histScreen) load(c *Console) Cmd {
 	s.loading = true
 	return func() Msg {
+		local := unpublishedQuality(c)
 		page, apiErr := c.d.Client.History(100, "")
 		if apiErr == nil {
 			var out []history.Entry
 			for _, a := range page.Artifacts {
-				out = append(out, history.Entry{GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, Title: a.Title, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier})
+				out = append(out, history.Entry{GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, Title: a.Title, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier, RunClass: a.RunClass})
 			}
-			return histLoaded{entries: out, source: "server"}
+			return histLoaded{entries: out, local: local, source: "server"}
 		}
-		local, err := history.Read()
+		record, err := history.Read()
 		msg := apiErr.Message + "; showing this machine's record"
 		if err != nil {
 			msg = err.Error()
 		}
-		return histLoaded{entries: local, source: "local", err: msg}
+		return histLoaded{entries: record, local: local, source: "local", err: msg}
 	}
+}
+
+// selected is the row under the cursor on the open tab: an unpublished
+// report, or a published page.
+func (s *histScreen) selected() (*qualitybench.ResultFile, *history.Entry) {
+	if s.tab == histUnpublished {
+		if i := s.ltable.Cursor; i >= 0 && i < len(s.local) {
+			return &s.local[i], nil
+		}
+		return nil, nil
+	}
+	if i := s.table.Cursor; i >= 0 && i < len(s.entries) {
+		return nil, &s.entries[i]
+	}
+	return nil, nil
+}
+
+// cur is the open tab's table.
+func (s *histScreen) cur() *widgets.Table {
+	if s.tab == histUnpublished {
+		return &s.ltable
+	}
+	return &s.table
+}
+
+// publishLocal asks, then publishes a local QualityBench results file.
+func (s *histScreen) publishLocal(c *Console, r qualitybench.ResultFile) Cmd {
+	data, err := os.ReadFile(r.Path)
+	if err != nil {
+		c.setFlash("could not read "+r.Path+": "+err.Error(), true)
+		return nil
+	}
+	res := &app.QualityResult{Path: r.Path, Report: qualitybench.ReportPath(r.Path), Data: data, Partial: qualitybench.Partials(data)}
+	return publishQuality(c, res, r.Compare, false)
+}
+
+// whenOf is a results file's run time in the table's format.
+func whenOf(r qualitybench.ResultFile) string {
+	when := strings.Replace(r.Generated, "T", " ", 1)
+	if len(when) > 16 {
+		when = when[:16]
+	}
+	return when
 }
 
 func (s *histScreen) update(c *Console, m Msg) Cmd {
@@ -252,19 +409,49 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 		} else {
 			c.setFlash("verification "+v.status, false)
 		}
+	case qbPublished:
+		if v.err == nil {
+			return s.load(c)
+		}
 	case histLoaded:
-		s.loading, s.entries, s.source, s.err = false, v.entries, v.source, v.err
-		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Title"}}}
+		pc, lc := s.table.Cursor, s.ltable.Cursor
+		s.loading, s.entries, s.local, s.source, s.err = false, v.entries, v.local, v.source, v.err
+		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Class", Width: 6}, {Title: "Title"}}}
 		for _, e := range v.entries {
 			when := strings.Replace(e.CreatedAt, "T", " ", 1)
 			if len(when) > 16 {
 				when = when[:16]
 			}
-			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.Title)})
+			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.RunClass), orDash(e.Title)})
+		}
+		s.ltable = widgets.Table{Columns: []widgets.Column{{Title: "Run", Width: 16}, {Title: "Class", Width: 6}, {Title: "Tasks", Width: 5, Right: true}, {Title: "Model", Width: 34}, {Title: "Title"}}}
+		for _, r := range v.local {
+			class := "full"
+			if r.Quick {
+				class = "quick"
+			}
+			s.ltable.Rows = append(s.ltable.Rows, []string{whenOf(r), class, fmt.Sprint(r.Tasks), r.Model, orDash(r.Title)})
+		}
+		s.table.Cursor = min(pc, max(0, len(s.table.Rows)-1))
+		s.ltable.Cursor = min(lc, max(0, len(s.ltable.Rows)-1))
+		if s.tab == histUnpublished && len(s.local) == 0 {
+			s.detail = false
 		}
 	case KeyMsg:
-		if v.Code == input.Rune && v.Rune == 'v' && s.table.Cursor < len(s.entries) {
-			return s.verify(c, s.entries[s.table.Cursor])
+		r, e := s.selected()
+		switch {
+		case v.Code == input.Rune && v.Rune == 'v' && e != nil:
+			return s.verify(c, *e)
+		case v.Code == input.Rune && v.Rune == 'p' && r != nil:
+			return s.publishLocal(c, *r)
+		case v.Code == input.Rune && v.Rune == 'o' && r != nil:
+			rep := qualitybench.ReportPath(r.Path)
+			if err := openFile(rep); err != nil {
+				c.setFlash("could not open "+rep+": "+err.Error(), true)
+			} else {
+				c.setFlash("opened "+rep, false)
+			}
+			return nil
 		}
 		if s.detail {
 			if isBack(v) || v.Code == input.Enter {
@@ -272,13 +459,18 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 			}
 			return nil
 		}
-		if s.table.HandleKey(v) {
+		// tab and ←→ switch between Published and Unpublished.
+		if (v.Code == input.Tab && !v.Ctrl) || v.Code == input.Backtab || v.Code == input.Left || v.Code == input.Right {
+			s.tab = 1 - s.tab
+			return nil
+		}
+		if s.cur().HandleKey(v) {
 			return nil
 		}
 		switch {
 		case isBack(v):
 			c.scr = scrHome
-		case v.Code == input.Enter && len(s.entries) > 0:
+		case v.Code == input.Enter && len(s.cur().Rows) > 0:
 			s.detail = true
 		case v.Code == input.Rune && v.Rune == 'r':
 			return s.load(c)
@@ -292,15 +484,43 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 	if s.loading {
 		return []string{t.R(t.Muted, widgets.Spin(c.tick)+" loading…")}, nil
 	}
-	head := t.R(t.Muted, fmt.Sprintf("%d page(s), from the %s record", len(s.entries), s.source))
-	if s.err != "" {
-		head += t.R(t.Warn, "  "+clip(s.err, w-40))
+	tabs := []string{fmt.Sprintf(" Published (%d) ", len(s.entries)), fmt.Sprintf(" Unpublished (%d) ", len(s.local))}
+	for i := range tabs {
+		if i == s.tab {
+			tabs[i] = t.R(t.Selected, tabs[i])
+		} else {
+			tabs[i] = t.R(t.Muted, tabs[i])
+		}
 	}
-	if s.detail && s.table.Cursor < len(s.entries) {
-		e := s.entries[s.table.Cursor]
+	head := strings.Join(tabs, " ")
+	sub := t.R(t.Muted, "Pages this key published, from the "+s.source+" record.")
+	if s.tab == histUnpublished {
+		sub = t.R(t.Muted, "QualityBench reports not published yet, from "+clip(qualitybench.ResultsDir(), 60)+" and rental step folders.")
+	}
+	if s.err != "" && s.tab == histPublished {
+		sub += t.R(t.Warn, "  "+clip(s.err, w-60))
+	}
+	r, sel := s.selected()
+	if s.detail && r != nil {
+		lines := []string{head, "", t.R(t.Title, style.Sanitize(orDash(r.Title))), "",
+			kv(t, "model", style.Sanitize(r.Model)), kv(t, "run", orDash(whenOf(*r))), kv(t, "results", style.Sanitize(r.Path))}
+		if _, err := os.Stat(qualitybench.ReportPath(r.Path)); err == nil {
+			lines = append(lines, kv(t, "report", style.Sanitize(qualitybench.ReportPath(r.Path))))
+		}
+		if data, err := os.ReadFile(r.Path); err == nil {
+			lines = append(lines, "")
+			for _, l := range qualitybench.Headline(data) {
+				lines = append(lines, "  "+style.Sanitize(l))
+			}
+		}
+		lines = append(lines, "", t.R(t.Muted, "Not published. p publishes it as a public launch80 page (endpoint and host removed)."))
+		return lines, []widgets.Binding{{Keys: "p", Desc: "publish"}, {Keys: "o", Desc: "open report"}, {Keys: "esc", Desc: "back"}}
+	}
+	if s.detail && sel != nil {
+		e := *sel
 		lines := []string{head, "", t.R(t.Title, style.Sanitize(orDash(e.Title))), "",
 			kv(t, "url", style.Sanitize(e.URL)), kv(t, "template", e.TemplateID), kv(t, "tier", orDash(e.TrustTier)),
-			kv(t, "published", e.CreatedAt), kv(t, "guid", e.GUID)}
+			kv(t, "class", orDash(e.RunClass)), kv(t, "published", e.CreatedAt), kv(t, "guid", e.GUID)}
 		if e.SourcePath != "" {
 			lines = append(lines, kv(t, "from file", style.Sanitize(e.SourcePath)))
 		}
@@ -310,8 +530,20 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 		lines = append(lines, "", t.R(t.Muted, "Pages are public. A page is self-reported until launch80 verifies it."))
 		return lines, []widgets.Binding{{Keys: "v", Desc: "request verification"}, {Keys: "esc", Desc: "back"}}
 	}
-	return append([]string{head, ""}, s.table.View(t, w, h-2, true)...),
-		[]widgets.Binding{{Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "details"}, {Keys: "v", Desc: "verify"}, {Keys: "r", Desc: "refresh"}, {Keys: "esc", Desc: "back"}}
+	out := []string{head, sub, ""}
+	keys := []widgets.Binding{{Keys: "tab", Desc: "published / unpublished"}, {Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "details"}}
+	if s.tab == histUnpublished {
+		if len(s.local) == 0 {
+			out = append(out, t.R(t.Muted, "Nothing unpublished. Finished QualityBench runs show here until you publish them."))
+		} else {
+			out = append(out, s.ltable.View(t, w, h-len(out), true)...)
+			keys = append(keys, widgets.Binding{Keys: "p", Desc: "publish"}, widgets.Binding{Keys: "o", Desc: "open report"})
+		}
+	} else {
+		out = append(out, s.table.View(t, w, h-len(out), true)...)
+		keys = append(keys, widgets.Binding{Keys: "v", Desc: "verify"})
+	}
+	return out, append(keys, widgets.Binding{Keys: "r", Desc: "refresh"}, widgets.Binding{Keys: "esc", Desc: "back"})
 }
 
 // --- tools --------------------------------------------------------------------------
@@ -413,7 +645,7 @@ func jobHeader(c *Console, j *job, w int) string {
 	t := c.th
 	switch {
 	case j.running:
-		return t.R(t.Accent, widgets.Spin(c.tick)+" "+j.title) + t.R(t.Muted, "  "+elapsed(j)+"  (ctrl+x stops it)")
+		return t.R(t.Accent, widgets.Spin(c.tick)+" "+j.label()) + t.R(t.Muted, "  "+elapsed(j)+"  (ctrl+x stops it)")
 	case j.err != nil:
 		return t.R(t.Bad, "✗ "+j.title+": "+clip(j.err.Error(), w-len(j.title)-6))
 	case j.code != 0:

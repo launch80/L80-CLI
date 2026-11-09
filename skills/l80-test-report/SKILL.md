@@ -67,9 +67,12 @@ user set `L80_BETTERBENCH_API_KEY`); never put a key after `--`. Repeat any
 `warning:` lines L80 prints (older BetterBench version, prefix-cache hits) to
 the user before publishing.
 
-For a run the user may want **verified by Launch80** later, run it in full (no
-`--quick`, all phases) and record `--note engine=<stack and version>` and
-`--note hardware=<GPUs>`. Afterwards `L80 verify check <results.json>` shows
+For a run the user may want **verified by Launch80** later, run all phases and
+record `--note engine=<stack and version>` and
+`--note hardware=<GPUs>`. Choose the class with the user: a **full** run (the
+default, 20 passes) carries p95/p99 and can be stamped on review; a **quick**
+run (`--quick`, 5 passes) is much faster and can be verified only after a
+second key reproduces it, on medians. Afterwards `L80 verify check <results.json>` shows
 whether it qualifies and `L80 verify request <url> --note "…"` asks for review.
 To help verify someone else's run, `L80 verify queue` lists requests and
 `L80 verify reproduce <id> --endpoint <url>` reruns it on the user's hardware
@@ -78,7 +81,7 @@ and explicitly asks you to; never approve or reject on your own judgement.
 
 Before running: ask for the endpoint and model if not given, and tell the user
 a full run takes a while (20 passes per category plus sweeps); `--quick` is a
-5-pass smoke run and the page says so. After publishing, hand the user the
+5-pass quick run, verifiable only with a reproduction, and the page says so. After publishing, hand the user the
 URL and repeat any caveats the page will show (quick mode, under-sampled
 percentiles, truncated runs).
 
@@ -153,8 +156,8 @@ Rules specific to this template:
   the other.
 - **Carry the sample gate through.** Any percentile BetterBench marked `†` gets
   `"undersampled": true` on its row plus a line in `caveats`.
-- **`--quick` runs are not publishable results.** If the run used quick mode,
-  say so in `caveats` in the first line.
+- **Say when a run was quick.** If the run used quick mode (fewer than 20
+  passes), say so in `caveats` in the first line, and leave out p95/p99.
 - There is no `endpoint` field, on purpose. Do not put a LAN URL in `notes`.
 
 ## generic.report.v1

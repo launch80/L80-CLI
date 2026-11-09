@@ -19,6 +19,32 @@ type Check struct {
 // a cold-cache claim cannot be checked.
 const MinVerifiableVersion = "0.6.1"
 
+// Run classes. A full run (20+ passes) carries every figure. A quick run
+// (5 to 19 passes, BetterBench --quick among them) is verifiable as its own
+// class: a reproduction is required and only medians are compared, since a
+// few passes cannot hold a p95 or p99. Fewer passes, or no warmup, is a smoke
+// test and cannot be verified.
+const (
+	ClassFull  = "full"
+	ClassQuick = "quick"
+	ClassSmoke = "smoke"
+
+	MinFullPasses  = 20
+	MinQuickPasses = 5
+)
+
+// RunClass derives a run's class from its recorded configuration. The server
+// derives it the same way from the stored page; a client never claims it.
+func RunClass(c Config) string {
+	switch {
+	case c.Warmup < 1 || c.RunsPerCategory < MinQuickPasses:
+		return ClassSmoke
+	case c.RunsPerCategory < MinFullPasses:
+		return ClassQuick
+	}
+	return ClassFull
+}
+
 // Prechecks are the content checks a run must pass before launch80 is asked
 // to verify it. The server recomputes the same checks from the stored page;
 // these exist so the user learns the answer before asking.
@@ -28,12 +54,15 @@ func Prechecks(r *Results) []Check {
 		out = append(out, Check{Name: name, Status: status, Detail: fmt.Sprintf(format, a...)})
 	}
 
-	// A full run, not --quick: BetterBench's default is 20 passes after 3 warmups.
-	switch c := r.Config; {
-	case c.RunsPerCategory >= 20 && c.Warmup >= 1:
-		add("full_run", "pass", "%d passes per category after %d warmup", c.RunsPerCategory, c.Warmup)
+	// BetterBench's default is 20 passes after 3 warmups (a full run); --quick
+	// runs fewer, which can be verified as their own, weaker class.
+	switch c := r.Config; RunClass(c) {
+	case ClassFull:
+		add("run_class", "pass", "full run: %d passes per category after %d warmup", c.RunsPerCategory, c.Warmup)
+	case ClassQuick:
+		add("run_class", "pass", "quick run: %d passes per category after %d warmup; verifiable as a quick run, which needs a reproduction and compares medians only", c.RunsPerCategory, c.Warmup)
 	default:
-		add("full_run", "fail", "%d passes after %d warmup; a verifiable run needs at least 20 passes and 1 warmup (no --quick)", c.RunsPerCategory, c.Warmup)
+		add("run_class", "fail", "%d passes after %d warmup; a verifiable run needs at least %d passes and 1 warmup (%d for a full run)", c.RunsPerCategory, c.Warmup, MinQuickPasses, MinFullPasses)
 	}
 
 	var missing []string

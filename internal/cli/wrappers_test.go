@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/launch80/L80-CLI/internal/history"
 )
 
 func TestSplitOwned(t *testing.T) {
@@ -131,6 +133,7 @@ while :; do sleep 0.05; done
 }
 
 func TestPwdetScanJSONAndDryRunPublish(t *testing.T) {
+	t.Setenv("L80_API_BASE", "http://127.0.0.1:1") // never the real server
 	report, _ := filepath.Abs("../pwdet/testdata/report_v1.json")
 	fakeTool(t, "L80_PWDET", `echo "progress" >&2; echo "{\"verdict\": \"clean\", \"report\": \"`+report+`\"}"; exit 0`+"\n")
 	payload := filepath.Join(t.TempDir(), "p.json")
@@ -180,5 +183,96 @@ func TestDashboardRefusesSecondSampler(t *testing.T) {
 	}
 	if _, out, _ := runCmd(t, runDashboard); !strings.HasPrefix(strings.TrimSpace(out), "args:tui|") || !strings.Contains(out, "dashboard") {
 		t.Errorf("default verb: %s", out)
+	}
+}
+
+func TestPwdetPublishAnEarlierReport(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("L80_PWDET", "/nonexistent/pwdet") // never run
+	t.Setenv("L80_API_BASE", "http://127.0.0.1:1")
+	src, _ := os.ReadFile("../pwdet/testdata/report_v1.json")
+	reports := t.TempDir()
+	for _, d := range []string{"20261018-205947-a", "20261018-210005-b"} {
+		os.MkdirAll(filepath.Join(reports, d), 0o755)
+		os.WriteFile(filepath.Join(reports, d, "report.json"), src, 0o644)
+	}
+	newest := filepath.Join(reports, "20261018-210005-b", "report.json")
+
+	payload := filepath.Join(t.TempDir(), "p.json")
+	code, out, errOut := runCmd(t, runPwdet, "publish", reports, "--dry-run", "--json", "--payload-out", payload)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if !strings.Contains(out, newest) || !strings.Contains(out, `"template": "generic.report.v1"`) || strings.Contains(out, `"url"`) {
+		t.Errorf("a reports folder publishes its newest scan, dry: %s", out)
+	}
+	if b, _ := os.ReadFile(payload); strings.Contains(string(b), "rig01-test") || strings.Contains(string(b), "/home/tester") {
+		t.Error("payload leaks host or paths")
+	}
+
+	srv, auth := fakeAPI(t, nil)
+	t.Setenv("L80_TOKEN", "L80_k1_secret")
+	code, out, errOut = runCmd(t, runPwdet, "publish", newest, "--api-base", srv.URL)
+	if code != 0 || !strings.Contains(out, "published: https://l80.test/a/1111") || len(*auth) != 1 {
+		t.Errorf("publish: %d %s %s", code, out, errOut)
+	}
+
+	// A relative path is recorded absolute, so `L80 verify` finds the file
+	// from any directory.
+	t.Chdir(reports)
+	if code, _, errOut := runCmd(t, runPwdet, "publish", "20261018-205947-a/report.json", "--api-base", srv.URL); code != 0 {
+		t.Fatalf("relative publish: %d %s", code, errOut)
+	}
+	got, _ := history.Read()
+	found := false
+	for _, e := range got {
+		found = found || e.SourcePath == filepath.Join(reports, "20261018-205947-a", "report.json")
+	}
+	if !found {
+		t.Errorf("ledger source_path must be absolute: %+v", got)
+	}
+
+	if code, _, errOut := runCmd(t, runPwdet, "publish", t.TempDir()); code != 3 || !strings.Contains(errOut, "no report.json") {
+		t.Errorf("empty folder: %d %s", code, errOut)
+	}
+	notReport := filepath.Join(t.TempDir(), "x.json")
+	os.WriteFile(notReport, []byte(`{"hello":1}`), 0o644)
+	if code, _, _ := runCmd(t, runPwdet, "publish", notReport); code != 3 {
+		t.Errorf("not a report: %d", code)
+	}
+}
+
+func TestVastStatusChecksStaleRunsWithVast(t *testing.T) {
+	runs := t.TempDir()
+	t.Setenv("BBVASTL80_RUNS_DIR", runs)
+	for i, id := range []string{"stale", "live"} {
+		d := filepath.Join(runs, id)
+		os.MkdirAll(d, 0o755)
+		os.WriteFile(filepath.Join(d, "state.json"), []byte(fmt.Sprintf(`{"run_id":%q,"created_at":%d,"status":"rented","instance_id":%d}`, id, i+1, i+1)), 0o644)
+	}
+	decode := func(out string) map[string]any {
+		var d map[string]any
+		if err := json.Unmarshal([]byte(out), &d); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		return d
+	}
+	// Vast lists instance 2 only.
+	fakeTool(t, "L80_VAST", `[ "$1 $2" = "list --json" ] && echo '[{"id": 2, "status": "running"}]' && exit 0; exit 2`+"\n")
+	code, out, errOut := runCmd(t, runVast, "status", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	d := decode(out)
+	b := d["may_be_billing"].([]any)
+	if d["checked_with_vast"] != true || len(b) != 1 || b[0].(map[string]any)["id"] != "live" {
+		t.Fatalf("want only the live run billing: %s", out)
+	}
+	// An older bbvastl80 without list --json: keep both warnings, and say it wasn't checked.
+	fakeTool(t, "L80_VAST", "echo 'No such option: --json' >&2; exit 2\n")
+	_, out, _ = runCmd(t, runVast, "status", "--json")
+	d = decode(out)
+	if d["checked_with_vast"] != false || len(d["may_be_billing"].([]any)) != 2 {
+		t.Fatalf("an unchecked list must keep its warnings: %s", out)
 	}
 }

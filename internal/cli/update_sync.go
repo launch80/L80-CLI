@@ -134,6 +134,8 @@ func upgradeUvTools(e env, opts syncOpts, res *syncResult) map[string]string {
 func toolRow(r app.ToolStatus, upgradedNote string, res *syncResult) toolSync {
 	row := toolSync{Name: r.Name, Pinned: r.Pinned, Source: r.Source, Version: r.Version, Notes: r.Notes}
 	switch {
+	case r.Status == "unreleased":
+		row.Status = "unreleased"
 	case r.Status == "missing":
 		row.Status, row.Fix = "missing", r.Remedy
 	case r.Source == r.Override && !runnable(r.Argv):

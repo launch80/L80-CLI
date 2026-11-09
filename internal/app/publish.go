@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 
 	"github.com/launch80/L80-CLI/internal/api"
 	"github.com/launch80/L80-CLI/internal/history"
@@ -32,6 +33,13 @@ func Publish(client *api.Client, req PublishRequest) (Published, *api.Error) {
 	artifact, apiErr := client.Publish(req.Body)
 	if apiErr != nil {
 		return Published{}, apiErr
+	}
+	// The ledger outlives the working directory, so it records where the
+	// file is, not where it was relative to.
+	if req.SourcePath != "" {
+		if abs, err := filepath.Abs(req.SourcePath); err == nil {
+			req.SourcePath = abs
+		}
 	}
 	entry := history.Entry{
 		GUID: artifact.GUID, URL: artifact.URL, TemplateID: artifact.TemplateID,

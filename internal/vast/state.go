@@ -29,12 +29,25 @@ type RunState struct {
 
 	// Dir is the run directory, filled in by List.
 	Dir string `json:"-"`
+	// Gone is set by Reconcile: Vast no longer lists this run's instance, so
+	// it is not billing whatever the state file says.
+	Gone bool `json:"-"`
 }
 
 // MayBeBilling reports whether the run rented an instance it has not torn
-// down. That is the state in which a box keeps costing money.
+// down, and that Vast still lists (when Reconcile has checked). That is the
+// state in which a box keeps costing money.
 func (r RunState) MayBeBilling() bool {
-	return r.InstanceID != nil && r.Status != "torn_down"
+	return r.InstanceID != nil && r.Status != "torn_down" && !r.Gone
+}
+
+// ShownStatus is the status to display: "gone" for a run whose instance
+// Vast no longer lists.
+func (r RunState) ShownStatus() string {
+	if r.Gone {
+		return "gone"
+	}
+	return r.Status
 }
 
 // Created is CreatedAt as a time.

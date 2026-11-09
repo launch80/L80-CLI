@@ -17,14 +17,15 @@ The workflow has three roles, all ordinary publish keys:
 
 1. **Publisher**: the key that published the page asks for verification.
 2. **Any other key**: sees the request in its queue (`L80 verify queue`, the
-   console's Verify screen), can open it and reproduce the run on its own
+   console's Bench Verify screen), can open it and reproduce the run on its own
    hardware. This is open to every valid key so the community can check runs.
 3. **Verifier**: a key with `publisher_keys.is_verifier = true` stamps the
    page verified or rejects it. Reproducing first is optional; when the
    verifier did, their reproduction goes with the decision as evidence. A key
    never sees its own requests in the queue and may never decide on them.
 
-- Only `bench.betterbench.v1` pages are eligible in this version.
+- `bench.betterbench.v1` pages are eligible, and from L80 1.2 `scan.pwdet.v1`
+  pages (Poisoned Weights Detector scans, see "pwdet scans" below).
 - **Pages stay immutable.** Verification changes the page's *tier*
   (metadata the template renders as a badge), never the stored payload. A run
   that needs fixing is published again and the new page is verified.
@@ -123,7 +124,7 @@ Owner key only. Body (what `L80 verify request` sends):
 ```json
 {
   "note": "vLLM 0.9.3 on 2x R9700, launch command in the README of …",
-  "client_checks": [{ "name": "full_run", "status": "pass", "detail": "20 passes per category after 3 warmup" }],
+  "client_checks": [{ "name": "run_class", "status": "pass", "detail": "full run: 20 passes per category after 3 warmup" }],
   "source_sha256": "hex", "body_sha256": "hex", "content_hash": "as returned at publish",
   "l80_version": "1.0.0"
 }
@@ -180,7 +181,7 @@ caller may not be the request's key (`E_OWN_REQUEST`, HTTP 403). Body:
   "reproduction": {
     "betterbench_version": "0.6.1", "model": "Qwen3-8B",
     "notes": { "engine": "vLLM 0.9.3", "hardware": "1x RTX 4090", "reproduces": "Qwen3-8B" },
-    "runs_per_category": 20, "phases": ["decode", "prefill", "concurrency"],
+    "runs_per_category": 20, "run_class": "full", "phases": ["decode", "prefill", "concurrency"],
     "metrics": [
       { "label": "Combined decode", "unit": "t/s", "published": 142.4, "reproduced": 139.8,
         "delta_pct": -1.8, "tolerance_pct": 10, "within": true }
@@ -198,6 +199,14 @@ tier (`verified` + `verified_at`, or `rejected`). The request must be open
 Tolerances the CLI applies before it lets a verifier stamp a reproduction that
 disagrees (it then needs `--accept-differences` and a note): combined decode
 ±10%, ITL 1% low ±15%, TTFT p50 ±25%, peak aggregate ±15%, prefill ±20%.
+
+**Quick runs (L80 1.1).** A quick run (see Run classes) is stamped only with a
+reproduction that is within its own, wider tolerances: combined decode ±15%,
+ITL ±25%, TTFT p50 ±40%, peak aggregate ±25%, prefill ±30%, everything else
+±25%. Tail figures (p95, p99, 1% lows) are left out of the comparison, since a
+few passes cannot hold them. `--accept-differences` does not apply. The server
+refuses `verified` on a quick run unless `reproduction.within_tolerance` is
+true (`E_REPRODUCTION_REQUIRED`, HTTP 422).
 
 ### Existing endpoints
 
@@ -220,6 +229,17 @@ disagrees (it then needs `--accept-differences` and a note): combined decode
 
 `E_OUTSIDE_TOLERANCE` (exit 4) is client-side only.
 
+## Run classes
+
+A BetterBench page's class is derived from its stored `config`, never taken
+from the client (`betterbench.RunClass` in the CLI):
+
+| Class | Rule | Verifiable |
+|---|---|---|
+| `full` | `runs_per_category >= 20` and `warmup >= 1` | yes; a reproduction is optional |
+| `quick` | `5 <= runs_per_category < 20` and `warmup >= 1` (BetterBench `--quick` is 5 passes after 1 warmup) | yes, only with a reproduction within quick tolerances; medians only |
+| `smoke` | fewer than 5 passes, or no warmup | no |
+
 ## Server checks
 
 The same checks the CLI runs (`internal/betterbench/precheck.go`), recomputed
@@ -228,7 +248,7 @@ A `fail` makes the page ineligible; a `warn` is shown to the reviewer.
 
 | Check | Fails when | Warns when |
 |---|---|---|
-| `full_run` | `config.runs_per_category < 20` or `config.warmup < 1` (any `--quick` run) | |
+| `run_class` (was `full_run` before 1.1) | the class is `smoke` (Run classes) | |
 | `phases` | `single_stream`, `prefill` or `concurrency` is empty | |
 | `cold_cache` | `config.unique_nonce` is false, or any `cached_tokens` entry > 0 (single-stream runs, prefill rows, concurrency rows), the count `report.cache_hits()` computes | no request reported `cached_tokens` |
 | `requests` | more than 2% of single-stream requests failed | any single-stream or concurrency request failed |
@@ -320,10 +340,141 @@ is announced. The sections above give the detail for each item.
 - [ ] `https://www.launch80.com/install.sh` downloads releases from
       `launch80/L80-CLI` (the repo was renamed from L80-Skills).
 
+## Server work for L80 1.1: quick runs (checklist)
+
+- [ ] `run_class` column on `verification_requests` and `artifacts`, computed
+      from the stored payload with the Run classes rule; never from the client.
+- [ ] Server check `run_class` replaces `full_run`: fail only for `smoke`.
+      Accept both names in stored `client_checks`.
+- [ ] Decision: `verified` on a `quick` request requires a `reproduction` with
+      `within_tolerance: true`, else `E_REPRODUCTION_REQUIRED` (HTTP 422).
+      Store `reproduction.run_class` as sent.
+- [ ] Return `run_class` in `GET /api/v1/verifications`, `…/verifications/{id}`,
+      `…/artifacts/{guid}/verification` and the history list.
+- [ ] Badge in `bench.betterbench.v1`: "Verified by Launch80 · quick run
+      (N passes)", always linking to the reproduction; a full run keeps the
+      plain badge. The page hides p95/p99 and 1% low cells on quick runs, or
+      marks them indicative.
+- [ ] Older CLIs (1.0.x) refuse quick runs locally; they still get the
+      server's decision, so nothing else changes for them.
+
+## pwdet scans: `scan.pwdet.v1` (L80 1.2)
+
+A pwdet scan is verified by **re-running it**: a verifier's `pwdet reproduce`
+fetches the same Hub files at the same commits, runs the same checks with the
+same pwdet suites, thresholds and calibration, and compares. There are no
+percentage tolerances: the comparison is exact where the scan is
+deterministic and significance-based where it samples.
+
+### The template
+
+`scan.pwdet.v1` is `generic.report.v1` (title, subtitle, summary, metrics,
+sections; same limits) plus one field:
+
+```json
+{
+  "$template": "scan.pwdet.v1",
+  "title": "pwdet: unsloth/Qwen3-0.6B — clean · standard",
+  "summary": "…", "metrics": [ … ], "sections": [ … ],
+  "report": { "schema_version": "2", "tool_version": "0.2.0", "profile": "standard",
+              "subject": {…}, "references": [ … ], "lineage": [ … ], "findings": [ … ],
+              "verdict": {…}, "assurance": {…}, "inputs": {…}, "digest": "hex" }
+}
+```
+
+- `report` is pwdet's report.json (schema `report.v2.json` in the pwdet
+  repository) as L80 scrubbed it: `host` emptied, `manifest_path` removed,
+  every `path` and `endpoint` nulled, evidence `data` dropped, and local
+  paths, private URLs and the hostname replaced in every string. pwdet can
+  still load it; `pwdet reproduce` reads repo and revision from `inputs`.
+- Size limit: **256 KB** (`262144` bytes), like the CLI's
+  `pwdet.ScanMaxPayloadBytes`. L80 falls back to `generic.report.v1` when a
+  report does not fit, and says so.
+- L80 publishes `scan.pwdet.v1` only when `GET /api/v1/templates` lists it;
+  otherwise `generic.report.v1`, which carries no report and is never
+  verifiable. Schema 1 reports (pwdet before 0.2) always go out as
+  `generic.report.v1`.
+- Render it like `generic.report.v1`, with the verdict badge qualified by
+  `report.assurance.level` ("CLEAN · Standard"), never the bare verdict.
+
+### Run class
+
+`run_class` is `scan` for every `scan.pwdet.v1` request. Return it wherever
+the 1.1 checklist returns `run_class`.
+
+### Server checks for `scan.pwdet.v1`
+
+Recomputed from the stored `report` (`pwdet.Prechecks` in the CLI). A `fail`
+makes the page ineligible.
+
+| Check | Fails when | Warns when |
+|---|---|---|
+| `report` | `schema_version` is not `"2"`, or `inputs` or `digest` is missing | |
+| `level` | `assurance.level` is missing or `basic` (Basic compares nothing against a reference) | |
+| `subject` | `inputs.subject` has no `repo` or `revision`, or its `kind` is `local` or `endpoint` (a verifier cannot get the same files) | |
+| `references` | an `inputs.references` entry for `parent` or `base` has no `repo`/`revision`, or is `local` | |
+| `files` | | a file in `inputs.subject.files` has no `sha256` |
+| `verdict` | `verdict` is missing | the label is `inconclusive` |
+
+Client-only check: `provenance`, as for BetterBench pages (the local
+report.json still hashes to what was published).
+
+### Decision
+
+A `verified` decision on a `scan` request requires a `reproduction` with
+`template: "scan.pwdet.v1"`, a `scan` object and `within_tolerance: true`;
+otherwise `E_REPRODUCTION_REQUIRED` (HTTP 422). There is no
+`--accept-differences` for scans. The reproduction (`api.Reproduction` in the
+CLI):
+
+```json
+{
+  "template": "scan.pwdet.v1",
+  "model": "unsloth/Qwen3-0.6B@db4e90b8…",
+  "within_tolerance": true,
+  "results_sha256": "sha256 of the re-run's report.json",
+  "ran_at": "2026-10-19T22:40:00Z", "l80_version": "1.2.0",
+  "scan": {
+    "within_tolerance": true, "subject": "unsloth/Qwen3-0.6B@db4e90b8…", "profile": "standard",
+    "verdict": ["clean", "clean"], "level": ["standard", "standard"],
+    "files_match": true, "file_differences": [],
+    "digest_match": true, "check_differences": {},
+    "behaviour": {"only_in_report": [], "only_in_rerun": [], "both": []},
+    "tool_version": ["0.2.0", "0.2.0"], "inputs_hashes_match": true
+  }
+}
+```
+
+`within_tolerance` is pwdet's: the files hash the same, the deterministic
+(static and provenance) findings hash to the published `digest`, and the same
+behavioural findings are significant. Store the reproduction with the
+decision and link it from the badge.
+
+### Badge
+
+"Verified by Launch80 · scan reproduced", qualified by the level
+("Verified by Launch80 · Standard scan reproduced"), linking to the
+reproduction.
+
+## Server work for L80 1.2: pwdet scans (checklist)
+
+- [ ] Register `scan.pwdet.v1` (generic fields plus `report`, 256 KB) and list
+      it in `GET /api/v1/templates`. Render it as above.
+- [ ] Accept `POST …/verification` for `scan.pwdet.v1` pages; recompute the
+      server checks above from the stored `report`.
+- [ ] `run_class: "scan"` on these requests and pages.
+- [ ] Decision: `verified` requires a scan reproduction within tolerance
+      (`E_REPRODUCTION_REQUIRED` otherwise). Store it.
+- [ ] Badge "Verified by Launch80 · <Level> scan reproduced", linking to the
+      reproduction.
+- [ ] `generic.report.v1` pwdet pages stay ineligible (`E_VERIFY_INELIGIBLE`);
+      the CLI tells their owners to publish again.
+
 ## Client behaviour (implemented)
 
 ```sh
 L80 verify check results.json      # local pre-checks; exit 0 verifiable, 4 not
+L80 verify check report.json       # the same for a pwdet report (scan pre-checks)
 L80 verify check <url | guid>      # same, plus provenance via the local ledger
 L80 verify request <url | guid> [--note "how to reproduce"] [--skip-checks]
 L80 verify status <url | guid>
@@ -331,9 +482,12 @@ L80 verify mine                                    # your requests and their dec
 L80 verify queue [--status requested|…|all]        # other keys' requests (any key)
 L80 verify show <id>                               # what to reproduce, published figures
 L80 verify reproduce <id> --endpoint <url> [--model m] [--api-key k]
-L80 verify approve <id> [--note …] [--accept-differences]   # verifier keys
+L80 verify reproduce <id> [--model dir] [--base dir]   # a pwdet scan: re-run with pwdet reproduce
+L80 verify approve <id> [--note …] [--accept-differences]   # verifier keys; quick runs and scans need a reproduction
 L80 verify reject <id> --reason …                            # verifier keys
 L80 history [--tier verified]      # TIER column
+L80 verify queue | mine             # CLASS column (full | quick | scan), from the server
+L80 pwdet publish report.json       # scan.pwdet.v1 when the server lists it
 ```
 
 The ledger (`~/.config/L80/history.jsonl`) records, for every publish since

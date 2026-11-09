@@ -19,11 +19,26 @@ const MaxPayloadBytes = 65536
 // bench.betterbench.v1, which stores a harness's results file as written.
 const rawResultsMaxBytes = 4 * 1024 * 1024
 
+// qualityResultsMaxBytes mirrors the server's limit for bench.qualitybench.v1
+// (lib/artifacts/registry.ts). It is the default limit raised to 256 KB: a
+// results file carries per-window and per-position series, not raw items.
+const qualityResultsMaxBytes = 256 * 1024
+
+// scanMaxBytes mirrors the server's limit for scan.pwdet.v1, whose body
+// carries the scrubbed pwdet report (pwdet.ScanMaxPayloadBytes).
+const scanMaxBytes = 262144
+
 // MaxPayloadBytesFor is the client-side limit for a template. The server is
 // the authority; this only lets the CLI fail fast with the right number.
 func MaxPayloadBytesFor(template string) int {
 	if template == "bench.betterbench.v1" {
 		return rawResultsMaxBytes
+	}
+	if template == "bench.qualitybench.v1" {
+		return qualityResultsMaxBytes
+	}
+	if template == "scan.pwdet.v1" {
+		return scanMaxBytes
 	}
 	return MaxPayloadBytes
 }
@@ -103,6 +118,7 @@ type HistoryEntry struct {
 	TemplateID      string `json:"template_id"`
 	TemplateVersion int    `json:"template_version"`
 	TrustTier       string `json:"trust_tier"`
+	RunClass        string `json:"run_class,omitempty"` // full | quick, BetterBench pages (server 1.1+)
 	Title           string `json:"title"`
 	ByteSize        int    `json:"byte_size"`
 	CreatedAt       string `json:"created_at"`

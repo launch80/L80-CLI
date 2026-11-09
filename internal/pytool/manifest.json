@@ -25,27 +25,39 @@
     },
     "pwdet": {
       "repo": "https://github.com/launch80/poisoned-weights-detector",
-      "ref": "v0.1.0",
-      "commit": "85f3ead97c0d43af7be633c59e50d7fdfea48280",
+      "ref": "v0.2.1",
+      "commit": "ae662ef428203d0140da66f8380b757d2c840a90",
       "package": "pwdet",
       "exe": "pwdet",
       "env": "L80_PWDET",
       "python": "3.12",
       "extras": ["gguf", "pickle"],
-      "min_version": "0.1.0",
+      "min_version": "0.2.1",
       "version_cmd": ["--version"],
       "notes": "Poisoned Weights Detector: static, provenance, black-box and white-box checks on a checkpoint or endpoint."
     },
+    "qualitybench": {
+      "repo": "https://github.com/launch80/QualityBench",
+      "ref": "v0.3.0",
+      "commit": "8f33d1b782552cf642355c7ff9c50e72ee1460a3",
+      "package": "qualitybench",
+      "exe": "qualitybench",
+      "env": "L80_QUALITYBENCH",
+      "python": "3.12",
+      "min_version": "0.2.0",
+      "version_cmd": ["--version"],
+      "notes": "Quality baseline and quality-loss suite (GSM8K, IFEval, MMLU-Pro, HumanEval+/MBPP+, BFCL, LiveCodeBench, logprobs, needle)."
+    },
     "vast": {
       "repo": "https://github.com/launch80/BB-VAST-L80",
-      "ref": "v0.1.0",
-      "commit": "d8ed73f5f9af436df9d575b3b8465ff7790d536d",
+      "ref": "v0.2.2",
+      "commit": "ec58eab02d82972dd6f1006db43021649fefdfd3",
       "package": "bbvastl80",
       "exe": "bbvastl80",
       "env": "L80_VAST",
-      "min_version": "0.1.0",
+      "min_version": "0.2.2",
       "version_cmd": ["--version"],
-      "notes": "Rent a Vast.ai GPU, serve a model, benchmark it with BetterBench, publish, tear down."
+      "notes": "Rent a Vast.ai GPU, serve a model, run ordered steps on it (BetterBench, QualityBench), publish, tear down."
     }
   }
 }

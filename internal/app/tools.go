@@ -12,7 +12,7 @@ type ToolStatus struct {
 	Name     string   `json:"name"`
 	Exe      string   `json:"exe"`
 	Pinned   string   `json:"pinned"` // "<ref> (<sha12>)" or "unpinned"
-	Status   string   `json:"status"` // ok | stale | missing
+	Status   string   `json:"status"` // ok | stale | missing | unreleased
 	Source   string   `json:"source,omitempty"`
 	Version  string   `json:"version,omitempty"`
 	Minimum  string   `json:"min_version,omitempty"`
@@ -45,6 +45,15 @@ func ToolsCheckSelective(names []string, probe func(pytool.Runner) bool) ([]Tool
 		}
 		st := ToolStatus{Name: name, Exe: t.Exe, Pinned: pinLabel(t), Minimum: t.MinVersion, Override: t.Env}
 		r, err := pytool.Resolve(t)
+		if err != nil && !t.Pinned() {
+			// Listed but not pinned yet (a tool before its first release): only
+			// an override or a PATH copy can supply it, and nobody is missing
+			// anything until it ships.
+			st.Status = "unreleased"
+			st.Notes = append(st.Notes, "not released yet; set "+t.Env+" to try a local build")
+			out = append(out, st)
+			continue
+		}
 		if err != nil {
 			st.Status = "missing"
 			var nr *pytool.ErrNoRunner

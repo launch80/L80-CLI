@@ -202,6 +202,11 @@ func Wrap(s string, w int) []string {
 	}
 	var out []string
 	for _, para := range strings.Split(s, "\n") {
+		// A line that already fits keeps its spacing, so aligned columns stay aligned.
+		if para = strings.TrimRight(para, " "); para != "" && Width(para) <= w {
+			out = append(out, para)
+			continue
+		}
 		words := strings.Fields(para)
 		if len(words) == 0 {
 			out = append(out, "")

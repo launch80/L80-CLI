@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"github.com/launch80/L80-CLI/internal/qualitybench"
+	"github.com/launch80/L80-CLI/internal/vast"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,8 +16,12 @@ import (
 	"time"
 
 	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/app"
 	"github.com/launch80/L80-CLI/internal/betterbench"
 	"github.com/launch80/L80-CLI/internal/config"
+	"github.com/launch80/L80-CLI/internal/discover"
+	"github.com/launch80/L80-CLI/internal/models"
+	"github.com/launch80/L80-CLI/internal/pwdet"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
@@ -28,16 +35,27 @@ func newTestConsole(t *testing.T) *Console {
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("L80_QUALITYBENCH_DIR", "")
+	t.Setenv("L80_QUALITYBENCH_CONFIRM", "")
 	cfg := config.Config{BaseURL: srv.URL}
 	c := &Console{d: Deps{Version: "0.7.0", Config: cfg, Client: api.NewClient(srv.URL, "", "test"),
 		VastEnv: func(string) ([]string, error) { return nil, nil }, RunsDir: t.TempDir(), DashboardState: t.TempDir(),
 		Usage: "L80 — test\n\nUsage:\n  Tools (free, no token):\n  L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering (Poisoned Weights Detector)\n"}}
 	c.prog = NewProgram(c)
 	c.th = widgets.DefaultTheme(style.NoColor, true)
-	c.side = sidebar
+	c.side = sidebarIDs()
 	c.bench.init()
 	c.vast.init()
 	c.pw.init()
+	// QualityBench must not probe this machine's ports or read its caches.
+	c.qb.scan = func(context.Context) []discover.Endpoint { return nil }
+	c.qb.sources = func(*Console) []models.Model { return nil }
+	c.qb.find = func(context.Context, string) ([]models.Model, error) { return nil, nil }
+	// Nor run the tool to estimate: the reference table stands in.
+	c.qb.estimateFn = func(_ context.Context, o qualitybench.RunOptions, _ bool) qualitybench.Estimate {
+		return qualitybench.StaticEstimate(o.Scope, o.Thinking)
+	}
 	return c
 }
 
@@ -72,6 +90,9 @@ func checkFrame(t *testing.T, frame []string, w, h int) string {
 	for i, l := range frame {
 		if style.Width(l) > w {
 			t.Errorf("line %d is %d wide (> %d): %q", i, style.Width(l), w, l)
+		}
+		if strings.Contains(l, "\n") {
+			t.Errorf("line %d holds a newline, which breaks the frame: %q", i, l)
 		}
 	}
 	return strings.Join(frame, "\n")
@@ -108,8 +129,8 @@ func TestNavigationAndDialog(t *testing.T) {
 	// Vast: starting a real run asks first, quoting the spec's cost caps.
 	spec := filepath.Join(t.TempDir(), "run.yaml")
 	os.WriteFile(spec, []byte("name: t\ngpu:\n  names: [H100]\n  count: 2\n  max_dph: 6.5\nbudget:\n  max_total_usd: 20\n"), 0o644)
-	feed(c, input.Key{Code: input.Rune, Rune: '9'})
-	feed(c, input.Key{Code: input.Rune, Rune: 'n'})
+	jumpTo(t, c, scrVast)
+	feed(c, input.Key{Code: input.Rune, Rune: 'f'})
 	c.vast.form.Fields[0].Input.Set(spec)
 	c.vast.form.Fields[3].On = false // not a dry run
 	c.vast.form.Focus = len(c.vast.form.Fields)
@@ -145,7 +166,7 @@ func TestBenchJobStreamsAndSummarises(t *testing.T) {
 	os.Chdir(t.TempDir())
 	defer os.Chdir(wd)
 
-	feed(c, input.Key{Code: input.Rune, Rune: '3'})
+	jumpTo(t, c, scrBench)
 	c.bench.form.Fields[0].Input.Set("http://h/v1")
 	c.bench.form.Fields[1].Input.Set("m")
 	c.bench.form.Fields[5].Input.Set("sk-secret")
@@ -185,14 +206,15 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 	feed(c, SizeMsg{100, 30})
 	drain(c, c.Init(), 0)
 	// Moving the sidebar previews each screen without taking the keyboard.
-	for range 8 {
+	vastAt := slices.Index(c.side, scrVast)
+	for range vastAt {
 		feed(c, input.Key{Code: input.Down})
 	}
 	if c.scr != scrVast || c.paneFocus {
 		t.Fatalf("preview: scr=%v focus=%v", c.scr, c.paneFocus)
 	}
 	view := checkFrame(t, c.View(100, 30), 100, 30)
-	for _, want := range []string{"Rent a Vast.ai GPU", "Home", "Rent (vast)", "Tools", "enter open", "1-9 jump"} {
+	for _, want := range []string{"Rent a Vast.ai GPU", "Home", "Rent GPUs", "Tools", "enter open", "1-9 jump"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q:\n%s", want, view)
 		}
@@ -203,17 +225,21 @@ func TestSidebarPreviewsAndFocus(t *testing.T) {
 		t.Fatal("enter focuses the pane")
 	}
 	feed(c, input.Key{Code: input.Esc})
-	if c.paneFocus || c.scr != scrVast || c.sel != 8 {
+	if c.paneFocus || c.scr != scrVast || c.sel != vastAt {
 		t.Fatalf("esc: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
 	}
-	// Up from the top wraps to the bottom; enter on Home keeps the sidebar.
+	// Home's launcher takes the keyboard like any screen; esc hands it back.
 	feed(c, input.Key{Code: input.Rune, Rune: '1'})
-	feed(c, input.Key{Code: input.Enter})
-	if c.paneFocus {
-		t.Error("Home has nothing to operate; the sidebar keeps focus")
+	if !c.paneFocus || c.scr != scrHome {
+		t.Error("1 opens Home's launcher")
 	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.paneFocus || c.scr != scrHome || c.sel != 0 {
+		t.Fatalf("esc from Home: scr=%v sel=%d focus=%v", c.scr, c.sel, c.paneFocus)
+	}
+	// Up from the top wraps to the bottom.
 	feed(c, input.Key{Code: input.Up})
-	if c.scr != scrVerify {
+	if c.scr != c.side[len(c.side)-1] {
 		t.Errorf("wrap: scr=%v", c.scr)
 	}
 }
@@ -248,8 +274,7 @@ func TestVerifyScreenQueueAndStamp(t *testing.T) {
 	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
 	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
 	feed(c, SizeMsg{120, 36})
-	feed(c, input.Key{Code: input.End}) // Verify is last; past the number keys
-	feed(c, input.Key{Code: input.Enter})
+	jumpTo(t, c, scrVerify)
 	view := checkFrame(t, c.View(120, 36), 120, 36)
 	for _, want := range []string{"Verify", "Queue (1)", "Qwen3-8B on vLLM", "verifier", "lab-mi300"} {
 		if !strings.Contains(view, want) {
@@ -278,22 +303,188 @@ func TestVerifyScreenQueueAndStamp(t *testing.T) {
 	}
 }
 
+func TestVerifyScreenQuickRunNeedsAReproduction(t *testing.T) {
+	raw, _ := os.ReadFile("../betterbench/testdata/results_schema2_v061.json")
+	raw = []byte(strings.Replace(string(raw), `"runs_per_category": 20,`, `"runs_per_category": 5,`, 1))
+	fixture, _ := betterbench.PrepareRaw(raw, betterbench.Prose{})
+	if r, err := betterbench.ParsePublished(fixture); err != nil || betterbench.RunClass(r.Config) != betterbench.ClassQuick {
+		t.Fatalf("fixture should be a quick run: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/keys/me":
+			fmt.Fprint(w, `{"ok":true,"data":{"key_id":"k2","is_verifier":true}}`)
+		case r.URL.Path == "/api/v1/verifications" && r.URL.Query().Get("scope") == "queue":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":"v1","artifact_guid":"g1","title":"Qwen3-8B quick","status":"requested","run_class":"quick"}]}`)
+		case r.URL.Path == "/api/v1/verifications":
+			fmt.Fprint(w, `{"ok":true,"data":[]}`)
+		case r.URL.Path == "/api/v1/artifacts/g1/payload":
+			fmt.Fprintf(w, `{"ok":true,"data":%s}`, fixture)
+		default:
+			fmt.Fprint(w, `{"ok":true,"data":{"service":"x","templates":[]}}`)
+		}
+	}))
+	defer srv.Close()
+	c := newTestConsole(t)
+	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
+	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
+	feed(c, SizeMsg{120, 36})
+	jumpTo(t, c, scrVerify)
+	if view := checkFrame(t, c.View(120, 36), 120, 36); !strings.Contains(view, "Class") || !strings.Contains(view, "quick") {
+		t.Fatalf("queue should show the class:\n%s", view)
+	}
+	feed(c, input.Key{Code: input.Enter})
+	if view := checkFrame(t, c.View(120, 36), 120, 36); !strings.Contains(view, "quick run") {
+		t.Errorf("detail should name the class:\n%s", view)
+	}
+	// No stamp on review alone: 'a' explains and opens the reproduce form.
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	if c.dialog != nil || c.verify.phase != 2 || !strings.Contains(c.flash, "needs a reproduction") {
+		t.Errorf("quick approve: dialog=%v phase=%d flash=%q", c.dialog, c.verify.phase, c.flash)
+	}
+}
+
+func TestVerifyScreenScanNeedsAReScan(t *testing.T) {
+	raw, _ := os.ReadFile("../pwdet/testdata/report_v2.json")
+	pg, err := app.BuildPwdetPage(raw, pwdet.Options{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decided string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/keys/me":
+			fmt.Fprint(w, `{"ok":true,"data":{"key_id":"k2","is_verifier":true}}`)
+		case r.URL.Path == "/api/v1/verifications" && r.URL.Query().Get("scope") == "queue":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":"v9","artifact_guid":"g9","title":"pwdet: unsloth/Qwen3-0.6B","status":"requested","run_class":"scan"}]}`)
+		case r.URL.Path == "/api/v1/verifications":
+			fmt.Fprint(w, `{"ok":true,"data":[]}`)
+		case r.URL.Path == "/api/v1/artifacts/g9/payload":
+			fmt.Fprintf(w, `{"ok":true,"data":%s}`, pg.Body)
+		case r.URL.Path == "/api/v1/verifications/v9/decision":
+			b, _ := io.ReadAll(r.Body)
+			decided = string(b)
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"v9","status":"verified","url":"https://l80.test/a/g9"}}`)
+		default:
+			fmt.Fprint(w, `{"ok":true,"data":{"service":"x","templates":[]}}`)
+		}
+	}))
+	defer srv.Close()
+	c := newTestConsole(t)
+	c.d.Config = config.Config{BaseURL: srv.URL, Token: "L80_k2_secret", KeyID: "k2"}
+	c.d.Client = api.NewClient(srv.URL, c.d.Config.Token, "test")
+	feed(c, SizeMsg{120, 36})
+	jumpTo(t, c, scrVerify)
+	feed(c, input.Key{Code: input.Enter})
+	view := checkFrame(t, c.View(120, 36), 120, 36)
+	for _, want := range []string{"To re-scan", "unsloth/Qwen3-0.6B@", "standard", "p re-scan"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("scan detail missing %q:\n%s", want, view)
+		}
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	if c.dialog != nil || !strings.Contains(c.flash, "needs a re-scan") {
+		t.Fatalf("approve before a re-scan: dialog=%v flash=%q", c.dialog, c.flash)
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'p'})
+	if view := checkFrame(t, c.View(120, 36), 120, 36); c.verify.phase != 2 || !strings.Contains(view, "Re-scan v9") || strings.Contains(view, "Endpoint") {
+		t.Errorf("re-scan form:\n%s", view)
+	}
+	feed(c, input.Key{Code: input.Esc})
+	clean, std := "clean", "standard"
+	c.verify.rep = &api.Reproduction{Template: pwdet.ScanTemplateID, WithinTolerance: true,
+		Scan: &api.ScanComparison{WithinTolerance: true, FilesMatch: true, DigestMatch: true, InputsHashesMatch: true,
+			Verdict: [2]*string{&clean, &clean}, Level: [2]*string{&std, &std}}}
+	if view := checkFrame(t, c.View(120, 36), 120, 36); !strings.Contains(view, "Your re-scan") || !strings.Contains(view, "deterministic findings match") {
+		t.Errorf("re-scan result:\n%s", view)
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	if c.dialog == nil || !strings.Contains(c.dialog.Body, "scan reproduced") {
+		t.Fatalf("stamp dialog: %+v", c.dialog)
+	}
+	feed(c, input.Key{Code: input.Left})
+	feed(c, input.Key{Code: input.Enter})
+	if !strings.Contains(decided, `"template":"scan.pwdet.v1"`) || !strings.Contains(decided, `"digest_match":true`) {
+		t.Errorf("decision sent = %s", decided)
+	}
+}
+
 func TestSidebarIsAlphabetical(t *testing.T) {
+	sidebar := sidebarIDs()
 	if sidebar[0] != scrHome {
 		t.Fatal("Home stays on top")
 	}
 	names := []string{}
 	for _, s := range sidebar[1:] {
-		names = append(names, strings.ToLower(labels[s]))
+		names = append(names, strings.ToLower(label(s)))
 	}
 	if !slices.IsSorted(names) {
 		t.Errorf("sidebar after Home is not A-Z: %v", names)
 	}
+	for _, s := range []screenID{scrHelp, scrRecs, scrTrain} {
+		if slices.Contains(sidebar, s) {
+			t.Errorf("%s must stay out of the sidebar", s)
+		}
+	}
 }
 
-func TestAboutAndComingSoon(t *testing.T) {
+// Every registered screen can be drawn and says what it is.
+func TestRegistryIsComplete(t *testing.T) {
 	c := newTestConsole(t)
-	c.side = sidebar
+	feed(c, SizeMsg{100, 30})
+	for _, id := range allIDs() {
+		d := def(id)
+		if d.label == "" || d.blurb == "" || d.get == nil {
+			t.Errorf("%s: label %q blurb %q get %v", id, d.label, d.blurb, d.get != nil)
+			continue
+		}
+		c.scr, c.paneFocus = id, true
+		view := checkFrame(t, c.View(100, 30), 100, 30)
+		if !strings.Contains(view, title(id)) {
+			t.Errorf("%s: pane title %q missing:\n%s", id, title(id), view)
+		}
+	}
+}
+
+func TestSideWindowKeepsSelectionVisible(t *testing.T) {
+	for _, tc := range []struct{ n, sel, h, first, last int }{
+		{5, 4, 10, 0, 5},
+		{20, 0, 10, 0, 10},
+		{20, 19, 10, 10, 20},
+		{20, 10, 10, 5, 15},
+	} {
+		f, l := sideWindow(tc.n, tc.sel, tc.h)
+		if f != tc.first || l != tc.last || tc.sel < f || tc.sel >= l {
+			t.Errorf("sideWindow(%d,%d,%d) = %d,%d; want %d,%d", tc.n, tc.sel, tc.h, f, l, tc.first, tc.last)
+		}
+	}
+}
+
+// jumpTo opens screen s with the keyboard, the way a person would: a number
+// key for the first nine, otherwise down the sidebar and enter.
+func jumpTo(t *testing.T, c *Console, s screenID) {
+	t.Helper()
+	i := slices.Index(c.side, s)
+	if i < 0 {
+		t.Fatalf("%s is not in the sidebar", s)
+	}
+	if i < 9 {
+		feed(c, input.Key{Code: input.Rune, Rune: rune('1' + i)})
+	} else {
+		feed(c, input.Key{Code: input.Home})
+		for range i {
+			feed(c, input.Key{Code: input.Down})
+		}
+		feed(c, input.Key{Code: input.Enter})
+	}
+	if c.scr != s || !c.paneFocus {
+		t.Fatalf("jumpTo %s: scr=%v focus=%v", s, c.scr, c.paneFocus)
+	}
+}
+
+func TestAboutAndDeferredPages(t *testing.T) {
+	c := newTestConsole(t)
+	c.side = sidebarIDs()
 	feed(c, SizeMsg{80, 24})
 	feed(c, input.Key{Code: input.Rune, Rune: '2'})
 	if c.scr != scrAbout || !c.paneFocus {
@@ -316,19 +507,11 @@ func TestAboutAndComingSoon(t *testing.T) {
 			t.Errorf("about end missing %q:\n%s", want, view)
 		}
 	}
+	// Deferred pages are not in the sidebar.
 	feed(c, input.Key{Code: input.Esc})
-	feed(c, input.Key{Code: input.Rune, Rune: '8'})
 	view = checkFrame(t, c.View(80, 24), 80, 24)
-	if c.scr != scrRecs || !strings.Contains(view, "Coming soon") {
-		t.Errorf("recommendations:\n%s", view)
-	}
-	feed(c, input.Key{Code: input.Esc})
-	for c.scr != scrTrain {
-		feed(c, input.Key{Code: input.Down})
-	}
-	view = checkFrame(t, c.View(80, 24), 80, 24)
-	if !strings.Contains(view, "Train, Tune, Quantize") || !strings.Contains(view, "Train & Tune") || !strings.Contains(view, "Recommendations") {
-		t.Errorf("train:\n%s", view)
+	if strings.Contains(view, "Recommendations") || strings.Contains(view, "Train & Tune") {
+		t.Errorf("deferred pages in the sidebar:\n%s", view)
 	}
 }
 
@@ -400,5 +583,190 @@ func TestOnboardingSkip(t *testing.T) {
 	}
 	if s := config.LoadState(); s.NeedsOnboarding() || !s.OnboardSkipped {
 		t.Errorf("skip must be recorded: %+v", s)
+	}
+}
+
+func TestRentWizard(t *testing.T) {
+	c := newTestConsole(t)
+	c.qb.findResults = func(*Console) []qualitybench.ResultFile { return nil }
+	feed(c, SizeMsg{110, 40})
+	jumpTo(t, c, scrVast)
+	if c.scr != scrVast {
+		t.Fatalf("screen %v", c.scr)
+	}
+	// Starting the spec-file form with no spec opens the wizard instead of failing.
+	feed(c, input.Key{Code: input.Rune, Rune: 'f'})
+	c.vast.form.Focus = len(c.vast.form.Fields)
+	feed(c, input.Key{Code: input.Enter})
+	if c.vast.tab != 2 || c.vast.wiz.page != pgModel {
+		t.Fatalf("tab %d page %d, want the wizard", c.vast.tab, c.vast.wiz.page)
+	}
+	checkFrame(t, c.View(110, 40), 110, 40)
+	w := &c.vast.wiz
+	next := func() {
+		w.forms[w.page].Focus = len(w.forms[w.page].Fields)
+		feed(c, input.Key{Code: input.Enter})
+	}
+	// A bad repo is refused on the Model page, naming the problem.
+	next()
+	if w.page != pgModel || !strings.Contains(c.flash, "Hugging Face repo") {
+		t.Fatalf("empty model accepted: page %d flash %q", w.page, c.flash)
+	}
+	w.field(pgModel, "model").Input.Set("Qwen/Qwen3-8B")
+	w.field(pgModel, "toolparser").Input.Set("hermes")
+	next()
+	w.field(pgHardware, "gpu").Input.Set("RTX_4090")
+	next()
+	if w.page != pgOps {
+		t.Fatalf("page %d", w.page)
+	}
+	// The Quality baseline preset unticks BetterBench.
+	w.forms[pgOps].Focus = 0
+	feed(c, input.Key{Code: input.Right})
+	if w.val(pgOps, "bb") != "false" || w.val(pgOps, "qboff") != "true" {
+		t.Fatalf("preset: bb=%s qboff=%s", w.val(pgOps, "bb"), w.val(pgOps, "qboff"))
+	}
+	w.field(pgOps, "qbscope").Choice = 1
+	next()
+	view := strings.Join(c.View(110, 40), "\n")
+	for _, want := range []string{"Plan", "QualityBench baseline", "quick", "at most $", "Rent and run"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("review missing %q:\n%s", want, view)
+		}
+	}
+	// Dry run (the default) writes the spec and starts without asking.
+	w.field(pgReview, "dry").On = false
+	next()
+	if c.dialog == nil || !strings.Contains(c.dialog.Body, "destroyed when the run ends") || !strings.Contains(c.dialog.Body, "at most $") {
+		t.Fatalf("renting must ask with the price: %+v", c.dialog)
+	}
+	if c.dialog.Choice != 1 {
+		t.Error("the safe choice must be focused")
+	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.vast.job != nil {
+		t.Fatal("cancel must not start anything")
+	}
+	sp, err := w.spec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if y := sp.YAML(); !strings.Contains(y, "type: qualitybench") || !strings.Contains(y, `names: ["RTX 4090"]`) || strings.Contains(y, "type: betterbench") {
+		t.Fatalf("spec:\n%s", y)
+	}
+}
+
+func TestRentProgressParsesSteps(t *testing.T) {
+	steps := []vast.Step{{Type: vast.StepBetterBench, Publish: true}, {Type: vast.StepQualityBench, Quick: true, Tasks: []string{"gsm8k"}}}
+	p := newRentProgress(steps)
+	for _, l := range []string{
+		`bbvastl80:step {"index": 1, "type": "betterbench", "state": "done", "label": "01-betterbench", "results": "/r/01/results.json", "url": "https://launch80.com/a/x"}`,
+		`bbvastl80:step {"index": 2, "type": "qualitybench", "state": "running", "label": "02-quality"}`,
+		`qb:progress {"task":"gsm8k","done":5,"total":132}`,
+	} {
+		p.parse(l)
+	}
+	th := widgets.DefaultTheme(style.NoColor, true)
+	v := strings.Join(p.view(th, 100, 0), "\n")
+	if !strings.Contains(v, "✓ 1. BetterBench") || !strings.Contains(v, "launch80.com/a/x") || !strings.Contains(v, "gsm8k") {
+		t.Fatalf("view:\n%s", v)
+	}
+	if o := p.outputs(); len(o) != 1 || o[0].Results != "/r/01/results.json" {
+		t.Fatalf("outputs %+v", o)
+	}
+}
+
+// The Poison Detector shows the whole report inline: verdict, coverage, every
+// check, and the selected check's evidence.
+func TestPwdetReportInline(t *testing.T) {
+	c := newTestConsole(t)
+	data, _ := os.ReadFile("../pwdet/testdata/report_v1.json")
+	rep, err := pwdet.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.scr, c.paneFocus = scrPwdet, true
+	c.pw.job, c.pw.phase = newJob("pwdet scan Wrapzii/x"), 2
+	c.pw.report, c.pw.path = rep, "/nowhere/reports/x/report.json"
+	c.pw.fill()
+	for _, sz := range [][2]int{{120, 34}, {80, 24}} {
+		feed(c, SizeMsg{sz[0], sz[1]})
+		view := checkFrame(t, c.View(sz[0], sz[1]), sz[0], sz[1])
+		for _, want := range []string{"Verdict: CLEAN", "Coverage", "provenance", "static", "Checks (37)", "a only to review"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("%v missing %q:\n%s", sz, want, view)
+			}
+		}
+	}
+	feed(c, SizeMsg{120, 34})
+	first := c.pw.shown[0]
+	if first.Status != "warn" || !strings.Contains(strings.Join(c.View(120, 34), "\n"), first.CheckID+" · warn") {
+		t.Errorf("the worst check comes first, with its detail: %+v", first)
+	}
+	// Moving the cursor changes the detail; passes follow the warnings.
+	for range 8 {
+		feed(c, input.Key{Code: input.Down})
+	}
+	if f := c.pw.shown[c.pw.table.Cursor]; f.Status != "pass" || !strings.Contains(strings.Join(c.View(120, 34), "\n"), f.CheckID+" · pass") {
+		t.Errorf("after 7 warnings, a pass: %+v", f)
+	}
+	feed(c, input.Key{Code: input.Rune, Rune: 'a'})
+	view := strings.Join(c.View(120, 34), "\n")
+	if !strings.Contains(view, "Findings to review (7 of 37 checks)") || !strings.Contains(view, "a all checks") {
+		t.Errorf("review only:\n%s", view)
+	}
+}
+
+func TestPwdetV2AssuranceAndMethod(t *testing.T) {
+	c := newTestConsole(t)
+	data, _ := os.ReadFile("../pwdet/testdata/report_v2.json")
+	rep, err := pwdet.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.scr, c.paneFocus = scrPwdet, true
+	c.pw.job, c.pw.phase = newJob("pwdet scan unsloth/Qwen3-0.6B"), 2
+	c.pw.report, c.pw.path = rep, "/nowhere/reports/x/report.json"
+	c.pw.fill()
+	for _, sz := range [][2]int{{120, 34}, {80, 24}} {
+		feed(c, SizeMsg{sz[0], sz[1]})
+		view := checkFrame(t, c.View(sz[0], sz[1]), sz[0], sz[1])
+		// checkFrame catches a multi-line evidence summary breaking the frame
+		for _, want := range []string{"CLEAN · STANDARD", "Tested:", "✗ Trained-in covert behaviour", "m method"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("%v missing %q:\n%s", sz, want, view)
+			}
+		}
+	}
+	feed(c, SizeMsg{120, 34})
+	feed(c, input.Key{Code: input.Rune, Rune: 'm'})
+	view := checkFrame(t, c.View(120, 34), 120, 34)
+	for _, want := range []string{"How pwdet works", "Standard scan", "m checks"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("method tab missing %q:\n%s", want, view)
+		}
+	}
+	// Scrolling reaches the limits, which say what Basic cannot see.
+	all := ""
+	for range 80 {
+		feed(c, input.Key{Code: input.Down})
+		all += strings.Join(c.View(120, 34), "\n")
+	}
+	for _, want := range []string{"What this scan tested", "Measured accuracy", "Strengths and limits", "cannot see weight implants", "English-first"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("method tab never shows %q", want)
+		}
+	}
+	feed(c, input.Key{Code: input.Esc})
+	if c.pw.method || !strings.Contains(strings.Join(c.View(120, 34), "\n"), "Checks (") {
+		t.Error("esc returns to the checks")
+	}
+	// The form offers the assurance levels, Standard first.
+	c.pw.phase = 0
+	view = strings.Join(c.View(120, 34), "\n")
+	for _, want := range []string{"Level", "standard", "Base", "Endpoint"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("form missing %q:\n%s", want, view)
+		}
 	}
 }

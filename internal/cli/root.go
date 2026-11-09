@@ -38,6 +38,8 @@ func Run(args []string) int {
 		return runPublish(e, args[2:])
 	case "betterbench":
 		return runBetterbench(e, args[2:])
+	case "qualitybench":
+		return runQualitybench(e, args[2:])
 	case "templates":
 		return runTemplates(e, args[2:])
 	case "skills":
@@ -52,6 +54,8 @@ func Run(args []string) int {
 		return runHistory(e, args[2:])
 	case "tools":
 		return runTools(e, args[2:])
+	case "settings":
+		return runSettings(e, args[2:])
 	case "vast":
 		return runVast(e, args[2:])
 	case "pwdet":
@@ -107,6 +111,11 @@ Usage:
   L80 betterbench --endpoint <url> --model <m>   Run BetterBench and publish the results
                   [--quick] [--note k=v] ...     file as written (see --help)
   L80 betterbench --results <results.json>       Publish an existing results.json
+  L80 qualitybench --model <m> [--quick|--tasks] Run QualityBench on the local server for <m>
+                   [--endpoint <url>] ...        and publish (see --help)
+  L80 qualitybench --results <results.json>      Publish an existing QualityBench results file
+  L80 qualitybench endpoints|tasks|setup         Local servers; the suite; install the harnesses
+  L80 qualitybench compare <ref.json> <test>     Paired deltas, KLD and thresholds, locally
   L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
                           [--json] [--dry-run]
   L80 history [--limit N] [--json] [--local]     List the share URLs this key has published
@@ -120,8 +129,10 @@ Usage:
 
   Tools (free, no token):
   L80 vast <command> [args]                      Rent a Vast.ai GPU, serve, benchmark, publish (bbvastl80)
+  L80 vast spec --model <hf repo> [--max-dph N]  Write a run spec: model, GPUs, price ceiling, budget
   L80 vast run --spec run.yaml [--max-hours N]   The whole pipeline, with an optional cost watchdog
   L80 pwdet scan <model> [--json] [--publish]    Check weights for tampering (Poisoned Weights Detector)
+  L80 pwdet publish <report.json|dir>            Publish a report from an earlier scan
   L80 dashboard [tui|serve]                      GPU and inference telemetry for this machine
   L80 tools list [--json]                        Show the tools and the versions this release pins
   L80 tools check [name...] [--json]             Show how each tool resolves on this machine
@@ -142,6 +153,7 @@ Usage:
   Setup and maintenance:
   L80 auth status                                Show the resolved endpoint and key
   L80 doctor                                     Check connectivity, config and tools
+  L80 settings [list|get|set <key> <value>]      Preferences, e.g. qualitybench.confirm always|over:30m|never
   L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
   L80 version                                    Print the version
 
@@ -151,6 +163,7 @@ Environment:
   L80_BETTERBENCH          Command to run instead of the pinned BetterBench
   L80_BETTERBENCH_API_KEY  Bearer key for the endpoint under test (never recorded)
   L80_VAST, L80_PWDET, L80_DASHBOARD   Commands to run instead of the pinned tools
+  L80_QUALITYBENCH_CONFIRM always|over:30m|never: overrides the qualitybench.confirm setting
   VAST_API_KEY             Vast.ai key for L80 vast (or ~/.config/bbvastl80/credentials)
 
 `

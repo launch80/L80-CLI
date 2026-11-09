@@ -8,6 +8,7 @@ a newer tool.
 | Tool | Repository | Console script | Override |
 |---|---|---|---|
 | `betterbench` | https://github.com/GGZ14/BetterBench | `betterbench` | `L80_BETTERBENCH` |
+| `qualitybench` | https://github.com/launch80/QualityBench | `qualitybench` | `L80_QUALITYBENCH` |
 | `vast` | https://github.com/launch80/BB-VAST-L80 | `bbvastl80` | `L80_VAST` |
 | `pwdet` | https://github.com/launch80/poisoned-weights-detector | `pwdet` | `L80_PWDET` |
 | `dashboard` | https://github.com/launch80/ai-command-dashboard | `ai-dashboard` | `L80_DASHBOARD` |

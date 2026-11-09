@@ -169,11 +169,11 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <div class="eyebrow">Launch80 · L80 CLI · version 1.0.0</div>
+      <div class="eyebrow">Launch80 · L80 CLI · version 1.3.3</div>
       <h1>Benchmark, rent, check and publish <span class="mark">from one command.</span></h1>
       <p class="lede">L80 is a single binary that runs the Launch80 toolset on your machine and turns a benchmark into a shareable launch80 page. Publishing needs a token. Everything else is free.</p>
       <div class="wwh">
-        <div><h3>What</h3><p>A command-line tool and full-screen console for BetterBench, rented Vast.ai GPUs, the Poisoned Weights Detector and a GPU telemetry dashboard.</p></div>
+        <div><h3>What</h3><p>A command-line tool and full-screen console for BetterBench speed runs, QualityBench quality runs, rented Vast.ai GPUs, the Poisoned Weights Detector and a GPU telemetry dashboard.</p></div>
         <div><h3>Why</h3><p>Every number on a launch80 page comes from the same pinned harness, private details never leave your machine, and community verifiers can reproduce a run and stamp it verified.</p></div>
         <div><h3>How</h3><p>A Go binary with no third-party code. It pins each Python tool to a git commit and fetches it with <code>uvx</code> the first time you use it.</p></div>
       </div>
@@ -202,8 +202,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   <div class="wrap">
     <ul>
       <li><b>0</b><span>third-party Go modules in the binary</span></li>
-      <li><b>17</b><span>top-level commands</span></li>
-      <li><b>4</b><span>Python tools behind one CLI</span></li>
+      <li><b>18</b><span>top-level commands</span></li>
+      <li><b>5</b><span>Python tools behind one CLI</span></li>
       <li><b>3</b><span>launch80 page templates</span></li>
       <li><b>4</b><span>release builds: macOS and Linux, amd64 and arm64</span></li>
       <li><b>13</b><span>exit codes, each with a remedy line</span></li>
@@ -263,6 +263,7 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
       <a href="#install">Install and update</a>
       <a href="#config">Configuration</a>
       <a href="#betterbench">Benchmark</a>
+      <a href="#qualitybench">Quality</a>
       <a href="#publish">Publish and templates</a>
       <a href="#verify">Verified by Launch80</a>
       <a href="#vast">Rent a GPU</a>
@@ -285,15 +286,16 @@ L80 betterbench --endpoint http://localhost:8080/v1 --model Qwen3-8B --note engi
         <div class="gatebox">
           <div><span class="chip free">Free, no token</span><ul>
             <li>Running BetterBench, including <code>--dry-run</code> pages</li>
+            <li>Running QualityBench and <code>L80 qualitybench compare</code></li>
             <li><code>L80 vast</code>: rent, serve, benchmark, tear down</li>
             <li><code>L80 pwdet</code> scans and reports</li>
             <li><code>L80 dashboard</code>, <code>L80 tui</code>, <code>L80 tools</code></li>
             <li><code>L80 verify check</code>, <code>doctor</code>, <code>update</code></li>
           </ul></div>
           <div><span class="chip gate">Needs a token</span><ul>
-            <li>Publishing a BetterBench run</li>
+            <li>Publishing a BetterBench or QualityBench run</li>
             <li><code>L80 publish</code></li>
-            <li><code>L80 pwdet scan --publish</code></li>
+            <li><code>L80 pwdet scan --publish</code>, <code>L80 pwdet publish</code></li>
             <li><code>L80 verify request</code>, <code>status</code></li>
             <li><code>L80 verify queue</code>, <code>reproduce</code> (any key)</li>
             <li><code>L80 verify approve</code>, <code>reject</code> (verifier keys)</li>
@@ -320,9 +322,10 @@ L80 version</pre><button class="copy" type="button">Copy</button></div>
             <tr><td><code>L80_TOKEN</code></td><td>Publish token, shaped <code>L80_&lt;keyid&gt;_&lt;secret&gt;</code>. Falls back to <code>~/.config/L80/credentials.json</code> (mode 0600).</td></tr>
             <tr><td><code>L80_API_BASE</code></td><td>Server URL. Default <code>https://www.launch80.com</code>. Every network command also takes <code>--api-base</code>.</td></tr>
             <tr><td><code>L80_BETTERBENCH_API_KEY</code></td><td>Bearer key for the endpoint you are benchmarking. Passed by environment and never recorded.</td></tr>
-            <tr><td><code>L80_BETTERBENCH</code>, <code>L80_VAST</code>, <code>L80_PWDET</code>, <code>L80_DASHBOARD</code></td><td>Run this command instead of the pinned tool, for example your own checkout. Used without a version check.</td></tr>
+            <tr><td><code>L80_BETTERBENCH</code>, <code>L80_QUALITYBENCH</code>, <code>L80_VAST</code>, <code>L80_PWDET</code>, <code>L80_DASHBOARD</code></td><td>Run this command instead of the pinned tool, for example your own checkout. Used without a version check.</td></tr>
             <tr><td><code>L80_PWDET_EXTRAS</code></td><td>pwdet extras to install. Default <code>gguf,pickle</code>; empty means none.</td></tr>
             <tr><td><code>VAST_API_KEY</code></td><td>Vast.ai key for <code>L80 vast</code>. Or put it in <code>~/.config/bbvastl80/credentials</code>.</td></tr>
+            <tr><td><code>L80_QUALITYBENCH_DIR</code></td><td>Where QualityBench results go. Default <code>~/.local/state/L80/qualitybench</code>.</td></tr>
             <tr><td><code>BBVASTL80_RUNS_DIR</code></td><td>Where Vast runs are recorded. Default <code>~/.local/state/L80/vast/runs</code>.</td></tr>
             <tr><td><code>NO_COLOR</code></td><td>Turns colour off in the console and output.</td></tr>
           </tbody>
@@ -334,14 +337,14 @@ L80 version</pre><button class="copy" type="button">Copy</button></div>
         <h3>Benchmark an endpoint <span class="chip free">Free to run</span><span class="chip gate">Token to publish</span></h3>
         <p><code>L80 betterbench</code> runs <a href="https://github.com/GGZ14/BetterBench">BetterBench</a> against any OpenAI-compatible endpoint and publishes its <code>results.json</code> as written. The launch80 page computes every table and figure from the raw samples, so it matches BetterBench's own HTML report.</p>
         <div class="cmd"><pre class="multi">L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --note engine="vLLM 0.9.3"
-L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --quick        # 5-pass smoke run
+L80 betterbench --endpoint http://host:8080/v1 --model Qwen3-8B --quick        # 5-pass quick run
 L80 betterbench --results results.json                                        # publish an existing file
 L80 betterbench --results results.json --dry-run --payload-out payload.json   # inspect first</pre><button class="copy" type="button">Copy</button></div>
         <div class="tbl"><table>
           <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
           <tbody>
             <tr><td><code>--endpoint</code>, <code>--model</code></td><td>The base URL to benchmark and the model name to request.</td></tr>
-            <tr><td><code>--quick</code></td><td>Short smoke run. The page says so, and it cannot be verified.</td></tr>
+            <tr><td><code>--quick</code></td><td>Quick run: 5 passes after 1 warmup. The page says so; it can be verified as a quick run, against a reproduction.</td></tr>
             <tr><td><code>--passes N</code>, <code>--warmup N</code></td><td>Measured and warmup passes per category. Defaults are BetterBench's: 20 measured.</td></tr>
             <tr><td><code>--note KEY=VALUE</code></td><td>Recorded in the run and shown as a chip. Repeat it. Use <code>engine=</code> and <code>hardware=</code>.</td></tr>
             <tr><td><code>--decode</code>, <code>--prefill</code>, <code>--concurrency</code></td><td>Run only these phases. <code>--no-prefill</code> and <code>--no-concurrency</code> skip one.</td></tr>
@@ -356,6 +359,25 @@ L80 betterbench --results results.json --dry-run --payload-out payload.json   # 
         <p>Before publishing, L80 warns you if the file came from an older or newer BetterBench, or if the server answered requests from its prefix cache on a run that asked for a cold one. Two fields never leave your machine: <code>env.endpoint</code> and <code>env.host</code>.</p>
       </article>
 
+      <article id="qualitybench">
+        <h3>Measure quality and quality loss <span class="chip free">Free to run</span><span class="chip gate">Token to publish</span></h3>
+        <p><code>L80 qualitybench</code> runs <a href="https://github.com/launch80/QualityBench">QualityBench</a> 0.2.0, BetterBench's sibling for quality: GSM8K, IFEval, MMLU-Pro, HumanEval+ and MBPP+, BFCL tool calling, LiveCodeBench, perplexity and long-context needle retrieval. Against a reference run it reports what a quantization or an engine change costs: paired per-task deltas with confidence intervals, KLD, top-1 agreement and pass/fail against a pre-registered thresholds file. Results publish to <code>bench.qualitybench.v1</code>.</p>
+        <div class="cmd"><pre class="multi">L80 qualitybench endpoints                     # local servers, their engine and models
+L80 qualitybench setup                         # harness environments, images and datasets, ahead of time
+L80 qualitybench --model Qwen/Qwen3-8B --quick # finds the local server serving the model
+L80 qualitybench --model my/int4 --reference bf16.json --thresholds THRESHOLDS.md
+L80 qualitybench compare bf16.json int4.json   # locally, no token</pre><button class="copy" type="button">Copy</button></div>
+        <ul class="plain">
+          <li>With no <code>--endpoint</code>, L80 finds the local vLLM, llama.cpp, llama-swap, SGLang, Ollama or LM Studio server that lists the model. <code>--tokenizer</code> defaults to the weights vLLM reports.</li>
+          <li>The code tasks run in Docker. <code>--sandbox native</code> runs them on this machine: only on a disposable box.</li>
+          <li>If a task fails, the rest are kept and published, the failed task is listed as partial, and L80 exits 1. Rerunning the same command resumes.</li>
+          <li>Results, the HTML report and the <code>.qb/</code> folder go to <code>~/.local/state/L80/qualitybench/</code> whichever directory you run from (<code>L80_QUALITYBENCH_DIR</code> to change it, <code>--out</code> for one run).</li>
+          <li><code>--reference</code> and <code>compare</code> need each results file's <code>.qb/</code> folder beside it.</li>
+          <li>On vLLM, logprobs needs <code>--max-logprobs 64</code>, and BFCL scores the server's tool-call parser.</li>
+        </ul>
+        <p>The console's Bench Quality screen does the same with nothing to type: Run or Compare, a scope, a server and model from lists, a "Compare to" reference and a tokenizer. "Rent via Vast" hands the model to Rent with a QualityBench step.</p>
+      </article>
+
       <article id="publish">
         <h3>Publish and templates <span class="chip gate">Needs a token</span></h3>
         <p><code>L80 publish</code> uploads a JSON payload. The server validates it against a schema and renders the page from its own template. You never upload HTML.</p>
@@ -365,6 +387,7 @@ L80 publish report.json --template bench.report.v1 --dry-run</pre><button class=
         <div class="tbl"><table>
           <thead><tr><th>Template</th><th>Use it for</th></tr></thead>
           <tbody>
+            <tr><td><code>bench.qualitybench.v1</code></td><td>A QualityBench results file, minus endpoint, host, home paths and LAN URLs. Produced by <code>L80 qualitybench</code>.</td></tr>
             <tr><td><code>bench.betterbench.v1</code></td><td>A BetterBench <code>results.json</code>, as written. Produced by <code>L80 betterbench</code>. Up to 4 MB.</td></tr>
             <tr><td><code>bench.report.v1</code></td><td>Any other benchmark with per-category percentiles: tables, p50/p99, sample-gate flags. Up to 64 KB.</td></tr>
             <tr><td><code>generic.report.v1</code></td><td>Everything else: title, summary, up to 12 metrics and 10 prose sections. Up to 64 KB.</td></tr>
@@ -375,13 +398,14 @@ L80 publish report.json --template bench.report.v1 --dry-run</pre><button class=
 
       <article id="verify">
         <h3>Verified by Launch80</h3>
-        <p>A Launch80 verifier can stamp a published BetterBench page <strong>verified</strong>. That means it is a complete cold-cache run, described well enough for someone else to reproduce. Every key with a token sees other keys' requests and can reproduce them on its own hardware. Only verifier keys stamp, never their own requests, and reproducing first is optional; when a verifier did, the comparison goes with the stamp.</p>
+        <p>A Launch80 verifier can stamp a published BetterBench page or pwdet scan <strong>verified</strong>. That means it is a complete cold-cache run, described well enough for someone else to reproduce. Every key with a token sees other keys' requests and can reproduce them on its own hardware. Only verifier keys stamp, never their own requests, and reproducing first is optional; when a verifier did, the comparison goes with the stamp.</p>
         <div class="cmd"><pre class="multi"># publisher
 L80 verify check results.json          # exit 0 if the run qualifies
 L80 verify request &lt;page url&gt; --note "engine flags, how to reproduce"
 # anyone with a token
 L80 verify queue
 L80 verify reproduce &lt;id&gt; --endpoint http://127.0.0.1:8000/v1
+L80 verify reproduce &lt;scan id&gt;           # a pwdet scan: re-runs pwdet, no endpoint
 # verifier keys
 L80 verify approve &lt;id&gt; --note "matched on 1x RTX 4090"
 L80 verify reject &lt;id&gt; --reason "…"
@@ -390,7 +414,7 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
         <div class="tbl"><table>
           <thead><tr><th>Check</th><th>Passes when</th></tr></thead>
           <tbody>
-            <tr><td>Full run</td><td>At least 20 measured passes per category and one warmup, so not <code>--quick</code>.</td></tr>
+            <tr><td>Run class</td><td>A full run (20+ passes) or a quick run (5 to 19 passes, <code>--quick</code> included), each after at least one warmup.</td></tr>
             <tr><td>Phases</td><td>Single-stream, prefill and concurrency results are all present.</td></tr>
             <tr><td>Cold cache</td><td>No request was served from the server's prefix cache.</td></tr>
             <tr><td>Requests</td><td>Every request completed and none was truncated.</td></tr>
@@ -399,20 +423,24 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
             <tr><td>Provenance</td><td>This machine published the page, from a file that has not changed since.</td></tr>
           </tbody>
         </table></div>
-        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. A reproduction compares the headline figures with tolerances: decode ±10%, ITL 1% low ±15%, TTFT ±25%. One that disagrees needs <code>--accept-differences</code> and a note to stamp. The console's Verify screen does all of this with <kbd>p</kbd>, <kbd>a</kbd> and <kbd>x</kbd>.</p>
+        <p>Pages move through four tiers: unverified, pending, verified and rejected. A rejected page displays as unverified. A reproduction compares the headline figures with tolerances: decode ±10%, ITL 1% low ±15%, TTFT ±25%. One that disagrees needs <code>--accept-differences</code> and a note to stamp. <strong>Quick runs</strong> are stamped only against a reproduction within wider tolerances (decode ±15%, ITL ±25%, TTFT ±40%), on medians, with no override; their badge reads "Verified by Launch80 · quick run (N passes)". <strong>pwdet scans</strong> qualify at Standard or above, of a Hugging Face repo pinned to a commit, from pwdet 0.2 or later. A scan is stamped only against a re-run within tolerance: the same file hashes, deterministic findings matching the digest, and the same significant probe findings; <code>--accept-differences</code> does not apply. The console's Bench Verify screen does all of this with <kbd>p</kbd>, <kbd>a</kbd> and <kbd>x</kbd>, and its lists show each request's type, betterbench or pwdet.</p>
         <div class="note">Verification is rolling out on launch80. Until the server accepts requests, <code>verify request</code> says it is not supported (exit 8), and <code>verify check</code> still works.</div>
       </article>
 
       <article id="vast">
         <h3>Rent a GPU and benchmark it <span class="chip free">Free</span></h3>
-        <p><code>L80 vast</code> runs <a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a>. It rents a Vast.ai GPU, serves a model on it with vLLM or llama.cpp, runs BetterBench from your machine, publishes, and destroys the box. Every bbvastl80 command works through it.</p>
+        <p><code>L80 vast</code> runs <a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a>. It rents a Vast.ai GPU, serves a model on it with vLLM or llama.cpp, runs BetterBench and QualityBench from your machine, publishes, and destroys the box. Every bbvastl80 command works through it.</p>
         <div class="cmd"><pre class="multi">L80 vast doctor                              # Vast key, SSH key, and the L80 and BetterBench it will call
+L80 vast spec --model Qwen/Qwen3-8B --gpu "RTX 4090" --max-dph 0.6   # write the spec for you
 L80 vast search --spec run.yaml              # matching offers and prices; does not bill
-L80 vast run --spec run.yaml --max-hours 2   # rent, serve, benchmark, publish, tear down
+L80 vast spec --model Qwen/Qwen3-8B --steps betterbench,qualitybench --tool-parser hermes
+L80 vast run --spec run.yaml --max-hours 4   # rent, serve, run the steps, publish, tear down
 L80 vast status --json                       # every run, and which may still be billing
 L80 vast destroy --run &lt;id&gt;                  # asks before destroying</pre><button class="copy" type="button">Copy</button></div>
         <ul class="plain">
-          <li><code>--max-hours N</code> is a watchdog. When time runs out, L80 stops the run and destroys its instance.</li>
+          <li><code>L80 vast spec</code> writes the run spec (model, engine, GPU types, price ceiling, budget, steps) to <code>~/.local/state/L80/vast/specs</code>, so you never start from blank YAML.</li>
+          <li><strong>Steps.</strong> <code>--steps betterbench,qualitybench,qualitybench-thinking</code> runs operations in order on one rental, each into <code>runs/&lt;id&gt;/&lt;NN&gt;-&lt;label&gt;/</code>. A failed step does not stop the next, and the run exits 1 if any failed. <code>--qb-tasks</code>, <code>--reference</code>, <code>--thresholds</code>, <code>--qb-deadline</code>, <code>--tool-parser</code>, <code>--reasoning-parser</code> and <code>--no-publish</code> set them up.</li>
+          <li><code>--max-hours N</code> is a watchdog. When time runs out, L80 stops the run and destroys its instance. QualityBench stops starting work 15 minutes before, so its results are written.</li>
           <li>After any run that fails or is interrupted, L80 names each instance that may still be billing and the command that stops it.</li>
           <li>The first Ctrl-C stops the run cleanly. A second one cancels it.</li>
           <li>L80 never answers a confirmation prompt for you.</li>
@@ -425,7 +453,8 @@ L80 vast destroy --run &lt;id&gt;                  # asks before destroying</pre
         <div class="cmd"><pre class="multi">L80 pwdet scan Qwen/Qwen3-0.6B --json        # {"verdict": ..., "report": ...}
 L80 pwdet scan ./model --profile full-static
 L80 pwdet scan org/model --publish --dry-run --payload-out page.json
-L80 pwdet scan org/model --publish           # a generic.report.v1 page
+L80 pwdet scan org/model --publish           # a scan.pwdet.v1 page, verifiable
+L80 pwdet publish reports/ --dry-run         # an earlier scan, without scanning again
 L80 pwdet checks list</pre><button class="copy" type="button">Copy</button></div>
         <div class="tbl"><table>
           <thead><tr><th>Exit</th><th>Verdict</th></tr></thead>
@@ -435,7 +464,7 @@ L80 pwdet checks list</pre><button class="copy" type="button">Copy</button></div
             <tr><td class="num">2</td><td>Likely tampered or malicious</td></tr>
           </tbody>
         </table></div>
-        <p>A published scan carries the verdict, the findings to review and the coverage. L80 removes the hostname, local paths and private endpoints, and refuses to publish if any remain.</p>
+        <p>pwdet reports say what a scan could see: an assurance level of Basic, Standard, Thorough or Deep, each threat tested or not, the gaps and how to close them, and the measured accuracy for that level. A published scan carries the verdict with its level ("clean · standard"), the findings to review, threat coverage, measured accuracy and what was not tested. When the server accepts <code>scan.pwdet.v1</code>, the page includes the scrubbed report so a verifier can re-run it; otherwise L80 sends a <code>generic.report.v1</code> page and says why it is not verifiable. L80 removes the hostname, local paths and private endpoints, and refuses to publish if any remain.</p>
       </article>
 
       <article id="dashboard">
@@ -449,22 +478,25 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
 
       <article id="tui">
         <h3>The console <span class="chip free">Free</span></h3>
-        <p><code>L80 tui</code> is a full-screen console for everything on this page. A sidebar lists Home, then every other screen A to Z. Moving through it previews each one live, <kbd>enter</kbd> opens it, <kbd>esc</kbd> comes back, <kbd>1</kbd>–<kbd>9</kbd> jump and <kbd>?</kbd> opens help. The first time it opens on a short onboarding; <code>L80 onboard</code> runs it again. Each screen runs the same code as its command, so anything you do here you can script later.</p>
+        <p><code>L80 tui</code> is a full-screen console for everything on this page. A sidebar lists Home, then every other screen A to Z. Moving through it previews each one live, <kbd>enter</kbd> opens it, <kbd>esc</kbd> comes back, <kbd>1</kbd>–<kbd>9</kbd> jump to the first nine, the sidebar scrolls when it is long, and <kbd>?</kbd> opens help. The first time it opens on a short onboarding; <code>L80 onboard</code> runs it again. Each screen runs the same code as its command, so anything you do here you can script later.</p>
         <div class="tbl"><table>
           <thead><tr><th>Screen</th><th>What you can do</th></tr></thead>
           <tbody>
-            <tr><td>Home</td><td>Server, token and tool status at a glance, plus your last publishes.</td></tr>
+            <tr><td>Home</td><td>A launcher, "What do you want to do?", with server, token and tool status and this session's runs.</td></tr>
             <tr><td>About</td><td>Our story, the <a href="https://discord.gg/launch80">Discord</a>, the <a href="https://www.launch80.com/supporter">Supporter</a> page and the full command directory.</td></tr>
-            <tr><td>Benchmark</td><td>Fill in a form, watch the run stream, then publish or dry-run.</td></tr>
+            <tr><td>Bench - History</td><td>Two tabs. Published: every page you published, with its trust tier; <kbd>v</kbd> requests verification. Unpublished: QualityBench reports not published yet, from the results folder and rental runs; <kbd>p</kbd> publishes one, <kbd>o</kbd> opens its report.</td></tr>
+            <tr><td>Bench Quality</td><td>Run or Compare. Pick a scope, a local server and model, a reference and a tokenizer; watch per-task progress, then publish with <kbd>p</kbd> or open the report with <kbd>o</kbd>.</td></tr>
+            <tr><td>Bench Risk</td><td>Pick an assurance level, scan a model and read the whole report inline: verdict and level, a threat matrix, accuracy, every check with its evidence. <kbd>m</kbd> opens the Method tab; publish with <kbd>p</kbd>.</td></tr>
+            <tr><td>Bench Speed</td><td>Fill in a form, watch the run stream, then publish or dry-run.</td></tr>
+            <tr><td>Bench Verify</td><td>Other keys' requests to review, with type (betterbench or pwdet) and key label: reproduce or re-scan them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
             <tr><td>Dashboard</td><td>Attach to the telemetry view or start the sampler.</td></tr>
-            <tr><td>History</td><td>Every page you published, with its trust tier. Press <kbd>v</kbd> to request verification.</td></tr>
+            <tr><td>Doctor</td><td>The <code>L80 doctor</code> checks, each with its remedy.</td></tr>
             <tr><td>Onboarding</td><td>Check the tools, save a publish token, pick where to start, and install skills for the AI agents found.</td></tr>
-            <tr><td>pwdet</td><td>Scan a model, read the verdict and findings, publish the result.</td></tr>
-            <tr><td>Recommendations</td><td><span class="chip pend">Coming soon</span> What to run a model on, from the community's published results.</td></tr>
-            <tr><td>Rent (vast)</td><td>Pick a spec, see cost caps before renting, follow runs, destroy boxes.</td></tr>
+            <tr><td>Rent GPUs</td><td>Tabs Runs, Spec file and New rental. The New rental wizard (Model, Hardware, Operations, Review) has presets, a time plan per step and the cost cap, then one consent dialog and a live step list; <kbd>o</kbd> opens a step's report.</td></tr>
+            <tr><td>Settings</td><td>Log in with a masked input or log out, and check for an update with its release notes, then run it.</td></tr>
+            <tr><td>Skills</td><td>Install or link L80's skills for each agent found.</td></tr>
+            <tr><td>Templates</td><td>The page templates the server offers.</td></tr>
             <tr><td>Tools</td><td>How each tool resolves, and prefetch it.</td></tr>
-            <tr><td>Train &amp; Tune</td><td><span class="chip pend">Coming soon</span> Train, fine-tune and quantize models, then benchmark the result.</td></tr>
-            <tr><td>Verify</td><td>Other keys' requests to review, by key label: reproduce them with <kbd>p</kbd>; verifiers stamp with <kbd>a</kbd> or reject with <kbd>x</kbd>.</td></tr>
           </tbody>
         </table></div>
         <p>Renting, destroying and publishing always ask first. <code>vast ssh</code> and the dashboard take over the terminal and hand it back when they exit. Linux and macOS.</p>
@@ -480,11 +512,12 @@ L80 dashboard serve --force    # start even if a sampler already answers on the 
           <li>An older copy on your PATH, with a warning</li>
         </ul>
         <div class="tbl"><table>
-          <thead><tr><th>Tool</th><th>Runs</th><th>Pinned in 1.0.0</th><th>Override</th></tr></thead>
+          <thead><tr><th>Tool</th><th>Runs</th><th>Pinned in 1.3.3</th><th>Override</th></tr></thead>
           <tbody>
             <tr><td><a href="https://github.com/GGZ14/BetterBench">BetterBench</a></td><td><code>betterbench</code></td><td><code>v0.6.1</code> · <code>f72bb90</code></td><td><code>L80_BETTERBENCH</code></td></tr>
-            <tr><td><a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a></td><td><code>bbvastl80</code></td><td><code>v0.1.0</code> · <code>d8ed73f</code></td><td><code>L80_VAST</code></td></tr>
-            <tr><td><a href="https://github.com/launch80/poisoned-weights-detector">pwdet</a></td><td><code>pwdet</code></td><td><code>v0.1.0</code> · <code>85f3ead</code></td><td><code>L80_PWDET</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/QualityBench">QualityBench</a></td><td><code>qualitybench</code></td><td><code>v0.3.0</code> · <code>8f33d1b</code></td><td><code>L80_QUALITYBENCH</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/BB-VAST-L80">bbvastl80</a></td><td><code>bbvastl80</code></td><td><code>v0.2.2</code> · <code>ec58eab</code></td><td><code>L80_VAST</code></td></tr>
+            <tr><td><a href="https://github.com/launch80/poisoned-weights-detector">pwdet</a></td><td><code>pwdet</code></td><td><code>v0.2.1</code> · <code>ae662ef</code></td><td><code>L80_PWDET</code></td></tr>
             <tr><td><a href="https://github.com/launch80/ai-command-dashboard">AI command dashboard</a></td><td><code>ai-dashboard</code></td><td><code>v0.1.0</code> · <code>3cc1575</code></td><td><code>L80_DASHBOARD</code></td></tr>
           </tbody>
         </table></div>
@@ -516,7 +549,8 @@ L80 skills agents-md &gt;&gt; AGENTS.md           # for agents without skills</p
           <tbody>
             <tr><td><code>l80</code></td><td>Use the whole CLI: every command, its JSON output and exit codes, and when to ask before spending or publishing.</td></tr>
             <tr><td><code>l80-test-report</code></td><td>Pick a template and publish reports and BetterBench runs.</td></tr>
-            <tr><td><code>l80-vast</code></td><td>Rent and benchmark a GPU without leaving a box billing.</td></tr>
+            <tr><td><code>l80-qualitybench</code></td><td>Measure quality or quality loss, compare two runs, and publish.</td></tr>
+            <tr><td><code>l80-vast</code></td><td>Rent a GPU, run benchmark and quality steps on it, and never leave a box billing.</td></tr>
             <tr><td><code>l80-pwdet</code></td><td>Scan weights, read the verdict, and publish it safely.</td></tr>
           </tbody>
         </table></div>
@@ -537,13 +571,14 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
           <thead><tr><th>Command</th><th>Does</th></tr></thead>
           <tbody>
             <tr><td><code>L80 betterbench</code></td><td>Run BetterBench and publish the results</td></tr>
+            <tr><td><code>L80 qualitybench</code></td><td>Run QualityBench and publish; <code>endpoints</code>, <code>tasks</code>, <code>setup</code>, <code>compare</code></td></tr>
             <tr><td><code>L80 publish &lt;file&gt;</code></td><td>Publish a payload and print the URL</td></tr>
             <tr><td><code>L80 templates list</code></td><td>List the page templates</td></tr>
             <tr><td><code>L80 verify check|request|status|mine</code></td><td>Verification checks and your requests</td></tr>
             <tr><td><code>L80 verify queue|show|reproduce</code></td><td>Review and reproduce others' runs (any key)</td></tr>
             <tr><td><code>L80 verify approve|reject</code></td><td>Stamp or reject a run (verifier keys)</td></tr>
             <tr><td><code>L80 history</code></td><td>List the pages you published</td></tr>
-            <tr><td><code>L80 vast &lt;command&gt;</code></td><td>Rent a GPU, serve, benchmark, publish</td></tr>
+            <tr><td><code>L80 vast &lt;command&gt;</code></td><td>Rent a GPU, serve, run benchmark and quality steps, publish</td></tr>
             <tr><td><code>L80 pwdet &lt;command&gt;</code></td><td>Check weights for tampering</td></tr>
             <tr><td><code>L80 dashboard [tui|serve]</code></td><td>GPU and inference telemetry</td></tr>
             <tr><td><code>L80 tools list|check|prefetch|path|run</code></td><td>The pinned Python tools</td></tr>
@@ -599,7 +634,12 @@ L80 history --tier verified</pre><button class="copy" type="button">Copy</button
 <section class="band soon" id="soon">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">Coming soon · planned, not in 1.0.0</div>
+      <div class="eyebrow">Next · planned for 1.4.0</div>
+      <h2>Distill, train and quantize on a rental</h2>
+      <p>Rentals gain more steps: generating distillation data, then training and quantizing a model on the box, and pushing the trained weights to Hugging Face. The same rental can then benchmark and quality-test the result.</p>
+    </div>
+    <div class="sec-head">
+      <div class="eyebrow">Later · planned, not in 1.3.3</div>
       <h2>Setup intelligence: the best setup for your machine</h2>
       <p>L80 will read your hardware, check it against the <a href="https://github.com/launch80/AwesomeList">Launch80 AwesomeList</a> catalog, and shortlist the community projects that actually fit. It then benchmarks the result and contributes it back. Commands and flags below are proposals and may change.</p>
     </div>
@@ -637,7 +677,7 @@ L80 verify export &lt;page&gt; --awesomelist        # a verified run as a catalo
 
 <footer>
   <div class="wrap">
-    <span>L80 CLI 1.0.0 · documentation updated 18 October 2026</span>
+    <span>L80 CLI 1.3.3 · documentation updated 6 November 2026</span>
     <span><a href="https://github.com/launch80/L80-CLI">github.com/launch80/L80-CLI</a> · <a href="https://www.launch80.com">launch80.com</a></span>
   </div>
 </footer>

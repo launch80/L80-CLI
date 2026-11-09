@@ -1,6 +1,6 @@
 ---
 name: l80
-description: Drive the launch80 `L80` CLI for the user — benchmark an LLM endpoint with BetterBench, rent a Vast.ai GPU to benchmark on, scan model weights for tampering, check GPU and inference telemetry, review or verify others' benchmark runs, and publish results as shareable launch80 pages. Use whenever the user mentions L80, launch80, BetterBench, benchmarking a model or inference server, renting a GPU to test on, or vetting a model download. The detailed skills l80-test-report, l80-vast and l80-pwdet cover publishing, renting and scanning step by step.
+description: Drive the launch80 `L80` CLI for the user — benchmark an LLM endpoint with BetterBench, measure answer quality and quantization loss with QualityBench, rent a Vast.ai GPU to benchmark on, scan model weights for tampering, check GPU and inference telemetry, review or verify others' benchmark runs and weight scans, and publish results as shareable launch80 pages. Use whenever the user mentions L80, launch80, BetterBench, QualityBench, benchmarking a model or inference server, renting a GPU to test on, or vetting a model download. The detailed skills l80-test-report, l80-vast, l80-pwdet and l80-qualitybench cover publishing, renting and scanning step by step.
 ---
 
 # Use L80 on the user's behalf
@@ -18,8 +18,8 @@ drive L80 themselves unless they want to.
   user to paste a token, a Vast.ai key or an endpoint key into the chat. If one
   is missing, tell them which variable or file to set and wait.
 - **Published pages are public.** Confirm with the user before any command that
-  publishes (`publish`, `betterbench` without `--dry-run`, `pwdet --publish`,
-  `vast run` with a publish step).
+  publishes (`publish`, `betterbench` or `qualitybench` without `--dry-run`/`--no-publish`,
+  `pwdet --publish`, `vast run` with a publishing step).
 - **Renting costs money.** `L80 vast rent|serve|run` bills the user's Vast.ai
   account until the instance is destroyed. Get explicit consent with the price,
   prefer `--max-hours`, never pass `-y` to `destroy` or `reap`, and make sure
@@ -34,16 +34,22 @@ drive L80 themselves unless they want to.
 | Goal | Command |
 |---|---|
 | Is everything set up? | `L80 doctor`, `L80 auth status`, `L80 tools check --json` |
-| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> [--quick] [--note k=v]` |
+| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> [--quick] [--note k=v]` (quick: 5 passes, verifiable only with a reproduction) |
 | Publish an existing BetterBench file | `L80 betterbench --results results.json` |
+| Measure answer quality, or a quant's quality loss | `L80 qualitybench --model <m> [--quick] [--no-publish]` (see `l80-qualitybench`) |
+| Compare two QualityBench runs | `L80 qualitybench compare ref.json test.json [--thresholds T.md]` |
+| Publish a QualityBench results or compare file | `L80 qualitybench --results file.json [--dry-run]` |
 | Publish any other report | `L80 publish report.json --template <id> [--dry-run] [--json]` (see `l80-test-report`) |
 | List templates | `L80 templates list --json` |
+| Write a rental spec (model, GPUs, price ceiling) | `L80 vast spec --model <hf repo> --max-dph N` |
 | Rent a GPU, serve, bench, publish, tear down | `L80 vast run --spec run.yaml --max-hours 2` (see `l80-vast`) |
-| Scan weights for tampering | `L80 pwdet scan <dir\|org/name\|url#model> --json [--publish]` (see `l80-pwdet`) |
+| ...with QualityBench on the rental | `L80 vast spec --model <repo> --steps betterbench,qualitybench --tool-parser <p>` |
+| Scan weights for tampering | `L80 pwdet scan <dir\|org/name\|url#model> --profile basic\|standard\|thorough\|deep --json [--publish]` (see `l80-pwdet`) |
+| Publish an earlier scan | `L80 pwdet publish <report.json\|dir> [--dry-run] --json` |
 | GPU / inference telemetry | `L80 dashboard serve` (web page on :8787), `L80 dashboard tui` |
 | What has this key published | `L80 history --json [--local]` |
-| Verification | `L80 verify check <results.json\|url>`, `L80 verify request <url>`, `L80 verify status <url>` |
-| Review others' runs | `L80 verify queue`, `L80 verify reproduce <id> --endpoint <url>`, `L80 verify approve\|reject <id>` (verifier keys) |
+| Verification | `L80 verify check <results.json\|report.json\|url>`, `L80 verify request <url>`, `L80 verify status <url>` |
+| Review others' runs | `L80 verify queue`, `L80 verify reproduce <id> --endpoint <url>` (a pwdet scan needs no endpoint), `L80 verify approve\|reject <id>` (verifier keys) |
 | Keep L80 current | `L80 update --check --json`, then `L80 update` |
 | Full command list | `L80 help` |
 
@@ -72,8 +78,9 @@ dashboard) is passed through unchanged; read its output above the status.
 
 ## Coming soon
 
-Recommendations (what hardware, engine and quantization to run a model on) and
-training, tuning and quantizing models are on the way. Until then, say so rather
+Recommendations (what hardware, engine and quantization to run a model on),
+generating distillation data, and training, tuning and quantizing models (as
+rental steps) are on the way. Until then, say so rather
 than improvising a command that does not exist.
 
 Community and help: https://discord.gg/launch80
