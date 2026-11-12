@@ -65,7 +65,8 @@ func (s *settingsScreen) ensure() {
 		{Title: "Check for updates", Desc: "What `L80 update --check` finds, with the release notes", Value: "check"},
 		{Title: "Update L80", Desc: "Install the latest release and refresh tools and skills (`L80 update`)", Value: "update"},
 		{Title: "Ask before QualityBench runs", Desc: "Enter cycles: always · only over 30 min · never", Value: "confirm"},
-		{Title: "List published pages in the Directory", Desc: "Enter cycles: ask · always · never", Value: "listing"},
+		{Title: "List published pages in the Directory", Desc: "Enter cycles: always · ask · never", Value: "listing"},
+		{Title: "Show me as the author on pages", Desc: "Enter toggles show · hide", Value: "author"},
 	}}
 }
 
@@ -108,12 +109,12 @@ func (c *Console) cycleConfirm() (string, bool) {
 }
 
 // listingCycle is the order Enter steps publish.public through.
-var listingCycle = []config.Listing{config.ListingAsk, config.ListingAlways, config.ListingNever}
+var listingCycle = []config.Listing{config.ListingAlways, config.ListingAsk, config.ListingNever}
 
 func listingLabel(l config.Listing) string {
 	switch l {
 	case config.ListingAlways:
-		return "always: every benchmark page is listed in the launch80 Directory"
+		return "always (default): benchmark and scan pages are listed in the launch80 Directory"
 	case config.ListingNever:
 		return "never: pages stay unlisted, reachable by link"
 	}
@@ -136,6 +137,26 @@ func (c *Console) cycleListing() (string, bool) {
 		return "Saved " + string(next) + ", but " + src + " sets " + v + " and wins until it is unset.", false
 	}
 	return "List published pages: " + listingLabel(next) + ".", true
+}
+
+// toggleAuthor flips publish.author between show and hide and saves it.
+func (c *Console) toggleAuthor() (string, bool) {
+	hidden, _, _ := config.PublishAuthorHidden()
+	next := map[bool]string{true: "show", false: "hide"}[hidden]
+	if err := config.Set(config.KeyPublishAuthor, next); err != nil {
+		return "Could not save it: " + err.Error(), false
+	}
+	if v, src := config.Get(config.KeyPublishAuthor); src != "file" {
+		return "Saved " + next + ", but " + src + " sets " + v + " and wins until it is unset.", false
+	}
+	return "Author on published pages: " + authorLabel(next == "hide") + ".", true
+}
+
+func authorLabel(hidden bool) string {
+	if hidden {
+		return "hide: pages show no author"
+	}
+	return "show (default): pages show \"Author: <your key id>\""
 }
 
 // login checks a token's shape, saves it where config.Load finds it, and
@@ -305,6 +326,9 @@ func (s *settingsScreen) update(c *Console, m Msg) Cmd {
 			case "listing":
 				msg, ok := c.cycleListing()
 				s.msg, s.bad = msg, !ok
+			case "author":
+				msg, ok := c.toggleAuthor()
+				s.msg, s.bad = msg, !ok
 			}
 		}
 	}
@@ -358,13 +382,21 @@ func (s *settingsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding
 	}
 	qv, qsrc := config.Get(config.KeyQualityConfirm)
 	lv, lsrc, _ := config.PublishListing()
+	ah, asrc, _ := config.PublishAuthorHidden()
 	for i := range s.menu.Items {
+		if s.menu.Items[i].Value == "author" {
+			desc := "Now " + authorLabel(ah)
+			if asrc != "file" && asrc != "default" {
+				desc += " (" + asrc + ")"
+			}
+			s.menu.Items[i].Desc = desc + ". Enter toggles"
+		}
 		if s.menu.Items[i].Value == "listing" {
 			desc := "Now " + listingLabel(lv)
 			if lsrc != "file" && lsrc != "default" {
 				desc += " (" + lsrc + ")"
 			}
-			s.menu.Items[i].Desc = desc + ". Enter cycles ask · always · never"
+			s.menu.Items[i].Desc = desc + ". Enter cycles always · ask · never"
 		}
 		if s.menu.Items[i].Value == "confirm" {
 			desc := "Now " + confirmLabel(qv)

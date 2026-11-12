@@ -243,10 +243,8 @@ func publishBody(e env, body []byte, template, path, apiBase string, asJSON bool
 		return emitJSON(e, artifact)
 	}
 
-	// One quotable line the model can hand straight to the user.
+	// One quotable line the model can hand straight to the user, then what it means.
 	output.Successf(e.stdout, "published: %s", artifact.URL)
-	output.Detailf(e.stdout, "template %s v%d · %s · %d bytes",
-		artifact.TemplateID, artifact.TemplateVersion, artifact.TrustTier, artifact.ByteSize)
 	printListing(e, artifact, l, config.Load(apiBase).BaseURL)
 	return api.ExitOK
 }
@@ -257,7 +255,7 @@ func publishArtifact(e env, body []byte, template, path, apiBase string, l listi
 	cfg := config.Load(apiBase)
 	res, apiErr := app.Publish(newClient(cfg), app.PublishRequest{
 		Body: body, Template: template, Title: titleOfBody(body, template), SourcePath: path, APIBase: cfg.BaseURL,
-		Public: l.Public,
+		Public: l.Public, NoAuthor: l.NoAuthor,
 	})
 	if apiErr != nil {
 		return nil, fail(e, apiErr)

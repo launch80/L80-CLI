@@ -14,15 +14,16 @@ import (
 	"github.com/launch80/L80-CLI/internal/output"
 )
 
-// listingFlags are --public and --private, which every publishing command takes.
+// listingFlags are --public, --private and --no-author, which every publishing command takes.
 type listingFlags struct {
-	public, private *bool
+	public, private, noAuthor *bool
 }
 
 func addListingFlags(fs *flag.FlagSet) listingFlags {
 	return listingFlags{
-		public:  fs.Bool("public", false, "also list the page in the public launch80 directory (benchmark and scan pages)"),
-		private: fs.Bool("private", false, "keep the page unlisted: reachable only by its link (the default when L80 cannot ask)"),
+		noAuthor: fs.Bool("no-author", false, "leave \"Author: <your key id>\" off the page (shown by default)"),
+		public:   fs.Bool("public", false, "list the page in the public launch80 Directory (the default for benchmark and scan pages)"),
+		private:  fs.Bool("private", false, "keep the page unlisted: reachable only by its link, not in the Directory"),
 	}
 }
 
@@ -31,21 +32,37 @@ type listing struct {
 	Public bool
 	// Asked is true when the person answered the question on the terminal.
 	Asked bool
-	// Reason is shown when the page was left unlisted without anyone choosing.
+	// Reason says why, when the page was left unlisted without a --private.
 	Reason string
+	// NoAuthor leaves "Author: <key id>" off the page (--no-author, or publish.author hide).
+	NoAuthor bool
 }
 
 // decideListing settles whether a page is listed, before anything is sent:
 //
 //	--public / --private      the caller chose
 //	not a benchmark template  never listed (the directory only holds benchmarks)
-//	publish.public always|never
-//	a terminal to ask on      ask, defaulting to no
-//	otherwise                 unlisted, with a note saying how to list it
+//	publish.public always     listed (the default since 1.4.1)
+//	publish.public never      unlisted
+//	publish.public ask        ask on a terminal, defaulting to no; unlisted
+//	                          when there is no terminal to ask on
 //
-// Unlisted is the answer whenever nobody chose, so a script or an agent that
-// did not ask the person never makes a page public.
+// Whatever the outcome, printListing says where the page is and how to change it.
 func decideListing(e env, lf listingFlags, template string, asJSON bool) (listing, *api.Error) {
+	l, err := decideVisibility(e, lf, template, asJSON)
+	if err != nil {
+		return l, err
+	}
+	hidden, src, aErr := config.PublishAuthorHidden()
+	if aErr != nil {
+		output.Detailf(e.stderr, "warning: publish.author (%s): %v; showing the author", src, aErr)
+	}
+	l.NoAuthor = (lf.noAuthor != nil && *lf.noAuthor) || hidden
+	return l, nil
+}
+
+// decideVisibility is decideListing's listed-or-not half.
+func decideVisibility(e env, lf listingFlags, template string, asJSON bool) (listing, *api.Error) {
 	pub, priv := lf.public != nil && *lf.public, lf.private != nil && *lf.private
 	if pub && priv {
 		return listing{}, api.Newf("E_USAGE", "Pass --public to list the page in the directory, or --private to keep it unlisted, not both.",
@@ -139,20 +156,87 @@ func withGPU(e env, body []byte, gpu string, l listing, asJSON bool) ([]byte, *a
 	return out, nil
 }
 
-// printListing says where the page is, after a successful publish.
+// printListing explains a successful publish, under the "published:" line:
+// what the page is, who can see it, its trust, what is left of the quota and
+// what to do next. The server's quota is used when it sends one; everything
+// else is known here, so an older server gets the same explanation.
 func printListing(e env, art *api.Artifact, l listing, baseURL string) {
-	if !api.Listable(art.TemplateID) {
-		return
+	row := func(label, format string, args ...any) {
+		output.Detailf(e.stdout, "%-12s "+format, append([]any{label}, args...)...)
 	}
+	more := func(format string, args ...any) {
+		output.Detailf(e.stdout, "%-12s "+format, append([]any{""}, args...)...)
+	}
+
+	page := fmt.Sprintf("%s v%d · %s", art.TemplateID, art.TemplateVersion, humanBytes(art.ByteSize))
+	if art.Title != "" {
+		page = fmt.Sprintf("%q · %s", art.Title, page)
+	}
+	row("page", "%s", page)
 	switch {
-	case l.Public && art.Listed:
-		output.Detailf(e.stdout, "listed in the directory: %s", api.DirectoryURL(baseURL))
-	case l.Public:
+	case art.Author != "":
+		row("author", "%s (shown on the page; --no-author leaves it off)", art.Author)
+	case l.NoAuthor:
+		row("author", "not shown (--no-author)")
+	}
+
+	listable := api.Listable(art.TemplateID)
+	switch {
+	case !listable:
+		row("who sees it", "anyone with the link; %s pages cannot be listed in the Directory", art.TemplateID)
+	case art.Listed:
+		row("who sees it", "anyone: listed in the launch80 Directory, where anyone can find, search and compare it")
+		more("%s", api.DirectoryURL(baseURL))
+	default:
+		row("who sees it", "only people you send the link to (unlisted)")
+		if l.Reason != "" {
+			more("(%s)", l.Reason)
+		}
+	}
+	if listable && l.Public && !art.Listed {
 		// An older server ignores ?listed=true.
 		output.Detailf(e.stderr, "warning: the server did not list the page; try `L80 visibility %s --public`", art.URL)
-	default:
-		output.Detailf(e.stdout, "unlisted: only people with the link can see it · list it: L80 visibility %s --public", art.URL)
 	}
+
+	if art.TrustTier == "unverified" || art.TrustTier == "" {
+		row("trust", "self-reported until Launch80 verifies it")
+	} else {
+		row("trust", "%s", art.TrustTier)
+	}
+	row("changes", "none: the page never changes; publish again to correct it")
+	if q := art.Quota; q != nil && q.Limit > 0 {
+		row("quota", "%d of %d publishes left in the next %d hours", q.Remaining, q.Limit, q.WindowHours)
+	}
+
+	var next [][2]string
+	if listable {
+		if art.Listed {
+			next = append(next, [2]string{"take it out of the Directory", "L80 visibility " + art.URL + " --private"})
+		} else {
+			next = append(next, [2]string{"list it in the Directory", "L80 visibility " + art.URL + " --public"})
+		}
+	}
+	if api.Verifiable(art.TemplateID) {
+		next = append(next, [2]string{"ask Launch80 to verify it", "L80 verify request " + art.URL})
+	}
+	for i, n := range next {
+		label := ""
+		if i == 0 {
+			label = "next"
+		}
+		output.Detailf(e.stdout, "%-12s %-30s %s", label, n[0], n[1])
+	}
+}
+
+// humanBytes is 412 B, 3.1 KB or 1.2 MB.
+func humanBytes(n int) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	}
+	return fmt.Sprintf("%d B", n)
 }
 
 // runVisibility is `L80 visibility <url|guid> --public|--private`.
@@ -191,10 +275,13 @@ func runVisibility(e env, args []string) int {
 	}
 	if v.Listed {
 		output.Successf(e.stdout, "listed: %s", v.URL)
-		output.Detailf(e.stdout, "in the directory: %s", api.DirectoryURL(cfg.BaseURL))
+		output.Detailf(e.stdout, "anyone can now find, search and compare it in the launch80 Directory (within a minute):")
+		output.Detailf(e.stdout, "%s", api.DirectoryURL(cfg.BaseURL))
+		output.Detailf(e.stdout, "undo: L80 visibility %s --private", v.URL)
 	} else {
 		output.Successf(e.stdout, "unlisted: %s", v.URL)
-		output.Detailf(e.stdout, "out of the directory; the link still works")
+		output.Detailf(e.stdout, "out of the Directory now; the link still works for anyone who has it")
+		output.Detailf(e.stdout, "undo: L80 visibility %s --public", v.URL)
 	}
 	return api.ExitOK
 }

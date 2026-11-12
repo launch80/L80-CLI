@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/tui/input"
 	"github.com/launch80/L80-CLI/internal/tui/style"
 	"github.com/launch80/L80-CLI/internal/tui/widgets"
@@ -519,7 +520,9 @@ func (s *vastScreen) startRun(c *Console) Cmd {
 	if dry {
 		args = append(args, "--dry-run")
 	}
-	s.public = false // a saved spec run from this form publishes unlisted; list from History
+	// A saved spec run follows the publish.public setting; "ask" cannot ask mid-run, so it is unlisted.
+	mode, _, _ := config.PublishListing()
+	s.public = mode == config.ListingAlways
 	launch := func() Cmd { return s.launch(c, spec, args, limit, nil) }
 	if dry {
 		return launch()

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/output"
 	"github.com/launch80/L80-CLI/internal/pytool"
 	"github.com/launch80/L80-CLI/internal/vast"
@@ -39,7 +40,7 @@ func runVast(e env, args []string) int {
 			"",
 			"  L80 vast <bbvastl80 command> [args...]   every bbvastl80 command, passed through",
 			"  L80 vast spec --model <hf repo> [--gpu NAMES] [--max-dph N]   write a run spec (no YAML by hand)",
-			"  L80 vast run --spec run.yaml [--max-hours N] [--public|--private] [--json]",
+			"  L80 vast run --spec run.yaml [--max-hours N] [--public|--private] [--no-author] [--json]",
 			"  L80 vast status --json                    runs L80 knows about, from their state files",
 			"",
 			"  Renting bills your Vast.ai account until the instance is destroyed. A run tears its",
@@ -47,7 +48,7 @@ func runVast(e env, args []string) int {
 			"  Ctrl-C once lets the run clean up; twice forces it.",
 			"  Vast key: VAST_API_KEY, or ~/.config/bbvastl80/credentials. Runs are kept in "+runsDir+".",
 			"  Flags after -- go to bbvastl80 untouched. --max-hours N destroys the run's box after N hours.",
-			"  --public lists the run's published pages in the launch80 Directory; without it they are unlisted.")
+			"  The run's published pages are listed in the launch80 Directory; --private keeps them unlisted (link only).")
 		res, err := runChild(e, r, []string{"--help"}, nil, nil)
 		return exitFromChild(e, "vast", res, err)
 	}
@@ -56,7 +57,7 @@ func runVast(e env, args []string) int {
 	owned := ownedFlags{}
 	switch verb {
 	case "run":
-		owned = ownedFlags{"json": false, "runs-dir": true, "max-hours": true, "public": false, "private": false}
+		owned = ownedFlags{"json": false, "runs-dir": true, "max-hours": true, "public": false, "private": false, "no-author": false}
 	case "status":
 		owned = ownedFlags{"json": false, "runs-dir": true}
 	}
@@ -79,12 +80,20 @@ func runVast(e env, args []string) int {
 	if verb == "run" {
 		// The run publishes by calling back into this L80, hours in, often
 		// unattended, so it must never stop to ask: the choice travels as the
-		// setting's variable, and without --public the pages are unlisted.
+		// setting's variable. Without a flag the publish.public setting decides,
+		// and "ask" (nobody to ask mid-run) means unlisted.
 		pub, priv := isTrue(mine["public"]), isTrue(mine["private"])
 		if pub && priv {
 			return fail(e, api.Newf("E_USAGE", "Pass --public or --private, not both.", "--public and --private were both given"))
 		}
+		if !pub && !priv {
+			mode, _, _ := config.PublishListing()
+			pub = mode == config.ListingAlways
+		}
 		childEnv = append(childEnv, vastListingEnv(pub))
+		if isTrue(mine["no-author"]) {
+			childEnv = append(childEnv, "L80_PUBLISH_AUTHOR=hide")
+		}
 	}
 	if verb != "run" {
 		res, err := runChild(e, r, append([]string{verb}, rest...), childEnv, nil)

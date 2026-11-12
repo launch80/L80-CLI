@@ -21,15 +21,16 @@ drive L80 themselves unless they want to.
   user before any command that publishes (`publish`, `betterbench` or
   `qualitybench` without `--dry-run`/`--no-publish`, `pwdet --publish`,
   `vast run` with a publishing step).
-- **Ask whether to list it in the Directory.** Benchmark and scan pages
-  (`bench.betterbench.v1`, `bench.qualitybench.v1`, `bench.report.v1`,
-  `scan.pwdet.v1`) can also be listed in the public launch80 Directory
-  (launch80.com/directory). Ask: "Do you want this listed in the public launch80
-  Directory, where anyone can search and compare it?" and pass `--public` or
-  `--private` on every publishing command, so L80 never has to guess. Without
-  either flag and no terminal, the page stays unlisted. For a listed BetterBench
-  run against a remote endpoint, also pass `--gpu "<GPU>"` (BetterBench cannot
-  detect a GPU on another machine, and the Directory filters by it).
+- **Benchmark and scan pages are listed in the Directory by default.** Pages of
+  `bench.betterbench.v1`, `bench.qualitybench.v1`, `bench.report.v1` and
+  `scan.pwdet.v1` also appear in the public launch80 Directory
+  (launch80.com/directory), where anyone can find, search and compare them. Say
+  so when you confirm the publish, and pass `--private` if the user wants the
+  page reachable only by its link. After publishing, relay the `who sees it`
+  and `next` lines. Pages also show "Author: <the user's key id>"; pass
+  `--no-author` if the user does not want their name on it. For a BetterBench run against a remote endpoint, also pass
+  `--gpu "<GPU>"` (BetterBench cannot detect a GPU on another machine, and the
+  Directory filters by it).
 - **Renting costs money.** `L80 vast rent|serve|run` bills the user's Vast.ai
   account until the instance is destroyed. Get explicit consent with the price,
   prefer `--max-hours`, never pass `-y` to `destroy` or `reap`, and make sure
@@ -44,7 +45,7 @@ drive L80 themselves unless they want to.
 | Goal | Command |
 |---|---|
 | Is everything set up? | `L80 doctor`, `L80 auth status`, `L80 tools check --json` |
-| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> --public\|--private [--gpu "RTX 4090"] [--quick] [--note k=v]` (quick: 5 passes, verifiable only with a reproduction) |
+| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> [--private] [--gpu "RTX 4090"] [--quick] [--note k=v]` (quick: 5 passes, verifiable only with a reproduction) |
 | Publish an existing BetterBench file | `L80 betterbench --results results.json` |
 | Measure answer quality, or a quant's quality loss | `L80 qualitybench --model <m> [--quick] [--no-publish]` (see `l80-qualitybench`) |
 | Compare two QualityBench runs | `L80 qualitybench compare ref.json test.json [--thresholds T.md]` |

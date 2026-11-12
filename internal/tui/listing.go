@@ -22,8 +22,9 @@ const directoryNote = "\n\nList it in the launch80 Directory (launch80.com/direc
 	"You can change it later in History (l)."
 
 // confirmPublish asks before a publish. For a template the directory takes it
-// also asks whether to list the page, unless the publish.public setting has
-// answered already. Cancel is the default. then gets the listing choice.
+// the dialog says the page will be listed (publish.public always, the default)
+// and still offers Publish unlisted; "never" offers only unlisted, "ask" asks.
+// Cancel is the focused button. then gets the listing choice.
 func (c *Console) confirmPublish(body, template string, then func(public bool) Cmd) {
 	if !api.Listable(template) {
 		c.confirm(&widgets.Dialog{Title: "Publish", Body: body, Buttons: []string{btnPublish, btnCancel}, Choice: 1},
@@ -39,8 +40,10 @@ func (c *Console) confirmPublish(body, template string, then func(public bool) C
 	var buttons []string
 	switch mode {
 	case config.ListingAlways:
-		body += "\n\nIt will be listed in the launch80 Directory (publish.public is always; change it in Settings)."
-		buttons = []string{btnListPublish, btnCancel}
+		body += "\n\nIt will be listed in the launch80 Directory (launch80.com/directory), where anyone can find, " +
+			"search and compare it. Publish unlisted keeps it reachable only by its link. " +
+			"You can change it later in History (l), or the default in Settings."
+		buttons = []string{btnListPublish, btnUnlisted, btnCancel}
 	case config.ListingNever:
 		body += "\n\nIt will be unlisted: only people with the link see it (publish.public is never; change it in Settings)."
 		buttons = []string{btnUnlisted, btnCancel}
