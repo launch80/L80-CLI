@@ -37,8 +37,9 @@ pwdet command works through it. Scanning is free and needs no token; only
    the detail. Always give the level with the verdict ("clean at Standard") and
    name the threats the report lists as not tested (`assurance.threats` and
    `assurance.gaps` in report.json). Explain the warn and fail findings.
-5. Only if the user wants a shareable page:
-   `L80 pwdet scan <model> --publish [--title …] [--summary …]`. Add `--dry-run
+5. Only if the user wants a shareable page: ask whether to list it in the
+   public launch80 Directory, then
+   `L80 pwdet scan <model> --publish --public|--private [--title …] [--summary …]`. Add `--dry-run
    --payload-out p.json` to show them the exact page content first. For a scan
    that already ran, `L80 pwdet publish <report.json|its folder|reports/>` builds
    the same page without scanning again (same flags; a reports folder means its

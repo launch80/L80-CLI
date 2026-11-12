@@ -24,6 +24,8 @@ func runHistory(e env, args []string) int {
 	local := fs.Bool("local", false, "read only the local record of publishes made from this machine")
 	all := fs.Bool("all", false, "keep paging until the whole history is listed")
 	tier := fs.String("tier", "", "only pages with this trust tier, e.g. verified or unverified")
+	listedOnly := fs.Bool("listed", false, "only pages listed in the public directory")
+	unlistedOnly := fs.Bool("unlisted", false, "only pages not listed in the public directory")
 	if err := fs.Parse(args); err != nil {
 		return api.ExitUsage
 	}
@@ -33,12 +35,18 @@ func runHistory(e env, args []string) int {
 	if *limit > 200 {
 		*limit = 200
 	}
+	if *listedOnly && *unlistedOnly {
+		return fail(e, api.Newf("E_USAGE", "Pass --listed or --unlisted, not both.", "--listed and --unlisted were both given"))
+	}
+	filter := func(en []history.Entry) []history.Entry {
+		return filterListed(filterTier(en, *tier), *listedOnly, *unlistedOnly)
+	}
 
 	cfg := config.Load(*apiBase)
 	if !*local {
 		entries, keyID, apiErr := fetchHistory(cfg, *limit, *all)
 		if apiErr == nil {
-			return printHistory(e, filterTier(entries, *tier), "server", keyID, *asJSON)
+			return printHistory(e, filter(entries), "server", keyID, *asJSON)
 		}
 		switch apiErr.Code {
 		case "E_TOKEN_MISSING", "E_NETWORK", "E_NOT_FOUND":
@@ -61,7 +69,10 @@ func runHistory(e env, args []string) int {
 		}
 		entries = append(entries, en)
 	}
-	return printHistory(e, filterTier(entries, *tier), "local", cfg.KeyID, *asJSON)
+	if *listedOnly || *unlistedOnly {
+		output.Detailf(e.stderr, "note: the local record has each page's listing as published; `L80 visibility` changes since are on the server")
+	}
+	return printHistory(e, filter(entries), "local", cfg.KeyID, *asJSON)
 }
 
 func filterTier(entries []history.Entry, tier string) []history.Entry {
@@ -71,6 +82,19 @@ func filterTier(entries []history.Entry, tier string) []history.Entry {
 	out := entries[:0:0]
 	for _, en := range entries {
 		if en.TrustTier == tier || (tier == "unverified" && en.TrustTier == "") {
+			out = append(out, en)
+		}
+	}
+	return out
+}
+
+func filterListed(entries []history.Entry, listed, unlisted bool) []history.Entry {
+	if !listed && !unlisted {
+		return entries
+	}
+	out := entries[:0:0]
+	for _, en := range entries {
+		if en.Listed == listed {
 			out = append(out, en)
 		}
 	}
@@ -92,6 +116,7 @@ func fetchHistory(cfg config.Config, limit int, all bool) ([]history.Entry, stri
 			out = append(out, history.Entry{
 				GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, TemplateVersion: a.TemplateVersion,
 				Title: a.Title, ByteSize: a.ByteSize, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier,
+				RunClass: a.RunClass, Listed: a.Listed,
 			})
 		}
 		if !all || page.NextBefore == nil || *page.NextBefore == "" {
@@ -118,7 +143,11 @@ func printHistory(e env, entries []history.Entry, source, keyID string, asJSON b
 		if tier == "" {
 			tier = "-"
 		}
-		output.Successf(e.stdout, "%s  %-22s %-10s %s", when, en.TemplateID, tier, en.URL)
+		dir := ""
+		if en.Listed {
+			dir = "listed"
+		}
+		output.Successf(e.stdout, "%s  %-22s %-10s %-6s %s", when, en.TemplateID, tier, dir, en.URL)
 		if en.Title != "" {
 			output.Detailf(e.stdout, "%s", en.Title)
 		}

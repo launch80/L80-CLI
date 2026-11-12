@@ -51,9 +51,11 @@ func TestHistoryPublishesALocalQualityBenchReport(t *testing.T) {
 	defer func() { openFile = old }()
 
 	var posted map[string]any
+	listedQuery := "unset"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/artifacts":
+			listedQuery = r.URL.Query().Get("listed")
 			b, _ := io.ReadAll(r.Body)
 			json.Unmarshal(b, &posted)
 			w.Write([]byte(`{"ok":true,"data":{"guid":"g1","url":"https://launch80.com/a/g1","template_id":"bench.qualitybench.v1","created_at":"2026-11-06T15:00:00Z"}}`))
@@ -111,8 +113,11 @@ func TestHistoryPublishesALocalQualityBenchReport(t *testing.T) {
 	feed(c, code(input.Esc))
 
 	feed(c, key('p'))
-	if c.dialog == nil || c.dialog.Title != "Publish" || c.dialog.Choice != 1 {
+	if c.dialog == nil || c.dialog.Title != "Publish" || c.dialog.Buttons[c.dialog.Choice] != "Cancel" {
 		t.Fatalf("publish must ask first, cancel focused: %+v", c.dialog)
+	}
+	if !strings.Contains(c.dialog.Body, "launch80 Directory") || strings.Join(c.dialog.Buttons, "|") != "List & publish|Publish unlisted|Cancel" {
+		t.Fatalf("publish must ask about the Directory: %+v", c.dialog)
 	}
 	feed(c, code(input.Esc))
 	if posted != nil {
@@ -121,6 +126,9 @@ func TestHistoryPublishesALocalQualityBenchReport(t *testing.T) {
 	feed(c, key('p'))
 	feed(c, code(input.Left))
 	feed(c, code(input.Enter))
+	if listedQuery != "" {
+		t.Errorf("Publish unlisted sent ?listed=%q", listedQuery)
+	}
 	if posted == nil || posted["$template"] != "bench.qualitybench.v1" || posted["title"] != "Qwopus INT4 BFCL" {
 		t.Fatalf("posted %v; flash %q", posted, c.flash)
 	}

@@ -84,7 +84,7 @@ func (s *pwdetScreen) update(c *Console, m Msg) Cmd {
 			c.setFlash(v.err.Code+": "+v.err.Message+" — "+v.err.Remedy, true)
 		} else {
 			s.url = v.art.URL
-			msg := "published: " + v.art.URL
+			msg := publishedFlash(v.art)
 			if v.art.TemplateID == pwdet.ScanTemplateID {
 				msg += " — verifiable: Bench - History, then v"
 			}
@@ -135,7 +135,7 @@ func (s *pwdetScreen) update(c *Console, m Msg) Cmd {
 		case v.Code == input.Rune && v.Rune == 'm' && s.report != nil:
 			s.method, s.scroll = true, 0
 		case v.Code == input.Rune && v.Rune == 'p' && s.report != nil && s.url == "":
-			return s.publish(c, false)
+			return s.publish(c, false, false)
 		case v.Code == input.Rune && v.Rune == 'a' && s.report != nil:
 			s.review = !s.review
 			s.fill()
@@ -217,20 +217,16 @@ func (s *pwdetScreen) scan(c *Console) Cmd {
 	})
 }
 
-func (s *pwdetScreen) publish(c *Console, confirmed bool) Cmd {
+func (s *pwdetScreen) publish(c *Console, confirmed, public bool) Cmd {
 	if !c.d.Config.HasToken() {
 		c.setFlash("publishing needs a token: set L80_TOKEN or ~/.config/L80/credentials.json", true)
 		return nil
 	}
 	if !confirmed {
-		c.confirm(&widgets.Dialog{Title: "Publish", Buttons: []string{"Publish", "Cancel"}, Choice: 1,
-			Body: "Publish this scan to launch80 as a public page?\n\nThe hostname, local paths and private endpoints are removed. A clean verdict means these checks found nothing, not that the model is safe."},
-			func(ch int) Cmd {
-				if ch == 0 {
-					return s.publish(c, true)
-				}
-				return nil
-			})
+		// The page is scan.pwdet.v1 on any current server; an older one takes
+		// generic.report.v1, which cannot be listed (the server says so).
+		c.confirmPublish("Publish this scan to launch80 as a page?\n\nThe hostname, local paths and private endpoints are removed. A clean verdict means these checks found nothing, not that the model is safe.",
+			pwdet.ScanTemplateID, func(public bool) Cmd { return s.publish(c, true, public) })
 		return nil
 	}
 	path := s.path
@@ -243,7 +239,8 @@ func (s *pwdetScreen) publish(c *Console, confirmed bool) Cmd {
 		if err != nil {
 			return pwdetPublished{err: api.Newf("E_INPUT_INVALID", "Publish from the command line to see details.", "%v", err)}
 		}
-		pub, apiErr := app.Publish(c.d.Client, app.PublishRequest{Body: pg.Body, Template: pg.Template, Title: pg.Title, SourcePath: path, APIBase: c.d.Config.BaseURL})
+		pub, apiErr := app.Publish(c.d.Client, app.PublishRequest{Body: pg.Body, Template: pg.Template, Title: pg.Title, SourcePath: path, APIBase: c.d.Config.BaseURL,
+			Public: public && api.Listable(pg.Template)})
 		if apiErr != nil {
 			return pwdetPublished{err: apiErr}
 		}

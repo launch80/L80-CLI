@@ -36,6 +36,10 @@ type Entry struct {
 	TrustTier string `json:"trust_tier,omitempty"`
 	// RunClass is full or quick for a BetterBench page, as the server reports it.
 	RunClass string `json:"run_class,omitempty"`
+	// Listed is whether the page was listed in the public directory when it
+	// was published. It can change later (L80 visibility); the server's
+	// history is the current word.
+	Listed bool `json:"listed"`
 }
 
 // Path is ~/.config/L80/history.jsonl, honouring XDG_CONFIG_HOME, beside the

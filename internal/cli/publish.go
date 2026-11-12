@@ -153,6 +153,7 @@ func runPublish(e env, args []string) int {
 	apiBase, asJSON := addCommonFlags(fs)
 	dryRun := fs.Bool("dry-run", false, "validate locally and report, without publishing")
 	tmpl := fs.String("template", "", "template id, e.g. bench.report.v1")
+	lf := addListingFlags(fs)
 
 	positional, parseErr := parseArgs(fs, args)
 	if parseErr != nil {
@@ -224,13 +225,17 @@ func runPublish(e env, args []string) int {
 		return api.ExitOK
 	}
 
-	return publishBody(e, body, template, path, *apiBase, *asJSON)
+	l, lErr := decideListing(e, lf, template, *asJSON)
+	if lErr != nil {
+		return fail(e, lErr)
+	}
+	return publishBody(e, body, template, path, *apiBase, *asJSON, l)
 }
 
 // publishBody sends an already-validated body and reports the result. Shared
 // by `publish` and `betterbench` so the two print the same thing.
-func publishBody(e env, body []byte, template, path, apiBase string, asJSON bool) int {
-	artifact, code := publishArtifact(e, body, template, path, apiBase)
+func publishBody(e env, body []byte, template, path, apiBase string, asJSON bool, l listing) int {
+	artifact, code := publishArtifact(e, body, template, path, apiBase, l)
 	if artifact == nil {
 		return code
 	}
@@ -242,15 +247,17 @@ func publishBody(e env, body []byte, template, path, apiBase string, asJSON bool
 	output.Successf(e.stdout, "published: %s", artifact.URL)
 	output.Detailf(e.stdout, "template %s v%d · %s · %d bytes",
 		artifact.TemplateID, artifact.TemplateVersion, artifact.TrustTier, artifact.ByteSize)
+	printListing(e, artifact, l, config.Load(apiBase).BaseURL)
 	return api.ExitOK
 }
 
 // publishArtifact sends the body and records it locally. On failure it has
 // already printed the error and returns a nil artifact and the exit code.
-func publishArtifact(e env, body []byte, template, path, apiBase string) (*api.Artifact, int) {
+func publishArtifact(e env, body []byte, template, path, apiBase string, l listing) (*api.Artifact, int) {
 	cfg := config.Load(apiBase)
 	res, apiErr := app.Publish(newClient(cfg), app.PublishRequest{
 		Body: body, Template: template, Title: titleOfBody(body, template), SourcePath: path, APIBase: cfg.BaseURL,
+		Public: l.Public,
 	})
 	if apiErr != nil {
 		return nil, fail(e, apiErr)

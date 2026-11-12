@@ -68,6 +68,7 @@ func runQualitybench(e env, args []string) int {
 	dryRun := fs.Bool("dry-run", false, "run (or read) and prepare the payload, but do not publish")
 	noPublish := fs.Bool("no-publish", false, "run and keep the results and HTML report locally; publish later with --results")
 	payloadOut := fs.String("payload-out", "", "also write the exact payload that would be published to this path")
+	lf := addListingFlags(fs)
 
 	var extra []string
 	if i := indexOf(args, "--"); i >= 0 {
@@ -251,7 +252,11 @@ func runQualitybench(e env, args []string) int {
 		output.Successf(e.stdout, "dry run: would publish %s as %s (%d bytes)", resultsPath, qualitybench.TemplateID, len(body))
 		return api.ExitOK
 	}
-	if code := publishBody(e, body, qualitybench.TemplateID, resultsPath, *apiBase, *asJSON); code != api.ExitOK {
+	l, lErr := decideListing(e, lf, qualitybench.TemplateID, *asJSON)
+	if lErr != nil {
+		return fail(e, lErr)
+	}
+	if code := publishBody(e, body, qualitybench.TemplateID, resultsPath, *apiBase, *asJSON, l); code != api.ExitOK {
 		return code
 	}
 	return partialCode(partial)

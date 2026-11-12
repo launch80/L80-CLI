@@ -47,6 +47,11 @@ makes, not one you make.
    - `--tool-parser hermes`: QualityBench's bfcl needs it.
    - `--no-publish`
 
+   If the run publishes, ask the user whether its pages should be listed in the
+   public launch80 Directory and pass `--public` or `--private` to `L80 vast run`
+   (the steps run unattended, so without a flag every page stays unlisted).
+   The GPU is recorded automatically.
+
    Context: QualityBench's needle needs `--context 131072` for its long half.
    Steps run on this machine through the tunnel, so the code tasks need Docker here.
    Each step writes to `<runs>/<run-id>/<NN>-<label>/`.
@@ -59,7 +64,7 @@ makes, not one you make.
 5. **Ask the user to confirm** the GPU, the hourly price and a time limit. Then:
 
    ```sh
-   L80 vast run --spec run.yaml --max-hours 2
+   L80 vast run --spec run.yaml --max-hours 2 --private   # or --public
    ```
 
    `--max-hours` is an L80 watchdog: when it fires, L80 stops the run and destroys

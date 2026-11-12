@@ -29,8 +29,40 @@ type SettingKey struct {
 // KeyQualityConfirm is whether L80 asks before a QualityBench run starts.
 const KeyQualityConfirm = "qualitybench.confirm"
 
+// KeyPublishPublic is whether a published page is also listed in the public
+// launch80 directory: ask (the default), always or never.
+const KeyPublishPublic = "publish.public"
+
+// Listing is the parsed publish.public setting.
+type Listing string
+
+const (
+	ListingAsk    Listing = "ask"
+	ListingAlways Listing = "always"
+	ListingNever  Listing = "never"
+)
+
+// ParseListing reads a publish.public value.
+func ParseListing(v string) (Listing, error) {
+	switch l := Listing(strings.ToLower(strings.TrimSpace(v))); l {
+	case ListingAsk, ListingAlways, ListingNever:
+		return l, nil
+	}
+	return ListingAsk, fmt.Errorf("publish.public must be ask, always or never, not %q", v)
+}
+
+// PublishListing resolves publish.public. A bad value reads as ask, with the error.
+func PublishListing() (Listing, string, error) {
+	v, src := Get(KeyPublishPublic)
+	l, err := ParseListing(v)
+	return l, src, err
+}
+
 // Known lists the settings L80 understands.
 var Known = []SettingKey{
+	{Key: KeyPublishPublic, Default: string(ListingAsk), Env: "L80_PUBLISH_PUBLIC",
+		Help:  "list published benchmark pages in the public launch80 directory: ask (each time) | always | never; --public / --private override it for one publish",
+		Check: func(v string) error { _, err := ParseListing(v); return err }},
 	{Key: KeyQualityConfirm, Default: "always", Env: "L80_QUALITYBENCH_CONFIRM",
 		Help:  "ask before a QualityBench run starts, showing how long it will take: always | over:<duration> (e.g. over:30m) | never",
 		Check: func(v string) error { _, err := ParseConfirm(v); return err }},

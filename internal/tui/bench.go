@@ -34,14 +34,26 @@ func (s *benchScreen) init() {
 		{Key: "quick", Label: "Quick run", Kind: widgets.ToggleField, Help: "5 passes per category: verifiable as a quick run (needs a reproduction; medians only). A full 20-pass run takes a while and carries p95/p99."},
 		{Key: "phases", Label: "Phases", Kind: widgets.ChoiceField, Choices: []string{"all", "decode", "prefill", "concurrency"},
 			Help: "Which measurements to run. All three is what the launch80 page shows best."},
+		{Key: "gpu", Label: "GPU", Help: "The GPU serving the model, e.g. RTX 4090 or 2x RTX 3090. BetterBench detects it only when it runs on that machine; the launch80 Directory filters runs by it. Recorded as the gpu note.",
+			Input: widgets.TextInput{Placeholder: "(detected, or none)"}},
 		{Key: "notes", Label: "Notes", Help: "Comma-separated KEY=VALUE recorded with the run and shown as chips, e.g. engine=vLLM 0.9.3, quant=mxfp4, hardware=2x R9700.",
 			Input: widgets.TextInput{Placeholder: "engine=vLLM 0.9.3, hardware=1x RTX 4090"}},
 		{Key: "apikey", Label: "API key", Help: "Only if the endpoint needs one. Passed to BetterBench by environment, never recorded or shown.",
 			Input: widgets.TextInput{Mask: true, Placeholder: "(none)"}},
 	}}
 	if k := os.Getenv("L80_BETTERBENCH_API_KEY"); k != "" {
-		s.form.Fields[5].Input.Set(k)
+		s.field("apikey").Input.Set(k)
 	}
+}
+
+// field is the form field with this key.
+func (s *benchScreen) field(key string) *widgets.Field {
+	for _, f := range s.form.Fields {
+		if f.Key == key {
+			return f
+		}
+	}
+	panic("bench form has no field " + key)
 }
 
 type benchPublished struct {
@@ -67,7 +79,7 @@ func (s *benchScreen) update(c *Console, m Msg) Cmd {
 			return nil
 		}
 		s.url = v.art.URL
-		c.setFlash("published: "+v.art.URL, false)
+		c.setFlash(publishedFlash(v.art), false)
 		return nil
 	case PasteMsg:
 		if s.phase == 0 {
@@ -100,7 +112,7 @@ func (s *benchScreen) update(c *Console, m Msg) Cmd {
 				s.job.cancel()
 			case s.job.running:
 			case v.Code == input.Rune && v.Rune == 'p' && s.result != nil && s.url == "":
-				return s.publish(c, false)
+				return s.publish(c, false, false)
 			case v.Code == input.Rune && v.Rune == 'n':
 				s.phase, s.result, s.summary, s.url = 0, nil, nil, ""
 			case isBack(v):
@@ -127,6 +139,12 @@ func (s *benchScreen) run(c *Console) Cmd {
 			notes = append(notes, n)
 		}
 	}
+	if g, err := betterbench.CleanGPU(vals["gpu"]); err != nil {
+		c.setFlash(err.Error(), true)
+		return nil
+	} else if g != "" {
+		notes = append(notes, "gpu="+g)
+	}
 	var phases []string
 	if p := vals["phases"]; p != "all" {
 		phases = []string{p}
@@ -140,7 +158,7 @@ func (s *benchScreen) run(c *Console) Cmd {
 	}, vals["model"])
 	out := filepath.Join(cwd, fmt.Sprintf("betterbench-%s-%s.json", safe, time.Now().Format("20060102-1504")))
 	opts := betterbench.RunOptions{Endpoint: vals["endpoint"], Model: vals["model"], Out: out, Quick: vals["quick"] == "true",
-		Warmup: -1, Notes: notes, Phases: phases, APIKey: s.form.Fields[5].Input.String()}
+		Warmup: -1, Notes: notes, Phases: phases, APIKey: s.field("apikey").Input.String()}
 	s.job = newJob("BetterBench " + vals["model"])
 	s.phase, s.result, s.summary, s.url = 1, nil, nil, ""
 	return c.start(s.job, func(ctx context.Context, w io.Writer) (any, int, error) {
@@ -175,19 +193,17 @@ func benchSummary(r *app.BenchResult) []string {
 	return out
 }
 
-func (s *benchScreen) publish(c *Console, confirmed bool) Cmd {
+func (s *benchScreen) publish(c *Console, confirmed, public bool) Cmd {
 	if !c.d.Config.HasToken() {
 		c.setFlash("publishing needs a token: set L80_TOKEN or ~/.config/L80/credentials.json (L80 auth status)", true)
 		return nil
 	}
 	if !confirmed {
-		c.confirm(&widgets.Dialog{Title: "Publish", Body: "Publish this run to launch80 as a public page?\n\nThe endpoint URL and hostname are removed first. The page is self-reported until launch80 verifies it.",
-			Buttons: []string{"Publish", "Cancel"}, Choice: 1}, func(ch int) Cmd {
-			if ch == 0 {
-				return s.publish(c, true)
-			}
-			return nil
-		})
+		body := "Publish this run to launch80 as a page?\n\nThe endpoint URL and hostname are removed first. The page is self-reported until launch80 verifies it."
+		if !betterbench.NamesGPU(s.result.Data) {
+			body += "\n\nThis run names no GPU (BetterBench detects it only on the serving machine), so the Directory files it under \"Not stated\". Fill in GPU on the next run, or publish with `L80 betterbench --results <file> --gpu \"<name>\"`."
+		}
+		c.confirmPublish(body, betterbench.RawTemplateID, func(public bool) Cmd { return s.publish(c, true, public) })
 		return nil
 	}
 	res := s.result
@@ -199,7 +215,7 @@ func (s *benchScreen) publish(c *Console, confirmed bool) Cmd {
 		if len(body) > api.MaxPayloadBytesFor(betterbench.RawTemplateID) {
 			return benchPublished{err: api.Newf("E_PAYLOAD_TOO_LARGE", "Re-run with fewer passes.", "payload is %d bytes", len(body))}
 		}
-		pub, apiErr := app.Publish(c.d.Client, app.PublishRequest{Body: body, Template: betterbench.RawTemplateID, SourcePath: res.Path, APIBase: c.d.Config.BaseURL})
+		pub, apiErr := app.Publish(c.d.Client, app.PublishRequest{Body: body, Template: betterbench.RawTemplateID, SourcePath: res.Path, APIBase: c.d.Config.BaseURL, Public: public})
 		if apiErr != nil {
 			return benchPublished{err: apiErr}
 		}

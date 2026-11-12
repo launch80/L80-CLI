@@ -65,6 +65,7 @@ func (s *settingsScreen) ensure() {
 		{Title: "Check for updates", Desc: "What `L80 update --check` finds, with the release notes", Value: "check"},
 		{Title: "Update L80", Desc: "Install the latest release and refresh tools and skills (`L80 update`)", Value: "update"},
 		{Title: "Ask before QualityBench runs", Desc: "Enter cycles: always · only over 30 min · never", Value: "confirm"},
+		{Title: "List published pages in the Directory", Desc: "Enter cycles: ask · always · never", Value: "listing"},
 	}}
 }
 
@@ -104,6 +105,37 @@ func (c *Console) cycleConfirm() (string, bool) {
 		return "Saved " + next + ", but " + src + " sets " + v + " and wins until it is unset.", false
 	}
 	return "Ask before QualityBench runs: " + confirmLabel(next) + ".", true
+}
+
+// listingCycle is the order Enter steps publish.public through.
+var listingCycle = []config.Listing{config.ListingAsk, config.ListingAlways, config.ListingNever}
+
+func listingLabel(l config.Listing) string {
+	switch l {
+	case config.ListingAlways:
+		return "always: every benchmark page is listed in the launch80 Directory"
+	case config.ListingNever:
+		return "never: pages stay unlisted, reachable by link"
+	}
+	return "ask: the publish dialog asks each time"
+}
+
+// cycleListing steps publish.public to its next value and saves it.
+func (c *Console) cycleListing() (string, bool) {
+	cur, _, _ := config.PublishListing()
+	next := listingCycle[0]
+	for i, v := range listingCycle {
+		if v == cur {
+			next = listingCycle[(i+1)%len(listingCycle)]
+		}
+	}
+	if err := config.Set(config.KeyPublishPublic, string(next)); err != nil {
+		return "Could not save it: " + err.Error(), false
+	}
+	if v, src := config.Get(config.KeyPublishPublic); src != "file" {
+		return "Saved " + string(next) + ", but " + src + " sets " + v + " and wins until it is unset.", false
+	}
+	return "List published pages: " + listingLabel(next) + ".", true
 }
 
 // login checks a token's shape, saves it where config.Load finds it, and
@@ -270,6 +302,9 @@ func (s *settingsScreen) update(c *Console, m Msg) Cmd {
 			case "confirm":
 				msg, ok := c.cycleConfirm()
 				s.msg, s.bad = msg, !ok
+			case "listing":
+				msg, ok := c.cycleListing()
+				s.msg, s.bad = msg, !ok
 			}
 		}
 	}
@@ -322,7 +357,15 @@ func (s *settingsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding
 		}
 	}
 	qv, qsrc := config.Get(config.KeyQualityConfirm)
+	lv, lsrc, _ := config.PublishListing()
 	for i := range s.menu.Items {
+		if s.menu.Items[i].Value == "listing" {
+			desc := "Now " + listingLabel(lv)
+			if lsrc != "file" && lsrc != "default" {
+				desc += " (" + lsrc + ")"
+			}
+			s.menu.Items[i].Desc = desc + ". Enter cycles ask · always · never"
+		}
 		if s.menu.Items[i].Value == "confirm" {
 			desc := "Now " + confirmLabel(qv)
 			if qsrc != "file" && qsrc != "default" {
@@ -333,6 +376,10 @@ func (s *settingsScreen) view(c *Console, w, h int) ([]string, []widgets.Binding
 	}
 	out = append(out, "")
 	menuH := len(s.menu.Items) * 2
+	if s.job != nil || (s.check != nil && strings.TrimSpace(s.check.Notes) != "") {
+		// Leave room below for the log or the release notes; the menu scrolls.
+		menuH = min(menuH, max(4, h-len(out)-1-8))
+	}
 	out = append(out, s.menu.View(t, w, menuH, !s.typing)...)
 
 	rest := h - len(out) - 1

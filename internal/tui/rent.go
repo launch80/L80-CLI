@@ -82,7 +82,8 @@ func (r *rentWizard) init() {
 			Help: "A finished QualityBench run (same tier and tokenizer) to compare against: the page then shows this run as an arm of the reference, with paired deltas, KLD and threshold verdicts."},
 		text("thresholds", "  thresholds", "A pre-registered thresholds file for the compare; empty uses QualityBench's default bars.", "default bars", ""),
 		text("deadline", "  time budget", "Per QualityBench run, e.g. 3h: no new work starts after it and cut tasks are listed as partial. Empty: only the run's max hours.", "none", ""),
-		{Key: "publish", Label: "Publish pages", Kind: widgets.ToggleField, On: true, Help: "Publish each finished step as a public launch80 page (endpoint and host removed). Off keeps everything local; you can publish later from Bench - History or Bench Quality."},
+		{Key: "publish", Label: "Publish pages", Kind: widgets.ToggleField, On: true, Help: "Publish each finished step as a launch80 page (endpoint and host removed). Off keeps everything local; you can publish later from Bench - History or Bench Quality."},
+		{Key: "listed", Label: "  List in Directory", Kind: widgets.ToggleField, Help: "Also list the published pages in the launch80 Directory (launch80.com/directory), where anyone can search and compare them. Off: unlisted, reachable only by link; list them later from Bench - History (l)."},
 	}}
 	r.forms[pgReview] = widgets.Form{Submit: "Rent and run", Fields: []*widgets.Field{
 		text("hours", "Max hours", "The hard cap. When it is reached L80 stops the run and destroys the box; QualityBench stops starting work 15 minutes before, so its results are written.", "", ""),

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -68,8 +67,7 @@ func qualityGate(w io.Writer, e qualitybench.Estimate, yes bool) gateDecision {
 		return gateDecision{Run: true, Reason: "no terminal to ask on"}
 	}
 	fmt.Fprintf(w, "Start QualityBench (%s)? [y/N] ", qualitybench.Minutes(e.Total()))
-	line, _ := bufio.NewReader(promptIn).ReadString('\n')
-	ans := strings.ToLower(strings.TrimSpace(line))
+	ans := strings.ToLower(readAnswer())
 	if ans == "y" || ans == "yes" {
 		return gateDecision{Run: true, Asked: true}
 	}

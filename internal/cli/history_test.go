@@ -65,7 +65,7 @@ func TestHistoryListsFromServerNewestFirst(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	if !strings.Contains(out, "2026-09-06 10:00  bench.betterbench.v1   unverified https://l80.test/a/g2") || !strings.Contains(out, "Second run") {
+	if !strings.Contains(out, "2026-09-06 10:00  bench.betterbench.v1   unverified        https://l80.test/a/g2") || !strings.Contains(out, "Second run") {
 		t.Errorf("out = %s", out)
 	}
 	if strings.Index(out, "g2") > strings.Index(out, "g1") {

@@ -585,7 +585,7 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 		if s.result != nil && v.path == s.result.Path {
 			s.url = v.art.URL
 		}
-		c.setFlash("published: "+v.art.URL, false)
+		c.setFlash(publishedFlash(v.art), false)
 		return nil
 	case PasteMsg:
 		if f := s.field(s.focus); s.phase == 0 && f != nil && f.Kind == widgets.TextField {
@@ -615,7 +615,7 @@ func (s *qualityScreen) update(c *Console, m Msg) Cmd {
 			s.job.cancel()
 		case s.job.running:
 		case v.Code == input.Rune && v.Rune == 'p' && s.result != nil && s.url == "":
-			return publishQuality(c, s.result, s.comparing, false)
+			return publishQuality(c, s.result, s.comparing, false, false)
 		case v.Code == input.Rune && v.Rune == 'o' && s.result != nil:
 			if err := openFile(s.result.Report); err != nil {
 				c.setFlash("could not open "+s.result.Report+": "+err.Error(), true)
@@ -1103,26 +1103,20 @@ func qualitySummary(r *app.QualityResult) []string {
 
 // publishQuality asks before publishing res, then publishes it. The
 // QualityBench screen and History both call it; the answer is a qbPublished.
-func publishQuality(c *Console, res *app.QualityResult, comparing, confirmed bool) Cmd {
+func publishQuality(c *Console, res *app.QualityResult, comparing, confirmed, public bool) Cmd {
 	if !c.d.Config.HasToken() {
 		c.setFlash("publishing needs a token: set L80_TOKEN or ~/.config/L80/credentials.json (L80 auth status)", true)
 		return nil
 	}
 	if !confirmed {
-		body := "Publish this run to launch80 as a public page?\n\nThe endpoint URL and hostname are removed first. The page is self-reported."
+		body := "Publish this run to launch80 as a page?\n\nThe endpoint URL and hostname are removed first. The page is self-reported."
 		if comparing {
-			body = "Publish this comparison to launch80 as a public page? It is the reference run's page with the test run drawn as an arm."
+			body = "Publish this comparison to launch80 as a page? It is the reference run's page with the test run drawn as an arm."
 		}
 		if len(res.Partial) > 0 {
 			body += "\n\nThis run is partial (" + strings.Join(res.Partial, "; ") + "); the page lists what is missing."
 		}
-		c.confirm(&widgets.Dialog{Title: "Publish", Body: body,
-			Buttons: []string{"Publish", "Cancel"}, Choice: 1}, func(ch int) Cmd {
-			if ch == 0 {
-				return publishQuality(c, res, comparing, true)
-			}
-			return nil
-		})
+		c.confirmPublish(body, qualitybench.TemplateID, func(public bool) Cmd { return publishQuality(c, res, comparing, true, public) })
 		return nil
 	}
 	return func() Msg {
@@ -1133,7 +1127,7 @@ func publishQuality(c *Console, res *app.QualityResult, comparing, confirmed boo
 		if len(body) > api.MaxPayloadBytesFor(qualitybench.TemplateID) {
 			return qbPublished{path: res.Path, err: api.Newf("E_PAYLOAD_TOO_LARGE", "Rerun with a current QualityBench.", "payload is %d bytes", len(body))}
 		}
-		pub, apiErr := app.Publish(c.d.Client, app.PublishRequest{Body: body, Template: qualitybench.TemplateID, SourcePath: res.Path, APIBase: c.d.Config.BaseURL})
+		pub, apiErr := app.Publish(c.d.Client, app.PublishRequest{Body: body, Template: qualitybench.TemplateID, SourcePath: res.Path, APIBase: c.d.Config.BaseURL, Public: public})
 		if apiErr != nil {
 			return qbPublished{path: res.Path, err: apiErr}
 		}
