@@ -14,9 +14,18 @@ You never write HTML, and you never handle credentials — the CLI does both.
 
 1. Pick a template (below). Run `L80 templates list` if you are unsure.
 2. Write the report to a JSON file, e.g. `report.json`.
-3. Run: `L80 publish report.json --template bench.report.v1`
-   (or `--template generic.report.v1`)
-4. Give the user the URL from the `published:` line.
+3. For `bench.report.v1` (and BetterBench results), ask the user whether to list
+   the page in the public launch80 Directory (see below), then run:
+   `L80 publish report.json --template bench.report.v1 --public` (or `--private`).
+   `generic.report.v1` pages cannot be listed; leave both flags out.
+4. Give the user the URL from the `published:` line, and say whether it is listed.
+
+**Ask about the Directory before publishing a benchmark or scan page.** Ask the
+user: "Do you want this listed in the public launch80 Directory, where anyone can
+search and compare it?" Then pass `--public` (listed) or `--private` (unlisted:
+only people with the link see it) on every publishing command. Never decide for
+them; without either flag a non-interactive run stays unlisted. They can change
+it later with `L80 visibility <url> --public|--private`.
 
 Name the template with `--template` so the command says which layout it is
 producing. You may instead put `"$template": "<id>"` in the JSON — both work.
@@ -60,7 +69,8 @@ server derives every table and figure from the raw samples with a port of
 BetterBench's own report code, so the page matches the HTML report the tool
 writes beside the file. Add `--title`, `--summary`, or `--section "Heading=Body"`
 for prose; add `--dry-run --payload-out p.json` to inspect the exact payload
-first. Flags after `--` go to `betterbench run` verbatim.
+first. Pass `--public` or `--private` as agreed with the user, and with `--public`
+against a remote endpoint add `--gpu "<GPU>"` so the Directory can file it. Flags after `--` go to `betterbench run` verbatim.
 
 If the endpoint needs a key, pass `--api-key <key>` before any `--` (or have the
 user set `L80_BETTERBENCH_API_KEY`); never put a key after `--`. Repeat any
@@ -189,8 +199,10 @@ Rules specific to this template:
 - Limits: 64 KB total. `generic.report.v1` — 12 metrics, 10 sections.
   `bench.report.v1` — 12 categories, 10 concurrency levels, 10 prefill depths,
   6 headline metrics, 8 caveats.
-- Published pages are public and carry a visible
-  "Self-reported — not verified by launch80" badge. Tell the user this.
+- Published pages are reachable by anyone with the link and carry a visible
+  "Self-reported — not verified by launch80" badge. Tell the user this. Only
+  pages published with `--public` (or listed later with `L80 visibility`) show
+  up in the Directory.
 - Pages are immutable. To change something, publish again and share the new URL.
 
 ## Keeping L80 current

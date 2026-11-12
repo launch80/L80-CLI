@@ -17,9 +17,19 @@ drive L80 themselves unless they want to.
   user sets up (`L80_TOKEN` or `~/.config/L80/credentials.json`). Never ask the
   user to paste a token, a Vast.ai key or an endpoint key into the chat. If one
   is missing, tell them which variable or file to set and wait.
-- **Published pages are public.** Confirm with the user before any command that
-  publishes (`publish`, `betterbench` or `qualitybench` without `--dry-run`/`--no-publish`,
-  `pwdet --publish`, `vast run` with a publishing step).
+- **Published pages are reachable by anyone with the link.** Confirm with the
+  user before any command that publishes (`publish`, `betterbench` or
+  `qualitybench` without `--dry-run`/`--no-publish`, `pwdet --publish`,
+  `vast run` with a publishing step).
+- **Ask whether to list it in the Directory.** Benchmark and scan pages
+  (`bench.betterbench.v1`, `bench.qualitybench.v1`, `bench.report.v1`,
+  `scan.pwdet.v1`) can also be listed in the public launch80 Directory
+  (launch80.com/directory). Ask: "Do you want this listed in the public launch80
+  Directory, where anyone can search and compare it?" and pass `--public` or
+  `--private` on every publishing command, so L80 never has to guess. Without
+  either flag and no terminal, the page stays unlisted. For a listed BetterBench
+  run against a remote endpoint, also pass `--gpu "<GPU>"` (BetterBench cannot
+  detect a GPU on another machine, and the Directory filters by it).
 - **Renting costs money.** `L80 vast rent|serve|run` bills the user's Vast.ai
   account until the instance is destroyed. Get explicit consent with the price,
   prefer `--max-hours`, never pass `-y` to `destroy` or `reap`, and make sure
@@ -34,7 +44,7 @@ drive L80 themselves unless they want to.
 | Goal | Command |
 |---|---|
 | Is everything set up? | `L80 doctor`, `L80 auth status`, `L80 tools check --json` |
-| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> [--quick] [--note k=v]` (quick: 5 passes, verifiable only with a reproduction) |
+| Benchmark an endpoint and publish | `L80 betterbench --endpoint <url> --model <m> --public\|--private [--gpu "RTX 4090"] [--quick] [--note k=v]` (quick: 5 passes, verifiable only with a reproduction) |
 | Publish an existing BetterBench file | `L80 betterbench --results results.json` |
 | Measure answer quality, or a quant's quality loss | `L80 qualitybench --model <m> [--quick] [--no-publish]` (see `l80-qualitybench`) |
 | Compare two QualityBench runs | `L80 qualitybench compare ref.json test.json [--thresholds T.md]` |
@@ -47,7 +57,8 @@ drive L80 themselves unless they want to.
 | Scan weights for tampering | `L80 pwdet scan <dir\|org/name\|url#model> --profile basic\|standard\|thorough\|deep --json [--publish]` (see `l80-pwdet`) |
 | Publish an earlier scan | `L80 pwdet publish <report.json\|dir> [--dry-run] --json` |
 | GPU / inference telemetry | `L80 dashboard serve` (web page on :8787), `L80 dashboard tui` |
-| What has this key published | `L80 history --json [--local]` |
+| What has this key published | `L80 history --json [--local] [--listed\|--unlisted]` |
+| List or unlist a page in the Directory | `L80 visibility <url> --public` / `--private` |
 | Verification | `L80 verify check <results.json\|report.json\|url>`, `L80 verify request <url>`, `L80 verify status <url>` |
 | Review others' runs | `L80 verify queue`, `L80 verify reproduce <id> --endpoint <url>` (a pwdet scan needs no endpoint), `L80 verify approve\|reject <id>` (verifier keys) |
 | Keep L80 current | `L80 update --check --json`, then `L80 update` |

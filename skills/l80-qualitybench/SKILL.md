@@ -98,11 +98,18 @@ L80 qualitybench compare bf16.json int4.json [--thresholds T.md]
 
 ## Publish
 
-**Confirm with the user first: pages are public.**
+**Confirm with the user first: anyone with the link can see the page.**
+
+**Ask about the Directory before publishing a benchmark or scan page.** Ask the
+user: "Do you want this listed in the public launch80 Directory, where anyone can
+search and compare it?" Then pass `--public` (listed) or `--private` (unlisted:
+only people with the link see it) on every publishing command. Never decide for
+them; without either flag a non-interactive run stays unlisted. They can change
+it later with `L80 visibility <url> --public|--private`.
 
 ```sh
 L80 qualitybench --results int4-vs-bf16.json --dry-run
-L80 qualitybench --results int4-vs-bf16.json
+L80 qualitybench --results int4-vs-bf16.json --public    # or --private
 ```
 
 L80 removes `env.endpoint` and `env.host` before sending. Give the user the
@@ -127,6 +134,6 @@ Each step's results land in the run's folder.
   shows how long the run will take, then asks (Start / Start, don't ask again /
   Cancel; Settings changes it). While it runs: an overall bar with the time
   left, per-task bars, and the job title shows `48% · 23 min left`. `p`
-  publishes and `o` opens the report.
+  publishes (it asks List & publish / Publish unlisted / Cancel) and `o` opens the report.
 - **Compare:** pick two local runs.
 - **Rent via Vast:** hands the model to Rent with a QualityBench step.

@@ -344,6 +344,30 @@ performance. `L80 dashboard serve` runs the sampler and web page on
 (`--force` overrides). It is read-only and tuned for Intel Arc today; other
 GPUs get a generic view.
 
+## The launch80 Directory
+
+[launch80.com/directory](https://launch80.com/directory) lists the benchmark and
+scan pages their publishers chose to make public: search, filters (template, run
+class, verified, GPU), a leaderboard and side-by-side compare. Every page is
+unlisted (reachable only by its link) unless you list it.
+
+```sh
+L80 betterbench --endpoint http://box:8000/v1 --model m --public --gpu "RTX 4090"
+L80 publish report.json --template bench.report.v1 --private
+L80 visibility https://launch80.com/a/<guid> --public    # list a page later (--private takes it out)
+L80 history --listed
+```
+
+Every publishing command (`publish`, `betterbench`, `qualitybench`, `pwdet`,
+`vast run`) takes `--public` or `--private`. With neither, L80 asks on a
+terminal (default no) and leaves the page unlisted when it cannot ask. The
+`publish.public` setting (`ask`, `always`, `never`; `L80_PUBLISH_PUBLIC`) answers
+for you. Only `bench.betterbench.v1`, `bench.qualitybench.v1`, `bench.report.v1`
+and `scan.pwdet.v1` pages can be listed. `--gpu` records the GPU of a run
+against a remote endpoint, which BetterBench cannot detect. In the console the
+publish dialog asks (List & publish / Publish unlisted / Cancel), and History
+lists or unlists a page with `l`.
+
 ## Verified by Launch80
 
 ![The console's Bench Verify screen: open another key's request, reproduce it on your hardware, compare, and stamp it](docs/media/tui-verify.gif)

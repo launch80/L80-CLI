@@ -86,6 +86,10 @@ func runBetterbench(e env, args []string) int {
 	engine := fs.String("engine", "", "serving stack label (bench.report.v1 only)")
 	hardware := fs.String("hardware", "", "hardware label (bench.report.v1 only)")
 
+	// Listing and the GPU the directory files the run under.
+	lf := addListingFlags(fs)
+	gpu := fs.String("gpu", "", "the GPU that served the run, e.g. \"RTX 4090\" (recorded as the gpu note; BetterBench only detects it on the serving machine)")
+
 	// Everything after "--" goes to `betterbench run` verbatim.
 	var extra []string
 	if i := indexOf(args, "--"); i >= 0 {
@@ -192,7 +196,11 @@ func runBetterbench(e env, args []string) int {
 		if err != nil {
 			return failPrepare(e, resultsPath, err)
 		}
-		opt := betterbench.Options{Title: *title, Summary: *summary, Engine: *engine, Hardware: *hardware, Sections: prose.Sections}
+		hw := *hardware
+		if hw == "" {
+			hw = *gpu
+		}
+		opt := betterbench.Options{Title: *title, Summary: *summary, Engine: *engine, Hardware: hw, Sections: prose.Sections}
 		payload, err := betterbench.Build(parsed, opt)
 		if err != nil {
 			return failPrepare(e, resultsPath, err)
@@ -205,6 +213,12 @@ func runBetterbench(e env, args []string) int {
 		return fail(e, api.Newf("E_TEMPLATE_UNKNOWN",
 			fmt.Sprintf("Use --template %s (the results file as written) or %s (the summary mapping).", betterbench.RawTemplateID, betterbench.TemplateID),
 			"%q is not a template this command can produce", *tmpl))
+	}
+	if *tmpl == betterbench.RawTemplateID && *gpu != "" {
+		var gErr *api.Error
+		if body, gErr = withGPU(e, body, *gpu, listing{}, *asJSON); gErr != nil {
+			return fail(e, gErr)
+		}
 	}
 	limit := api.MaxPayloadBytesFor(*tmpl)
 	if len(body) > limit {
@@ -230,7 +244,18 @@ func runBetterbench(e env, args []string) int {
 		return api.ExitOK
 	}
 
-	return publishBody(e, body, *tmpl, resultsPath, *apiBase, *asJSON)
+	l, lErr := decideListing(e, lf, *tmpl, *asJSON)
+	if lErr != nil {
+		return fail(e, lErr)
+	}
+	if *tmpl == betterbench.RawTemplateID && *gpu == "" {
+		// Listed with no GPU named: ask for one, so the directory can file it.
+		var gErr *api.Error
+		if body, gErr = withGPU(e, body, "", l, *asJSON); gErr != nil {
+			return fail(e, gErr)
+		}
+	}
+	return publishBody(e, body, *tmpl, resultsPath, *apiBase, *asJSON, l)
 }
 
 func failPrepare(e env, path string, err error) int {

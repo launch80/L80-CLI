@@ -25,6 +25,7 @@ type vastScreen struct {
 	tab     int   // 0 runs, 1 run a spec file, 2 new rental (the wizard)
 	form    widgets.Form
 	wiz     rentWizard
+	public  bool // the next launch lists its published pages in the Directory
 	prog    *rentProgress
 	runs    []vast.RunState
 	table   widgets.Table
@@ -168,6 +169,7 @@ func (s *vastScreen) startRental(c *Console) Cmd {
 		if dry {
 			args = append(args, "--dry-run")
 		}
+		s.public = s.wiz.val(pgOps, "publish") == "true" && s.wiz.val(pgOps, "listed") == "true"
 		return s.launch(c, path, args, limit, sp.Steps)
 	}
 	consent := func() Cmd {
@@ -517,6 +519,7 @@ func (s *vastScreen) startRun(c *Console) Cmd {
 	if dry {
 		args = append(args, "--dry-run")
 	}
+	s.public = false // a saved spec run from this form publishes unlisted; list from History
 	launch := func() Cmd { return s.launch(c, spec, args, limit, nil) }
 	if dry {
 		return launch()
@@ -548,6 +551,8 @@ func (s *vastScreen) launch(c *Console, spec string, args []string, limit time.D
 		c.setFlash(err.Error(), true)
 		return nil
 	}
+	// The run's publish steps call back into L80 with no one to ask.
+	env = append(env, "L80_PUBLISH_PUBLIC="+map[bool]string{true: "always", false: "never"}[s.public])
 	s.tab = 0
 	s.job = newJob("vast run " + filepath.Base(spec))
 	s.prog = newRentProgress(steps)

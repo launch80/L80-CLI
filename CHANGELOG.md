@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 (2026-11-12)
+
+### The launch80 Directory
+
+launch80.com/directory lists benchmark and scan pages their publishers chose to
+make public, with search, filters, a leaderboard and side-by-side compare.
+Pages are still unlisted unless someone says otherwise.
+
+- **`--public` / `--private`** on `publish`, `betterbench`, `qualitybench`,
+  `pwdet scan --publish`, `pwdet publish` and `vast run`. Without either, L80
+  asks on a terminal (default no) and leaves the page unlisted when it cannot
+  ask (`--json`, scripts, agents). Only `bench.betterbench.v1`,
+  `bench.qualitybench.v1`, `bench.report.v1` and `scan.pwdet.v1` can be listed.
+- **`L80 visibility <url|guid> --public|--private`** lists or unlists a page you
+  published, at any time.
+- **`publish.public`** setting (`ask`, `always`, `never`; `L80_PUBLISH_PUBLIC`).
+- **`--gpu`** on `betterbench` records the GPU as `env.notes.gpu` when
+  BetterBench could not detect one (a remote endpoint), so the Directory's GPU
+  filter can file the run. A listed run with no GPU asks for it on a terminal.
+- **`L80 history`** shows a Dir column and takes `--listed` / `--unlisted`.
+- **Console:** the publish dialog offers List & publish / Publish unlisted /
+  Cancel, with Cancel focused; History lists and unlists with `l`; Settings has
+  "List published pages in the Directory"; Bench and Rent GPUs have a GPU field
+  and a List in Directory toggle.
+- The skills ask the user before listing and always pass `--public` or `--private`.
+
 
 ### Pins QualityBench 0.3.0 (`951ecd1`)
 

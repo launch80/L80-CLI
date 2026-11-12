@@ -17,6 +17,10 @@ type PublishRequest struct {
 	Title      string // as the page will show it, for the local record
 	SourcePath string // the file the body came from, if any
 	APIBase    string
+	// Public also lists the page in the public directory. The caller decides
+	// (a flag, the publish.public setting, or the person's answer); nothing
+	// here asks.
+	Public bool
 }
 
 // Published is a successful publish plus anything worth telling the user.
@@ -30,7 +34,7 @@ type Published struct {
 // Publish sends the body and records it in the local ledger with the hashes
 // a verification request later uses to show the page came from this file.
 func Publish(client *api.Client, req PublishRequest) (Published, *api.Error) {
-	artifact, apiErr := client.Publish(req.Body)
+	artifact, apiErr := client.Publish(req.Body, req.Public)
 	if apiErr != nil {
 		return Published{}, apiErr
 	}
@@ -47,6 +51,7 @@ func Publish(client *api.Client, req PublishRequest) (Published, *api.Error) {
 		ByteSize: artifact.ByteSize, CreatedAt: artifact.CreatedAt,
 		SourcePath: req.SourcePath, APIBase: req.APIBase,
 		BodySHA256: sha256Hex(req.Body), ContentHash: artifact.ContentHash, TrustTier: artifact.TrustTier,
+		Listed: artifact.Listed,
 	}
 	if req.SourcePath != "" {
 		if data, err := os.ReadFile(req.SourcePath); err == nil {

@@ -310,6 +310,47 @@ func (s *histScreen) verify(c *Console, e history.Entry) Cmd {
 	return nil
 }
 
+type visibilityResult struct {
+	v   *api.Visibility
+	err *api.Error
+}
+
+// toggleListed asks, then lists the selected page in the public directory or
+// takes it out. Only the key that published it can; the server checks.
+func (s *histScreen) toggleListed(c *Console, e history.Entry) Cmd {
+	if !api.Listable(e.TemplateID) {
+		c.setFlash("only benchmark and scan pages can be listed in the Directory", true)
+		return nil
+	}
+	if !c.d.Config.HasToken() {
+		c.setFlash("listing a page needs the key that published it", true)
+		return nil
+	}
+	if s.source != "server" {
+		c.setFlash("the server's record is not loaded (r to refresh); listing needs it", true)
+		return nil
+	}
+	title, body, button := "List in the Directory",
+		"List this page in the launch80 Directory (launch80.com/directory)?\n\nAnyone can find, search and compare it there. The page, its link and its content do not change.",
+		"List"
+	if e.Listed {
+		title, body, button = "Unlist",
+			"Take this page out of the launch80 Directory?\n\nThe link keeps working for anyone who has it.",
+			"Unlist"
+	}
+	listed := !e.Listed
+	c.confirm(&widgets.Dialog{Title: title, Body: body, Buttons: []string{button, "Cancel"}, Choice: 1}, func(ch int) Cmd {
+		if ch != 0 {
+			return nil
+		}
+		return func() Msg {
+			v, err := c.d.Client.SetVisibility(e.GUID, listed)
+			return visibilityResult{v: v, err: err}
+		}
+	})
+	return nil
+}
+
 type histLoaded struct {
 	entries []history.Entry
 	local   []qualitybench.ResultFile
@@ -345,7 +386,7 @@ func (s *histScreen) load(c *Console) Cmd {
 		if apiErr == nil {
 			var out []history.Entry
 			for _, a := range page.Artifacts {
-				out = append(out, history.Entry{GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, Title: a.Title, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier, RunClass: a.RunClass})
+				out = append(out, history.Entry{GUID: a.GUID, URL: a.URL, TemplateID: a.TemplateID, Title: a.Title, CreatedAt: a.CreatedAt, TrustTier: a.TrustTier, RunClass: a.RunClass, Listed: a.Listed})
 			}
 			return histLoaded{entries: out, local: local, source: "server"}
 		}
@@ -389,7 +430,35 @@ func (s *histScreen) publishLocal(c *Console, r qualitybench.ResultFile) Cmd {
 		return nil
 	}
 	res := &app.QualityResult{Path: r.Path, Report: qualitybench.ReportPath(r.Path), Data: data, Partial: qualitybench.Partials(data)}
-	return publishQuality(c, res, r.Compare, false)
+	return publishQuality(c, res, r.Compare, false, false)
+}
+
+// listedMark is the History table's Dir column: ● listed, blank unlisted, - not listable.
+func listedMark(e history.Entry) string {
+	switch {
+	case !api.Listable(e.TemplateID):
+		return "-"
+	case e.Listed:
+		return "●"
+	}
+	return ""
+}
+
+func listedText(e history.Entry) string {
+	switch {
+	case !api.Listable(e.TemplateID):
+		return "cannot be listed (" + e.TemplateID + ")"
+	case e.Listed:
+		return "listed"
+	}
+	return "unlisted"
+}
+
+func listKeyDesc(e history.Entry) string {
+	if e.Listed {
+		return "unlist"
+	}
+	return "list in Directory"
 }
 
 // whenOf is a results file's run time in the table's format.
@@ -413,16 +482,34 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 		if v.err == nil {
 			return s.load(c)
 		}
+	case visibilityResult:
+		if v.err != nil {
+			c.setFlash(v.err.Code+": "+v.err.Message+" — "+v.err.Remedy, true)
+			return nil
+		}
+		for i := range s.entries {
+			if s.entries[i].GUID == v.v.GUID {
+				s.entries[i].Listed = v.v.Listed
+				if i < len(s.table.Rows) {
+					s.table.Rows[i][4] = listedMark(s.entries[i])
+				}
+			}
+		}
+		if v.v.Listed {
+			c.setFlash("listed in the Directory: "+v.v.URL, false)
+		} else {
+			c.setFlash("unlisted (the link still works): "+v.v.URL, false)
+		}
 	case histLoaded:
 		pc, lc := s.table.Cursor, s.ltable.Cursor
 		s.loading, s.entries, s.local, s.source, s.err = false, v.entries, v.local, v.source, v.err
-		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Class", Width: 6}, {Title: "Title"}}}
+		s.table = widgets.Table{Columns: []widgets.Column{{Title: "When", Width: 16}, {Title: "Template", Width: 20}, {Title: "Tier", Width: 10}, {Title: "Class", Width: 6}, {Title: "Dir", Width: 3}, {Title: "Title"}}}
 		for _, e := range v.entries {
 			when := strings.Replace(e.CreatedAt, "T", " ", 1)
 			if len(when) > 16 {
 				when = when[:16]
 			}
-			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.RunClass), orDash(e.Title)})
+			s.table.Rows = append(s.table.Rows, []string{when, e.TemplateID, orDash(e.TrustTier), orDash(e.RunClass), listedMark(e), orDash(e.Title)})
 		}
 		s.ltable = widgets.Table{Columns: []widgets.Column{{Title: "Run", Width: 16}, {Title: "Class", Width: 6}, {Title: "Tasks", Width: 5, Right: true}, {Title: "Model", Width: 34}, {Title: "Title"}}}
 		for _, r := range v.local {
@@ -442,6 +529,8 @@ func (s *histScreen) update(c *Console, m Msg) Cmd {
 		switch {
 		case v.Code == input.Rune && v.Rune == 'v' && e != nil:
 			return s.verify(c, *e)
+		case v.Code == input.Rune && v.Rune == 'l' && e != nil:
+			return s.toggleListed(c, *e)
 		case v.Code == input.Rune && v.Rune == 'p' && r != nil:
 			return s.publishLocal(c, *r)
 		case v.Code == input.Rune && v.Rune == 'o' && r != nil:
@@ -513,22 +602,22 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 				lines = append(lines, "  "+style.Sanitize(l))
 			}
 		}
-		lines = append(lines, "", t.R(t.Muted, "Not published. p publishes it as a public launch80 page (endpoint and host removed)."))
+		lines = append(lines, "", t.R(t.Muted, "Not published. p publishes it as a launch80 page (endpoint and host removed) and asks whether to list it in the Directory."))
 		return lines, []widgets.Binding{{Keys: "p", Desc: "publish"}, {Keys: "o", Desc: "open report"}, {Keys: "esc", Desc: "back"}}
 	}
 	if s.detail && sel != nil {
 		e := *sel
 		lines := []string{head, "", t.R(t.Title, style.Sanitize(orDash(e.Title))), "",
 			kv(t, "url", style.Sanitize(e.URL)), kv(t, "template", e.TemplateID), kv(t, "tier", orDash(e.TrustTier)),
-			kv(t, "class", orDash(e.RunClass)), kv(t, "published", e.CreatedAt), kv(t, "guid", e.GUID)}
+			kv(t, "class", orDash(e.RunClass)), kv(t, "directory", listedText(e)), kv(t, "published", e.CreatedAt), kv(t, "guid", e.GUID)}
 		if e.SourcePath != "" {
 			lines = append(lines, kv(t, "from file", style.Sanitize(e.SourcePath)))
 		}
 		if e.SourceSHA256 != "" {
 			lines = append(lines, kv(t, "file sha256", e.SourceSHA256[:16]+"…"))
 		}
-		lines = append(lines, "", t.R(t.Muted, "Pages are public. A page is self-reported until launch80 verifies it."))
-		return lines, []widgets.Binding{{Keys: "v", Desc: "request verification"}, {Keys: "esc", Desc: "back"}}
+		lines = append(lines, "", t.R(t.Muted, "Anyone with the link can read a page; a listed one is also in the launch80 Directory. A page is self-reported until launch80 verifies it."))
+		return lines, []widgets.Binding{{Keys: "v", Desc: "request verification"}, {Keys: "l", Desc: listKeyDesc(e)}, {Keys: "esc", Desc: "back"}}
 	}
 	out := []string{head, sub, ""}
 	keys := []widgets.Binding{{Keys: "tab", Desc: "published / unpublished"}, {Keys: "↑↓", Desc: "move"}, {Keys: "enter", Desc: "details"}}
@@ -541,7 +630,7 @@ func (s *histScreen) view(c *Console, w, h int) ([]string, []widgets.Binding) {
 		}
 	} else {
 		out = append(out, s.table.View(t, w, h-len(out), true)...)
-		keys = append(keys, widgets.Binding{Keys: "v", Desc: "verify"})
+		keys = append(keys, widgets.Binding{Keys: "v", Desc: "verify"}, widgets.Binding{Keys: "l", Desc: "list / unlist"})
 	}
 	return out, append(keys, widgets.Binding{Keys: "r", Desc: "refresh"}, widgets.Binding{Keys: "esc", Desc: "back"})
 }

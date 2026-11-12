@@ -64,6 +64,8 @@ func Run(args []string) int {
 		return runDashboard(e, args[2:])
 	case "verify":
 		return runVerify(e, args[2:])
+	case "visibility":
+		return runVisibility(e, args[2:])
 	case "review":
 		return runReview(e, args[2:])
 	case "tui", "console":
@@ -118,7 +120,11 @@ Usage:
   L80 qualitybench compare <ref.json> <test>     Paired deltas, KLD and thresholds, locally
   L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
                           [--json] [--dry-run]
+  Every publish takes --public (also list it in the launch80 Directory) or
+  --private (unlisted, reachable by link); on a terminal L80 asks, otherwise unlisted.
+  L80 visibility <url> --public|--private        List a page you published in the Directory, or take it out
   L80 history [--limit N] [--json] [--local]     List the share URLs this key has published
+              [--listed|--unlisted]
   L80 templates list [--json]                    List available templates
   L80 verify check <results.json|url>            Run the checks a "verified by Launch80" review applies
   L80 verify request <url> [--note text]         Ask launch80 to verify a published BetterBench page
@@ -153,7 +159,7 @@ Usage:
   Setup and maintenance:
   L80 auth status                                Show the resolved endpoint and key
   L80 doctor                                     Check connectivity, config and tools
-  L80 settings [list|get|set <key> <value>]      Preferences, e.g. qualitybench.confirm always|over:30m|never
+  L80 settings [list|get|set <key> <value>]      Preferences, e.g. publish.public ask|always|never
   L80 update [--check] [--json]                  Update L80, its pinned tools and installed skills
   L80 version                                    Print the version
 
@@ -164,6 +170,7 @@ Environment:
   L80_BETTERBENCH_API_KEY  Bearer key for the endpoint under test (never recorded)
   L80_VAST, L80_PWDET, L80_DASHBOARD   Commands to run instead of the pinned tools
   L80_QUALITYBENCH_CONFIRM always|over:30m|never: overrides the qualitybench.confirm setting
+  L80_PUBLISH_PUBLIC       ask|always|never: overrides the publish.public setting
   VAST_API_KEY             Vast.ai key for L80 vast (or ~/.config/bbvastl80/credentials)
 
 `

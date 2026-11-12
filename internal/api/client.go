@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -76,10 +77,31 @@ type Artifact struct {
 	TemplateID      string `json:"template_id"`
 	TemplateVersion int    `json:"template_version"`
 	TrustTier       string `json:"trust_tier"`
-	ContentHash     string `json:"content_hash"`
-	ByteSize        int    `json:"byte_size"`
-	CreatedAt       string `json:"created_at"`
+	// Listed is whether the page is in the public directory (launch80.com/directory).
+	// A server without the directory leaves it out, which reads as false.
+	Listed      bool   `json:"listed"`
+	ContentHash string `json:"content_hash"`
+	ByteSize    int    `json:"byte_size"`
+	CreatedAt   string `json:"created_at"`
 }
+
+// ListableTemplates are the templates whose pages can be listed in the public
+// directory. Mirrors LISTABLE_TEMPLATES in the server's lib/artifacts/listing.ts;
+// the server is the authority, this only lets the CLI fail fast.
+var ListableTemplates = []string{"bench.betterbench.v1", "bench.qualitybench.v1", "bench.report.v1", "scan.pwdet.v1"}
+
+// Listable is whether a template's pages can be listed in the directory.
+func Listable(template string) bool {
+	for _, t := range ListableTemplates {
+		if t == template {
+			return true
+		}
+	}
+	return false
+}
+
+// DirectoryURL is the public directory on a server.
+func DirectoryURL(baseURL string) string { return strings.TrimRight(baseURL, "/") + "/directory" }
 
 type Template struct {
 	ID        string `json:"id"`
@@ -95,10 +117,35 @@ type Health struct {
 }
 
 // Publish POSTs a payload verbatim. The CLI does not rewrite the body: the
-// bytes the caller wrote are the bytes that get validated and stored.
-func (c *Client) Publish(payload []byte) (*Artifact, *Error) {
+// bytes the caller wrote are the bytes that get validated and stored. listed
+// also lists the page in the public directory; it travels as ?listed=true, not
+// in the body, so the stored bytes (and their sha256 in the ledger) are the
+// same either way.
+func (c *Client) Publish(payload []byte, listed bool) (*Artifact, *Error) {
+	path := "/api/v1/artifacts"
+	if listed {
+		path += "?listed=true"
+	}
 	var out Artifact
-	if err := c.do(http.MethodPost, "/api/v1/artifacts", payload, true, &out); err != nil {
+	if err := c.do(http.MethodPost, path, payload, true, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Visibility is a page's directory listing after a change.
+type Visibility struct {
+	GUID   string `json:"guid"`
+	URL    string `json:"url"`
+	Listed bool   `json:"listed"`
+}
+
+// SetVisibility lists a page this key published in the public directory, or
+// takes it out. The page, its URL and its content do not change.
+func (c *Client) SetVisibility(guid string, listed bool) (*Visibility, *Error) {
+	body, _ := json.Marshal(map[string]bool{"listed": listed})
+	var out Visibility
+	if err := c.do(http.MethodPut, "/api/v1/artifacts/"+url.PathEscape(guid)+"/visibility", body, true, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -119,6 +166,7 @@ type HistoryEntry struct {
 	TemplateVersion int    `json:"template_version"`
 	TrustTier       string `json:"trust_tier"`
 	RunClass        string `json:"run_class,omitempty"` // full | quick, BetterBench pages (server 1.1+)
+	Listed          bool   `json:"listed"`              // in the public directory
 	Title           string `json:"title"`
 	ByteSize        int    `json:"byte_size"`
 	CreatedAt       string `json:"created_at"`

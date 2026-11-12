@@ -167,9 +167,9 @@ func TestBenchJobStreamsAndSummarises(t *testing.T) {
 	defer os.Chdir(wd)
 
 	jumpTo(t, c, scrBench)
-	c.bench.form.Fields[0].Input.Set("http://h/v1")
-	c.bench.form.Fields[1].Input.Set("m")
-	c.bench.form.Fields[5].Input.Set("sk-secret")
+	c.bench.field("endpoint").Input.Set("http://h/v1")
+	c.bench.field("model").Input.Set("m")
+	c.bench.field("apikey").Input.Set("sk-secret")
 	c.bench.form.Focus = len(c.bench.form.Fields)
 	feed(c, input.Key{Code: input.Enter})
 	deadline := time.Now().Add(5 * time.Second)

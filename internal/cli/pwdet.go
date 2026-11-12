@@ -47,8 +47,8 @@ func runPwdet(e env, args []string) int {
 			"  L80 pwdet <pwdet command> [args...]                   every pwdet command, passed through",
 			"  L80 pwdet scan <model> [pwdet flags] --json           verdict and report path as JSON",
 			"  L80 pwdet scan <model> [pwdet flags] --publish        publish the report to launch80 (needs a token)",
-			"                         [--dry-run] [--payload-out p.json] [--title t] [--summary s]",
-			"  L80 pwdet publish <report.json|report dir> [--dry-run] [--payload-out p.json] [--json]",
+			"                         [--public|--private] [--dry-run] [--payload-out p.json] [--title t] [--summary s]",
+			"  L80 pwdet publish <report.json|report dir> [--public|--private] [--dry-run] [--payload-out p.json] [--json]",
 			"                                                        publish a report from an earlier scan",
 			"",
 			"  <model> is a local directory, an HF repo id (org/name[@rev]), or http://host/v1#model.",
@@ -64,7 +64,7 @@ func runPwdet(e env, args []string) int {
 		return exitFromChild(e, "pwdet", res, err)
 	}
 	mine, rest, err := splitOwned(args[1:], ownedFlags{
-		"json": false, "publish": false, "dry-run": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
+		"json": false, "publish": false, "dry-run": false, "public": false, "private": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
 	})
 	if err != nil {
 		return fail(e, api.Newf("E_USAGE", "Run `L80 pwdet --help`.", "%v", err))
@@ -118,6 +118,7 @@ func pwdetScan(e env, r pytool.Runner, rest []string, mine map[string]string) in
 	output.Detailf(e.stdout, "report %s", summary.Report)
 	if u, ok := result["url"].(string); ok {
 		output.Successf(e.stdout, "published: %s", u)
+		printPwdetListing(e, u, mine)
 	} else if dry {
 		output.Detailf(e.stdout, "dry run: would publish %d bytes as %s", result["byte_size"], result["template"])
 	}
@@ -130,7 +131,7 @@ func pwdetPublish(e env, args []string) int {
 	if wantsHelp(args) {
 		fmt.Fprint(e.stdout, `L80 pwdet publish — publish a report from an earlier scan as a launch80 page
 
-  L80 pwdet publish <report.json|report dir> [--dry-run] [--payload-out p.json]
+  L80 pwdet publish <report.json|report dir> [--public|--private] [--dry-run] [--payload-out p.json]
                     [--title t] [--summary s] [--json] [--api-base URL]
 
   A folder may be one scan's folder or a whole reports folder; then the newest
@@ -143,7 +144,7 @@ func pwdetPublish(e env, args []string) int {
 		return api.ExitOK
 	}
 	mine, rest, err := splitOwned(args, ownedFlags{
-		"json": false, "dry-run": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
+		"json": false, "dry-run": false, "public": false, "private": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
 	})
 	if err != nil || len(rest) != 1 {
 		return fail(e, api.Newf("E_USAGE", "Run `L80 pwdet publish --help`.", "pass one report.json or report folder"))
@@ -164,6 +165,7 @@ func pwdetPublish(e env, args []string) int {
 	output.Detailf(e.stdout, "report %s", path)
 	if u, ok := result["url"].(string); ok {
 		output.Successf(e.stdout, "published: %s", u)
+		printPwdetListing(e, u, mine)
 	} else {
 		output.Detailf(e.stdout, "dry run: would publish %d bytes as %s", result["byte_size"], result["template"])
 	}
@@ -231,13 +233,34 @@ func pwdetPage(e env, reportPath string, send bool, mine map[string]string, resu
 		output.Detailf(e.stderr, "payload written to %s", po)
 	}
 	if send {
-		artifact, code := publishArtifact(e, body, pg.Template, reportPath, mine["api-base"])
+		pub, priv := isTrue(mine["public"]), isTrue(mine["private"])
+		l, lErr := decideListing(e, listingFlags{public: &pub, private: &priv}, pg.Template, isTrue(mine["json"]))
+		if lErr != nil {
+			return fail(e, lErr), false
+		}
+		artifact, code := publishArtifact(e, body, pg.Template, reportPath, mine["api-base"], l)
 		if artifact == nil {
 			return code, false
 		}
-		result["url"], result["trust_tier"] = artifact.URL, artifact.TrustTier
+		result["url"], result["trust_tier"], result["listed"] = artifact.URL, artifact.TrustTier, artifact.Listed
+		pwdetPublished[artifact.URL] = pwdetListing{artifact, l}
 	}
 	return api.ExitOK, true
+}
+
+// pwdetListing is what a publish decided, kept for the line printed after
+// "published:" (pwdetPage fills a result map that is also the JSON output).
+type pwdetListing struct {
+	art *api.Artifact
+	l   listing
+}
+
+var pwdetPublished = map[string]pwdetListing{}
+
+func printPwdetListing(e env, url string, mine map[string]string) {
+	if p, ok := pwdetPublished[url]; ok {
+		printListing(e, p.art, p.l, config.Load(mine["api-base"]).BaseURL)
+	}
 }
 
 func contains(list []string, s string) bool { return indexOf(list, s) >= 0 }
