@@ -30,8 +30,24 @@ type SettingKey struct {
 const KeyQualityConfirm = "qualitybench.confirm"
 
 // KeyPublishPublic is whether a published page is also listed in the public
-// launch80 directory: ask (the default), always or never.
+// launch80 directory: always (the default since 1.4.1), ask or never.
 const KeyPublishPublic = "publish.public"
+
+// KeyPublishAuthor is whether published pages show "Author: <key id>":
+// show (the default) or hide. --no-author hides it for one publish.
+const KeyPublishAuthor = "publish.author"
+
+// PublishAuthorHidden resolves publish.author. A bad value reads as show, with the error.
+func PublishAuthorHidden() (bool, string, error) {
+	v, src := Get(KeyPublishAuthor)
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "show", "":
+		return false, src, nil
+	case "hide":
+		return true, src, nil
+	}
+	return false, src, fmt.Errorf("publish.author must be show or hide, not %q", v)
+}
 
 // Listing is the parsed publish.public setting.
 type Listing string
@@ -51,7 +67,8 @@ func ParseListing(v string) (Listing, error) {
 	return ListingAsk, fmt.Errorf("publish.public must be ask, always or never, not %q", v)
 }
 
-// PublishListing resolves publish.public. A bad value reads as ask, with the error.
+// PublishListing resolves publish.public. A bad value reads as ask, with the error,
+// so a typo never lists a page the person meant to keep unlisted.
 func PublishListing() (Listing, string, error) {
 	v, src := Get(KeyPublishPublic)
 	l, err := ParseListing(v)
@@ -60,9 +77,17 @@ func PublishListing() (Listing, string, error) {
 
 // Known lists the settings L80 understands.
 var Known = []SettingKey{
-	{Key: KeyPublishPublic, Default: string(ListingAsk), Env: "L80_PUBLISH_PUBLIC",
-		Help:  "list published benchmark pages in the public launch80 directory: ask (each time) | always | never; --public / --private override it for one publish",
+	{Key: KeyPublishPublic, Default: string(ListingAlways), Env: "L80_PUBLISH_PUBLIC",
+		Help:  "list published benchmark and scan pages in the public launch80 directory: always (default) | ask (each time) | never; --public / --private override it for one publish",
 		Check: func(v string) error { _, err := ParseListing(v); return err }},
+	{Key: KeyPublishAuthor, Default: "show", Env: "L80_PUBLISH_AUTHOR",
+		Help: "show your key id as the author on pages you publish: show (default) | hide; --no-author hides it for one publish",
+		Check: func(v string) error {
+			if s := strings.ToLower(strings.TrimSpace(v)); s != "show" && s != "hide" {
+				return fmt.Errorf("publish.author must be show or hide, not %q", v)
+			}
+			return nil
+		}},
 	{Key: KeyQualityConfirm, Default: "always", Env: "L80_QUALITYBENCH_CONFIRM",
 		Help:  "ask before a QualityBench run starts, showing how long it will take: always | over:<duration> (e.g. over:30m) | never",
 		Check: func(v string) error { _, err := ParseConfirm(v); return err }},

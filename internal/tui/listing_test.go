@@ -12,7 +12,7 @@ import (
 	"github.com/launch80/L80-CLI/internal/tui/input"
 )
 
-// The publish dialog asks about the Directory with Cancel focused, and its
+// The publish dialog says where the page goes with Cancel focused, and its
 // shortcuts never make "p" (habit for publish) list a page.
 func TestConfirmPublishAsksAboutTheDirectory(t *testing.T) {
 	c := newTestConsole(t)
@@ -46,13 +46,20 @@ func TestConfirmPublishAsksAboutTheDirectory(t *testing.T) {
 	}
 	feed(c, code(input.Esc))
 	// publish.public answers the question.
-	for mode, want := range map[string]string{"always": "List & publish|Cancel", "never": "Publish unlisted|Cancel"} {
+	for mode, want := range map[string]string{
+		"always": "List & publish|Publish unlisted|Cancel", // the default: listed, unlisted one key away
+		"ask":    "List & publish|Publish unlisted|Cancel",
+		"never":  "Publish unlisted|Cancel",
+	} {
 		if err := config.Set(config.KeyPublishPublic, mode); err != nil {
 			t.Fatal(err)
 		}
 		c.confirmPublish("Publish?", "bench.betterbench.v1", func(bool) Cmd { return nil })
 		if got := strings.Join(c.dialog.Buttons, "|"); got != want || c.dialog.Buttons[c.dialog.Choice] != "Cancel" {
 			t.Errorf("%s: buttons %q, focus %d", mode, got, c.dialog.Choice)
+		}
+		if mode == "always" && !strings.Contains(c.dialog.Body, "It will be listed in the launch80 Directory") {
+			t.Errorf("always: the dialog must say the page will be listed: %s", c.dialog.Body)
 		}
 		feed(c, code(input.Esc))
 	}

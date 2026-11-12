@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.4.1 (2026-11-12)
+
+### Benchmark pages are listed in the Directory by default
+
+- **`publish.public` now defaults to `always`.** Every benchmark and scan page L80
+  publishes (`publish`, `betterbench`, `qualitybench`, `pwdet`, `vast run`, the
+  console) is listed in the launch80 Directory unless you pass `--private`.
+  `--public` still overrides `never` or `ask`. Set `publish.public` to `ask` for
+  the 1.4.0 behaviour (ask on a terminal, unlisted when L80 cannot ask) or `never`.
+- `vast run` without a flag follows the setting (before: unlisted). The console's
+  Rent GPUs "List in Directory" toggle starts on.
+- The console's publish dialog says the page will be listed and still offers
+  Publish unlisted; Cancel stays focused.
+
+### Pages show their author
+
+Every page published from 1.4.1 on shows **"Author: <your key id>"** beside its
+trust badge (and in the footer), and the Directory ranks authors by listed pages.
+`--no-author` on any publishing command (`publish`, `betterbench`,
+`qualitybench`, `pwdet`, `vast run`) leaves it off; the `publish.author` setting
+(`show`, the default, or `hide`; `L80_PUBLISH_AUTHOR`, or Settings in the
+console) does it for every publish. Listed pages published before 1.4.1 were
+given their author too; unlisted ones were not.
+
+### Every publish says what it did
+
+After `published: <url>`, L80 prints the page (title, template, size), its
+author, **who sees
+it** (listed in the Directory, link only, or a template that cannot be listed),
+its trust, that it never changes, what is left of the key's daily quota (from a
+server that reports it), and the **next** commands: list or unlist it, and ask
+for verification where the template allows it. `L80 visibility` says what changed
+and how to undo it. With `--json` the server's own fields come through:
+`title`, `author`, `visibility`, `directory_url`, `message`, `next` (each as an L80 command
+and an HTTP call) and `quota`.
+
+### install.sh lives here
+
+`install.sh` (the script behind `curl -fsSL https://launch80.com/install.sh | sh`)
+moved into this repository from launch80, unchanged. Every release attaches it
+and lists it in `checksums.txt`; launch80.com serves the copy from the release
+its docs describe (1.4.1 from now).
+
 ## 1.4.0 (2026-11-12)
 
 ### The launch80 Directory

@@ -83,6 +83,37 @@ type Artifact struct {
 	ContentHash string `json:"content_hash"`
 	ByteSize    int    `json:"byte_size"`
 	CreatedAt   string `json:"created_at"`
+
+	// What the publish means, spelled out by the server (launch80 since L80
+	// 1.4.1). All optional: an older server leaves them out.
+	Title string `json:"title,omitempty"`
+	// Author is the byline the page shows (the publishing key id), or empty
+	// when it was published with --no-author (or by a server without bylines).
+	Author       string `json:"author,omitempty"`
+	Visibility   string `json:"visibility,omitempty"` // listed | unlisted | not_listable
+	DirectoryURL string `json:"directory_url,omitempty"`
+	Message      string `json:"message,omitempty"`
+	Next         []Step `json:"next,omitempty"`
+	Quota        *Quota `json:"quota,omitempty"`
+}
+
+// Step is a suggested next action, as an L80 command and as the HTTP call.
+type Step struct {
+	Do   string `json:"do"`
+	CLI  string `json:"cli"`
+	HTTP string `json:"http"`
+}
+
+// Quota is what is left of the key's publish allowance after this publish.
+type Quota struct {
+	Limit       int `json:"limit"`
+	Remaining   int `json:"remaining"`
+	WindowHours int `json:"window_hours"`
+}
+
+// Verifiable is whether a template's pages can be verified by Launch80.
+func Verifiable(template string) bool {
+	return template == "bench.betterbench.v1" || template == "scan.pwdet.v1"
 }
 
 // ListableTemplates are the templates whose pages can be listed in the public
@@ -121,10 +152,18 @@ type Health struct {
 // also lists the page in the public directory; it travels as ?listed=true, not
 // in the body, so the stored bytes (and their sha256 in the ledger) are the
 // same either way.
-func (c *Client) Publish(payload []byte, listed bool) (*Artifact, *Error) {
-	path := "/api/v1/artifacts"
+func (c *Client) Publish(payload []byte, listed bool, noAuthor bool) (*Artifact, *Error) {
+	q := url.Values{}
 	if listed {
-		path += "?listed=true"
+		q.Set("listed", "true")
+	}
+	if noAuthor {
+		// The page leaves out "Author: <key id>", which it shows by default.
+		q.Set("author", "false")
+	}
+	path := "/api/v1/artifacts"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
 	}
 	var out Artifact
 	if err := c.do(http.MethodPost, path, payload, true, &out); err != nil {
@@ -138,6 +177,9 @@ type Visibility struct {
 	GUID   string `json:"guid"`
 	URL    string `json:"url"`
 	Listed bool   `json:"listed"`
+	// Message says what changed, from a server that sends it.
+	Message      string `json:"message,omitempty"`
+	DirectoryURL string `json:"directory_url,omitempty"`
 }
 
 // SetVisibility lists a page this key published in the public directory, or

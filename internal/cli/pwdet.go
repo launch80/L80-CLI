@@ -47,8 +47,8 @@ func runPwdet(e env, args []string) int {
 			"  L80 pwdet <pwdet command> [args...]                   every pwdet command, passed through",
 			"  L80 pwdet scan <model> [pwdet flags] --json           verdict and report path as JSON",
 			"  L80 pwdet scan <model> [pwdet flags] --publish        publish the report to launch80 (needs a token)",
-			"                         [--public|--private] [--dry-run] [--payload-out p.json] [--title t] [--summary s]",
-			"  L80 pwdet publish <report.json|report dir> [--public|--private] [--dry-run] [--payload-out p.json] [--json]",
+			"                         [--public|--private] [--no-author] [--dry-run] [--payload-out p.json] [--title t] [--summary s]",
+			"  L80 pwdet publish <report.json|report dir> [--public|--private] [--no-author] [--dry-run] [--payload-out p.json] [--json]",
 			"                                                        publish a report from an earlier scan",
 			"",
 			"  <model> is a local directory, an HF repo id (org/name[@rev]), or http://host/v1#model.",
@@ -64,7 +64,7 @@ func runPwdet(e env, args []string) int {
 		return exitFromChild(e, "pwdet", res, err)
 	}
 	mine, rest, err := splitOwned(args[1:], ownedFlags{
-		"json": false, "publish": false, "dry-run": false, "public": false, "private": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
+		"json": false, "publish": false, "dry-run": false, "public": false, "private": false, "no-author": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
 	})
 	if err != nil {
 		return fail(e, api.Newf("E_USAGE", "Run `L80 pwdet --help`.", "%v", err))
@@ -131,7 +131,7 @@ func pwdetPublish(e env, args []string) int {
 	if wantsHelp(args) {
 		fmt.Fprint(e.stdout, `L80 pwdet publish — publish a report from an earlier scan as a launch80 page
 
-  L80 pwdet publish <report.json|report dir> [--public|--private] [--dry-run] [--payload-out p.json]
+  L80 pwdet publish <report.json|report dir> [--public|--private] [--no-author] [--dry-run] [--payload-out p.json]
                     [--title t] [--summary s] [--json] [--api-base URL]
 
   A folder may be one scan's folder or a whole reports folder; then the newest
@@ -144,7 +144,7 @@ func pwdetPublish(e env, args []string) int {
 		return api.ExitOK
 	}
 	mine, rest, err := splitOwned(args, ownedFlags{
-		"json": false, "dry-run": false, "public": false, "private": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
+		"json": false, "dry-run": false, "public": false, "private": false, "no-author": false, "payload-out": true, "title": true, "summary": true, "api-base": true,
 	})
 	if err != nil || len(rest) != 1 {
 		return fail(e, api.Newf("E_USAGE", "Run `L80 pwdet publish --help`.", "pass one report.json or report folder"))
@@ -234,7 +234,8 @@ func pwdetPage(e env, reportPath string, send bool, mine map[string]string, resu
 	}
 	if send {
 		pub, priv := isTrue(mine["public"]), isTrue(mine["private"])
-		l, lErr := decideListing(e, listingFlags{public: &pub, private: &priv}, pg.Template, isTrue(mine["json"]))
+		noAuthor := isTrue(mine["no-author"])
+		l, lErr := decideListing(e, listingFlags{public: &pub, private: &priv, noAuthor: &noAuthor}, pg.Template, isTrue(mine["json"]))
 		if lErr != nil {
 			return fail(e, lErr), false
 		}

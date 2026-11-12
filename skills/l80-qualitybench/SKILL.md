@@ -100,16 +100,17 @@ L80 qualitybench compare bf16.json int4.json [--thresholds T.md]
 
 **Confirm with the user first: anyone with the link can see the page.**
 
-**Ask about the Directory before publishing a benchmark or scan page.** Ask the
-user: "Do you want this listed in the public launch80 Directory, where anyone can
-search and compare it?" Then pass `--public` (listed) or `--private` (unlisted:
-only people with the link see it) on every publishing command. Never decide for
-them; without either flag a non-interactive run stays unlisted. They can change
-it later with `L80 visibility <url> --public|--private`.
+**Benchmark and scan pages are listed in the public launch80 Directory by
+default** (launch80.com/directory), where anyone can find, search and compare
+them. When you confirm the publish, tell the user that, and pass `--private` if
+they want the page reachable only by its link, and that the page shows
+"Author: <their key id>" (`--no-author` leaves it off). Afterwards relay the `who sees it`
+and `next` lines L80 prints. They can change it any time with
+`L80 visibility <url> --public|--private`.
 
 ```sh
 L80 qualitybench --results int4-vs-bf16.json --dry-run
-L80 qualitybench --results int4-vs-bf16.json --public    # or --private
+L80 qualitybench --results int4-vs-bf16.json             # add --private to keep it link-only
 ```
 
 L80 removes `env.endpoint` and `env.host` before sending. Give the user the

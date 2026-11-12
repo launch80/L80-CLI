@@ -120,8 +120,9 @@ Usage:
   L80 qualitybench compare <ref.json> <test>     Paired deltas, KLD and thresholds, locally
   L80 publish <file.json> [--template <id>]      Publish a payload, print the URL
                           [--json] [--dry-run]
-  Every publish takes --public (also list it in the launch80 Directory) or
-  --private (unlisted, reachable by link); on a terminal L80 asks, otherwise unlisted.
+  Benchmark and scan pages are listed in the launch80 Directory by default;
+  --private keeps one unlisted (reachable by link). publish.public changes the default.
+  Every page shows "Author: <your key id>"; --no-author (or publish.author hide) leaves it off.
   L80 visibility <url> --public|--private        List a page you published in the Directory, or take it out
   L80 history [--limit N] [--json] [--local]     List the share URLs this key has published
               [--listed|--unlisted]
@@ -170,7 +171,8 @@ Environment:
   L80_BETTERBENCH_API_KEY  Bearer key for the endpoint under test (never recorded)
   L80_VAST, L80_PWDET, L80_DASHBOARD   Commands to run instead of the pinned tools
   L80_QUALITYBENCH_CONFIRM always|over:30m|never: overrides the qualitybench.confirm setting
-  L80_PUBLISH_PUBLIC       ask|always|never: overrides the publish.public setting
+  L80_PUBLISH_PUBLIC       always|ask|never: overrides the publish.public setting
+  L80_PUBLISH_AUTHOR       show|hide: overrides the publish.author setting
   VAST_API_KEY             Vast.ai key for L80 vast (or ~/.config/bbvastl80/credentials)
 
 `

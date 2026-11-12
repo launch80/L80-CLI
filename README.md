@@ -31,6 +31,13 @@ pipeline are untouched.
 curl -fsSL https://www.launch80.com/install.sh | sh   # prebuilt release -> ~/.local/bin/L80
 ```
 
+The script is [`install.sh`](install.sh) in this repository. Each release
+attaches it, and launch80.com serves the copy from the release its docs
+describe, so what you pipe
+into `sh` is always a reviewed, tagged version. It verifies the binary against
+the release's `checksums.txt` (which also lists `install.sh`). Options:
+`--prefix DIR`, `--version vX.Y.Z`.
+
 Or build from source:
 
 ```sh
@@ -346,27 +353,45 @@ GPUs get a generic view.
 
 ## The launch80 Directory
 
-[launch80.com/directory](https://launch80.com/directory) lists the benchmark and
-scan pages their publishers chose to make public: search, filters (template, run
-class, verified, GPU), a leaderboard and side-by-side compare. Every page is
-unlisted (reachable only by its link) unless you list it.
+[launch80.com/directory](https://launch80.com/directory) lists community
+benchmark and scan pages: search, filters (template, run class, verified, GPU),
+a leaderboard and side-by-side compare. Since 1.4.1, L80 lists the benchmark and
+scan pages it publishes there by default; `--private` keeps one reachable only
+by its link.
 
 ```sh
-L80 betterbench --endpoint http://box:8000/v1 --model m --public --gpu "RTX 4090"
+L80 betterbench --endpoint http://box:8000/v1 --model m --gpu "RTX 4090"
 L80 publish report.json --template bench.report.v1 --private
-L80 visibility https://launch80.com/a/<guid> --public    # list a page later (--private takes it out)
+L80 visibility https://launch80.com/a/<guid> --private   # take a page out later (--public lists it)
 L80 history --listed
 ```
 
+After every publish L80 says what happened and what you can do next:
+
+```
+published: https://launch80.com/a/9f1b…
+  page         "Qwen3-8B on vLLM 0.9.3" · bench.betterbench.v1 v1 · 412.3 KB
+  author       alice (shown on the page; --no-author leaves it off)
+  who sees it  anyone: listed in the launch80 Directory, where anyone can find, search and compare it
+               https://launch80.com/directory
+  trust        self-reported until Launch80 verifies it
+  changes      none: the page never changes; publish again to correct it
+  quota        7 of 10 publishes left in the next 24 hours
+  next         take it out of the Directory   L80 visibility https://launch80.com/a/9f1b… --private
+               ask Launch80 to verify it      L80 verify request https://launch80.com/a/9f1b…
+```
+
 Every publishing command (`publish`, `betterbench`, `qualitybench`, `pwdet`,
-`vast run`) takes `--public` or `--private`. With neither, L80 asks on a
-terminal (default no) and leaves the page unlisted when it cannot ask. The
-`publish.public` setting (`ask`, `always`, `never`; `L80_PUBLISH_PUBLIC`) answers
-for you. Only `bench.betterbench.v1`, `bench.qualitybench.v1`, `bench.report.v1`
-and `scan.pwdet.v1` pages can be listed. `--gpu` records the GPU of a run
-against a remote endpoint, which BetterBench cannot detect. In the console the
-publish dialog asks (List & publish / Publish unlisted / Cancel), and History
-lists or unlists a page with `l`.
+`vast run`) takes `--private` (or `--public`, to override the setting). The
+`publish.public` setting (`always`, the default; `ask`; `never`;
+`L80_PUBLISH_PUBLIC`) changes the default: `ask` asks on a terminal and leaves
+the page unlisted when it cannot. Only `bench.betterbench.v1`,
+`bench.qualitybench.v1`, `bench.report.v1` and `scan.pwdet.v1` pages can be
+listed. `--gpu` records the GPU of a run against a remote endpoint, which
+BetterBench cannot detect. Every page shows "Author: <your key id>";
+`--no-author` (or `publish.author hide`) leaves it off. In the console the publish dialog offers List &
+publish / Publish unlisted / Cancel, and History lists or unlists a page with
+`l`.
 
 ## Verified by Launch80
 

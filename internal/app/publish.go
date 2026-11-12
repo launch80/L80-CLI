@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/launch80/L80-CLI/internal/api"
+	"github.com/launch80/L80-CLI/internal/config"
 	"github.com/launch80/L80-CLI/internal/history"
 )
 
@@ -21,6 +22,9 @@ type PublishRequest struct {
 	// (a flag, the publish.public setting, or the person's answer); nothing
 	// here asks.
 	Public bool
+	// NoAuthor leaves "Author: <key id>" off the page. The publish.author
+	// setting (hide) does the same for every publish, CLI or console.
+	NoAuthor bool
 }
 
 // Published is a successful publish plus anything worth telling the user.
@@ -34,7 +38,11 @@ type Published struct {
 // Publish sends the body and records it in the local ledger with the hashes
 // a verification request later uses to show the page came from this file.
 func Publish(client *api.Client, req PublishRequest) (Published, *api.Error) {
-	artifact, apiErr := client.Publish(req.Body, req.Public)
+	noAuthor := req.NoAuthor
+	if hidden, _, _ := config.PublishAuthorHidden(); hidden {
+		noAuthor = true
+	}
+	artifact, apiErr := client.Publish(req.Body, req.Public, noAuthor)
 	if apiErr != nil {
 		return Published{}, apiErr
 	}

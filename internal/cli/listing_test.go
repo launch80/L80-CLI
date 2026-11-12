@@ -18,6 +18,7 @@ import (
 type listingAPI struct {
 	srv        *httptest.Server
 	listedSeen []string
+	authorSeen []string // the ?author= of each publish ("" when absent)
 	bodies     [][]byte
 	visibility []string // "<guid> <listed>"
 }
@@ -36,7 +37,13 @@ func newListingAPI(t *testing.T, template string, honoursListed bool) *listingAP
 		q := r.URL.Query().Get("listed")
 		a.listedSeen = append(a.listedSeen, q)
 		listed := honoursListed && q == "true"
-		fmt.Fprintf(w, `{"ok":true,"data":{"guid":"11111111-2222-4333-8444-555555555555","url":"https://l80.test/a/11111111-2222-4333-8444-555555555555","template_id":%q,"template_version":1,"trust_tier":"unverified","listed":%v,"byte_size":42,"created_at":"2026-11-12T01:02:03.000Z"}}`, template, listed)
+		au := r.URL.Query().Get("author")
+		a.authorSeen = append(a.authorSeen, au)
+		author := `"k1"`
+		if au == "false" {
+			author = "null"
+		}
+		fmt.Fprintf(w, `{"ok":true,"data":{"guid":"11111111-2222-4333-8444-555555555555","url":"https://l80.test/a/11111111-2222-4333-8444-555555555555","template_id":%q,"template_version":1,"title":"Qwen3-8B","trust_tier":"unverified","listed":%v,"author":%s,"byte_size":4200,"created_at":"2026-11-12T01:02:03.000Z","quota":{"limit":10,"remaining":7,"window_hours":24}}}`, template, listed, author)
 	})
 	mux.HandleFunc("/api/v1/artifacts/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || !strings.HasSuffix(r.URL.Path, "/visibility") {
@@ -61,6 +68,7 @@ func listingEnv(t *testing.T) {
 	isolateSettings(t)
 	t.Setenv("L80_TOKEN", "L80_k1_secret")
 	t.Setenv("L80_PUBLISH_PUBLIC", "")
+	t.Setenv("L80_PUBLISH_AUTHOR", "")
 }
 
 // withTerminal makes stdin and stderr terminals and feeds answer to prompts.
@@ -111,30 +119,61 @@ func TestPublishPublicSendsListedAndSaysWhere(t *testing.T) {
 	if a.listedSeen[0] != "true" {
 		t.Errorf("?listed = %q", a.listedSeen[0])
 	}
-	if !strings.Contains(out, "listed in the directory: "+a.srv.URL+"/directory") {
-		t.Errorf("out = %s", out)
+	for _, want := range []string{
+		`page         "Qwen3-8B" · bench.report.v1 v1 · 4.1 KB`,
+		"who sees it  anyone: listed in the launch80 Directory",
+		a.srv.URL + "/directory",
+		"trust        self-reported until Launch80 verifies it",
+		"quota        7 of 10 publishes left in the next 24 hours",
+		"next         take it out of the Directory   L80 visibility https://l80.test/a/11111111-2222-4333-8444-555555555555 --private",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "verify request") {
+		t.Error("bench.report.v1 cannot be verified; it must not be suggested")
 	}
 }
 
-func TestPublishWithoutTerminalIsUnlistedWithHint(t *testing.T) {
+func TestPublishListsByDefault(t *testing.T) {
 	listingEnv(t)
-	withoutTerminal(t)
+	withTerminal(t, "")
 	a := newListingAPI(t, "bench.report.v1", true)
 	code, out, errOut := runCmd(t, runPublish, reportFile(t), "--api-base", a.srv.URL)
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	if a.listedSeen[0] != "" {
-		t.Errorf("?listed = %q, want absent", a.listedSeen[0])
+	if a.listedSeen[0] != "true" || strings.Contains(errOut, "List this page") {
+		t.Errorf("default: ?listed = %q, asked: %s", a.listedSeen[0], errOut)
 	}
-	if !strings.Contains(out, "unlisted: only people with the link can see it · list it: L80 visibility https://l80.test/a/") {
+	if !strings.Contains(out, "anyone: listed in the launch80 Directory") {
 		t.Errorf("out = %s", out)
 	}
 }
 
-func TestPublishAsksOnTerminal(t *testing.T) {
+func TestPrivateSaysWhoSeesItAndHowToList(t *testing.T) {
+	listingEnv(t)
+	withoutTerminal(t)
+	a := newListingAPI(t, "bench.report.v1", true)
+	code, out, errOut := runCmd(t, runPublish, reportFile(t), "--private", "--api-base", a.srv.URL)
+	if code != 0 || a.listedSeen[0] != "" {
+		t.Fatalf("exit %d, ?listed %q: %s", code, a.listedSeen[0], errOut)
+	}
+	for _, want := range []string{
+		"who sees it  only people you send the link to (unlisted)",
+		"next         list it in the Directory       L80 visibility https://l80.test/a/",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+}
+
+func TestPublishAsksOnTerminalWhenSetToAsk(t *testing.T) {
 	for answer, want := range map[string]string{"y\n": "true", "yes\n": "true", "n\n": "", "\n": "", "": ""} {
 		listingEnv(t)
+		t.Setenv("L80_PUBLISH_PUBLIC", "ask")
 		withTerminal(t, answer)
 		a := newListingAPI(t, "bench.report.v1", true)
 		code, _, errOut := runCmd(t, runPublish, reportFile(t), "--api-base", a.srv.URL)
@@ -152,6 +191,7 @@ func TestPublishAsksOnTerminal(t *testing.T) {
 
 func TestPublishJSONNeverAsks(t *testing.T) {
 	listingEnv(t)
+	t.Setenv("L80_PUBLISH_PUBLIC", "ask")
 	withTerminal(t, "y\n")
 	a := newListingAPI(t, "bench.report.v1", true)
 	code, out, errOut := runCmd(t, runPublish, reportFile(t), "--json", "--api-base", a.srv.URL)
@@ -181,6 +221,14 @@ func TestPublishSettingDecides(t *testing.T) {
 		if a.listedSeen[0] != want || strings.Contains(errOut, "List this page") {
 			t.Errorf("%s: ?listed = %q, asked: %v", mode, a.listedSeen[0], strings.Contains(errOut, "List this page"))
 		}
+	}
+	// ask with no terminal to ask on: unlisted, and the output says why.
+	listingEnv(t)
+	withoutTerminal(t)
+	_ = config.Set(config.KeyPublishPublic, "ask")
+	a0 := newListingAPI(t, "bench.report.v1", true)
+	if code, out, errOut := runCmd(t, runPublish, reportFile(t), "--api-base", a0.srv.URL); code != 0 || a0.listedSeen[0] != "" || !strings.Contains(out, "no terminal to ask on") {
+		t.Errorf("ask without a terminal: exit %d, ?listed %q\n%s%s", code, a0.listedSeen[0], out, errOut)
 	}
 	// --private beats publish.public=always.
 	listingEnv(t)
@@ -270,7 +318,7 @@ func TestBetterbenchGPUFlagAndPrompt(t *testing.T) {
 	remote := filepath.Join(t.TempDir(), "remote.json")
 	raw, _ = json.Marshal(doc)
 	_ = os.WriteFile(remote, raw, 0o644)
-	withTerminal(t, "y\nArc Pro B65 32GB\n")
+	withTerminal(t, "Arc Pro B65 32GB\n") // listed by default, so the only question is the GPU
 	code, _, errOut = runCmd(t, runBetterbench, "--results", remote, "--api-base", a.srv.URL)
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
@@ -289,7 +337,8 @@ func TestBetterbenchGPUFlagAndPrompt(t *testing.T) {
 func TestVastRunPassesListingDown(t *testing.T) {
 	for _, tc := range []struct {
 		flag, want string
-	}{{"--public", "always"}, {"", "never"}, {"--private", "never"}} {
+	}{{"--public", "always"}, {"", "always"}, {"--private", "never"}} {
+		listingEnv(t)
 		t.Setenv("XDG_STATE_HOME", t.TempDir())
 		t.Setenv("BBVASTL80_RUNS_DIR", "")
 		fakeTool(t, "L80_VAST", `echo "listing:$L80_PUBLISH_PUBLIC"; exit 0`+"\n")
@@ -301,5 +350,36 @@ func TestVastRunPassesListingDown(t *testing.T) {
 		if !strings.Contains(out+errOut, "listing:"+tc.want) {
 			t.Errorf("%q: want listing:%s in\n%s%s", tc.flag, tc.want, out, errOut)
 		}
+	}
+}
+
+func TestPublishShowsTheAuthorUnlessNoAuthor(t *testing.T) {
+	listingEnv(t)
+	t.Setenv("L80_PUBLISH_AUTHOR", "")
+	withoutTerminal(t)
+	a := newListingAPI(t, "generic.report.v1", true)
+	code, out, errOut := runCmd(t, runPublish, genericFile(t), "--api-base", a.srv.URL)
+	if code != 0 || a.authorSeen[0] != "" || !strings.Contains(out, "author       k1 (shown on the page") {
+		t.Fatalf("default: exit %d, ?author=%q\n%s%s", code, a.authorSeen[0], out, errOut)
+	}
+	code, out, errOut = runCmd(t, runPublish, genericFile(t), "--no-author", "--api-base", a.srv.URL)
+	if code != 0 || a.authorSeen[1] != "false" || !strings.Contains(out, "author       not shown (--no-author)") {
+		t.Fatalf("--no-author: exit %d, ?author=%q\n%s%s", code, a.authorSeen[1], out, errOut)
+	}
+	// publish.author hide does the same for every publish.
+	t.Setenv("L80_PUBLISH_AUTHOR", "hide")
+	if code, _, errOut := runCmd(t, runPublish, genericFile(t), "--api-base", a.srv.URL); code != 0 || a.authorSeen[2] != "false" {
+		t.Fatalf("hide: exit %d, ?author=%q: %s", code, a.authorSeen[2], errOut)
+	}
+}
+
+func TestVastRunPassesNoAuthorDown(t *testing.T) {
+	listingEnv(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("BBVASTL80_RUNS_DIR", "")
+	fakeTool(t, "L80_VAST", `echo "author:$L80_PUBLISH_AUTHOR"; exit 0`+"\n")
+	_, out, errOut := runCmd(t, runVast, "run", "--spec", "x.yaml", "--no-author")
+	if !strings.Contains(out+errOut, "author:hide") {
+		t.Errorf("want author:hide in\n%s%s", out, errOut)
 	}
 }

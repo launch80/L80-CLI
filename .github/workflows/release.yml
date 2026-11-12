@@ -8,6 +8,10 @@
 #   https://github.com/launch80/L80-CLI/releases/latest/download/L80_<os>_<arch>.tar.gz
 #   https://github.com/launch80/L80-CLI/releases/latest/download/checksums.txt
 # and expects each tarball to contain a single top-level file named L80.
+# launch80.com/install.sh itself proxies the install.sh of the release its docs
+# describe (CLI_VERSION in launch80's lib/docs/reference.ts):
+#   https://github.com/launch80/L80-CLI/releases/download/v<version>/install.sh
+# so install.sh (repo root) must be attached to every release.
 name: release
 
 on:
@@ -75,19 +79,26 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # For install.sh, which ships with each release: launch80.com/install.sh
+      # serves releases/download/v<CLI_VERSION>/install.sh, so a change to the
+      # script reaches users only through a reviewed, tagged release.
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
       - name: Checksums
         run: |
+          sh -n install.sh
+          cp install.sh dist/install.sh
           cd dist
-          sha256sum L80_*.tar.gz > checksums.txt
+          sha256sum L80_*.tar.gz install.sh > checksums.txt
           cat checksums.txt
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/L80_*.tar.gz
+            dist/install.sh
             dist/checksums.txt
           generate_release_notes: true

@@ -14,18 +14,20 @@ You never write HTML, and you never handle credentials — the CLI does both.
 
 1. Pick a template (below). Run `L80 templates list` if you are unsure.
 2. Write the report to a JSON file, e.g. `report.json`.
-3. For `bench.report.v1` (and BetterBench results), ask the user whether to list
-   the page in the public launch80 Directory (see below), then run:
-   `L80 publish report.json --template bench.report.v1 --public` (or `--private`).
-   `generic.report.v1` pages cannot be listed; leave both flags out.
-4. Give the user the URL from the `published:` line, and say whether it is listed.
+3. Run: `L80 publish report.json --template bench.report.v1` (or
+   `--template generic.report.v1`). A `bench.report.v1` page is listed in the
+   Directory unless you add `--private` (see below); `generic.report.v1` pages
+   are never listed.
+4. Give the user the URL from the `published:` line and who can see it (the
+   `who sees it` line).
 
-**Ask about the Directory before publishing a benchmark or scan page.** Ask the
-user: "Do you want this listed in the public launch80 Directory, where anyone can
-search and compare it?" Then pass `--public` (listed) or `--private` (unlisted:
-only people with the link see it) on every publishing command. Never decide for
-them; without either flag a non-interactive run stays unlisted. They can change
-it later with `L80 visibility <url> --public|--private`.
+**Benchmark and scan pages are listed in the public launch80 Directory by
+default** (launch80.com/directory), where anyone can find, search and compare
+them. When you confirm the publish, tell the user that, and pass `--private` if
+they want the page reachable only by its link, and that the page shows
+"Author: <their key id>" (`--no-author` leaves it off). Afterwards relay the `who sees it`
+and `next` lines L80 prints. They can change it any time with
+`L80 visibility <url> --public|--private`.
 
 Name the template with `--template` so the command says which layout it is
 producing. You may instead put `"$template": "<id>"` in the JSON — both work.
@@ -69,8 +71,8 @@ server derives every table and figure from the raw samples with a port of
 BetterBench's own report code, so the page matches the HTML report the tool
 writes beside the file. Add `--title`, `--summary`, or `--section "Heading=Body"`
 for prose; add `--dry-run --payload-out p.json` to inspect the exact payload
-first. Pass `--public` or `--private` as agreed with the user, and with `--public`
-against a remote endpoint add `--gpu "<GPU>"` so the Directory can file it. Flags after `--` go to `betterbench run` verbatim.
+first. Add `--private` if the user wants the page link-only, and against a remote
+endpoint add `--gpu "<GPU>"` so the Directory can file it by GPU. Flags after `--` go to `betterbench run` verbatim.
 
 If the endpoint needs a key, pass `--api-key <key>` before any `--` (or have the
 user set `L80_BETTERBENCH_API_KEY`); never put a key after `--`. Repeat any
@@ -201,8 +203,8 @@ Rules specific to this template:
   6 headline metrics, 8 caveats.
 - Published pages are reachable by anyone with the link and carry a visible
   "Self-reported — not verified by launch80" badge. Tell the user this. Only
-  pages published with `--public` (or listed later with `L80 visibility`) show
-  up in the Directory.
+  benchmark and scan pages published without `--private` (or listed later with
+  `L80 visibility`) show up in the Directory.
 - Pages are immutable. To change something, publish again and share the new URL.
 
 ## Keeping L80 current
